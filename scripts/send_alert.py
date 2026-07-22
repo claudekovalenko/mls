@@ -34,6 +34,8 @@ def fetch_listings(criteria):
     with urllib.request.urlopen(req, timeout=30) as resp:
         listings = json.loads(resp.read())
 
+    location = criteria.get("location", "").strip().lower()
+
     return [
         listing
         for listing in listings
@@ -41,6 +43,7 @@ def fetch_listings(criteria):
         and listing.get("beds", 0) >= criteria["minBeds"]
         and listing.get("baths", 0) >= criteria["minBaths"]
         and (not criteria.get("propertyTypes") or listing.get("propertyType") in criteria["propertyTypes"])
+        and (not location or location in listing.get("address", "").strip().lower())
     ]
 
 
