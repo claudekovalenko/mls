@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Listing Alert Criteria</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.4rem; }
+  label { display: block; margin-top: 14px; font-weight: 600; font-size: 0.9rem; }
+  input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 1rem; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button { margin-top: 20px; padding: 10px 18px; font-size: 1rem; cursor: pointer; }
+  #status { margin-top: 12px; font-size: 0.9rem; }
+  #status.ok { color: #147a2e; }
+  #status.err { color: #b3261e; }
+  details { margin-top: 24px; }
+</style>
+</head>
+<body>
+  <h1>Daily Listing Alert — Criteria</h1>
+  <p>Edit the search criteria used for the daily listing email. Changes save directly to
+     <code>criteria.json</code> in this repo, and the next scheduled run will use them.</p>
+
+  <form id="criteria-form">
+    <label>Location
+      <input type="text" id="location" required>
+    </label>
+    <div class="row">
+      <div><label>Min Price <input type="number" id="minPrice" required></label></div>
+      <div><label>Max Price <input type="number" id="maxPrice" required></label></div>
+    </div>
+    <div class="row">
+      <div><label>Min Beds <input type="number" id="minBeds" required></label></div>
+      <div><label>Min Baths <input type="number" id="minBaths" required></label></div>
+    </div>
+    <label>Property Types (comma-separated)
+      <input type="text" id="propertyTypes">
+    </label>
+    <label>Recipient Email
+      <input type="email" id="recipientEmail" required>
+    </label>
+    <label>CC Email (optional)
+      <input type="email" id="ccEmail">
+    </label>
+    <label>Notes
+      <textarea id="notes" rows="2"></textarea>
+    </label>
+    <button type="submit">Save Criteria</button>
+  </form>
+  <div id="status"></div>
+
+  <details>
+    <summary>GitHub access token (needed once, to save changes)</summary>
+    <p>Create a fine-grained <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub token</a>
+       with read/write access to this repo's contents, then paste it below. It's stored only in this browser
+       (localStorage), never sent anywhere except GitHub's API.</p>
+    <label>GitHub Token
+      <input type="password" id="ghToken">
+    </label>
+    <button id="save-token">Save Token</button>
+  </details>
+
+  <script>
+    const OWNER = "claudekovalenko";
+    const REPO = "mls";
+    const BRANCH = "main";
+    const PATH = "criteria.json";
+
+    const els = {
+      location: document.getElementById("location"),
+      minPrice: document.getElementById("minPrice"),
+      maxPrice: document.getElementById("maxPrice"),
+      minBeds: document.getElementById("minBeds"),
+      minBaths: document.getElementById("minBaths"),
+      propertyTypes: document.getElementById("propertyTypes"),
+      recipientEmail: document.getElementById("recipientEmail"),
+      ccEmail: document.getElementById("ccEmail"),
+      notes: document.getElementById("notes"),
+    };
+    const statusEl = document.getElementById("status");
+    const tokenEl = document.getElementById("ghToken");
+
+    tokenEl.value = localStorage.getItem("gh_token") || "";
+    document.getElementById("save-token").addEventListener("click", () => {
+      localStorage.setItem("gh_token", tokenEl.value.trim());
+      setStatus("Token saved locally.", true);
+    });
+
+    function setStatus(msg, ok) {
+      statusEl.textContent = msg;
+      statusEl.className = ok ? "ok" : "err";
+    }
+
+    function apiUrl() {
+      return `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`;
+    }
+
+    async function loadCriteria() {
+      try {
+        const res = await fetch(apiUrl());
+        if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+        const data = await res.json();
+        const criteria = JSON.parse(atob(data.content));
+        els.location.value = criteria.location || "";
+        els.minPrice.value = criteria.minPrice ?? "";
+        els.maxPrice.value = criteria.maxPrice ?? "";
+        els.minBeds.value = criteria.minBeds ?? "";
+        els.minBaths.value = criteria.minBaths ?? "";
+        els.propertyTypes.value = (criteria.propertyTypes || []).join(", ");
+        els.recipientEmail.value = criteria.recipientEmail || "";
+        els.ccEmail.value = criteria.ccEmail || "";
+        els.notes.value = criteria.notes || "";
+      } catch (err) {
+        setStatus("Could not load current criteria: " + err.message, false);
+      }
+    }
+
+    document.getElementById("criteria-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const token = localStorage.getItem("gh_token");
+      if (!token) {
+        setStatus("Add a GitHub token below first (needed to save).", false);
+        return;
+      }
+
+      const criteria = {
+        location: els.location.value,
+        minPrice: Number(els.minPrice.value),
+        maxPrice: Number(els.maxPrice.value),
+        minBeds: Number(els.minBeds.value),
+        minBaths: Number(els.minBaths.value),
+        propertyTypes: els.propertyTypes.value.split(",").map(s => s.trim()).filter(Boolean),
+        recipientEmail: els.recipientEmail.value,
+        ccEmail: els.ccEmail.value,
+        notes: els.notes.value,
+      };
+
+      try {
+        const getRes = await fetch(apiUrl());
+        const getData = await getRes.json();
+        const sha = getData.sha;
+
+        const putRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`, {
+          method: "PUT",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/vnd.github+json",
+          },
+          body: JSON.stringify({
+            message: "Update listing alert criteria via dashboard",
+            content: btoa(JSON.stringify(criteria, null, 2) + "\n"),
+            sha,
+            branch: BRANCH,
+          }),
+        });
+
+        if (!putRes.ok) {
+          const errBody = await putRes.json().catch(() => ({}));
+          throw new Error(errBody.message || `GitHub API ${putRes.status}`);
+        }
+        setStatus("Saved. Tomorrow's email will use the new criteria.", true);
+      } catch (err) {
+        setStatus("Save failed: " + err.message, false);
+      }
+    });
+
+    loadCriteria();
+  </script>
+</body>
+</html>

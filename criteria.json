@@ -1,0 +1,11 @@
+{
+  "location": "Los Angeles, CA",
+  "minPrice": 400000,
+  "maxPrice": 900000,
+  "minBeds": 2,
+  "minBaths": 1,
+  "propertyTypes": ["Single Family", "Condo", "Townhouse"],
+  "recipientEmail": "claudekovalenko@gmail.com",
+  "ccEmail": "",
+  "notes": "Ryan Swedberg listing search criteria. Edit via the dashboard or directly in this file."
+}
