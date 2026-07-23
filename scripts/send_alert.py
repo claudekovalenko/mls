@@ -34,6 +34,17 @@ def fetch_listings(criteria):
     with urllib.request.urlopen(req, timeout=30) as resp:
         listings = json.loads(resp.read())
 
+    keywords = [k.lower() for k in criteria.get("keywords", [])]
+
+    def matches_keywords(listing):
+        if not keywords:
+            return True
+        haystack = " ".join(
+            str(listing.get(field, ""))
+            for field in ("description", "remarks", "title", "address")
+        ).lower()
+        return any(keyword in haystack for keyword in keywords)
+
     return [
         listing
         for listing in listings
@@ -41,6 +52,7 @@ def fetch_listings(criteria):
         and listing.get("beds", 0) >= criteria["minBeds"]
         and listing.get("baths", 0) >= criteria["minBaths"]
         and (not criteria.get("propertyTypes") or listing.get("propertyType") in criteria["propertyTypes"])
+        and matches_keywords(listing)
     ]
 
 

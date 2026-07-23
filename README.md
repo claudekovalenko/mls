@@ -6,7 +6,8 @@ criteria without touching code.
 ## How it works
 
 - `criteria.json` — the current search criteria (location, price range, beds/baths, property
-  types, recipient email).
+  types, keywords, recipient email). Keywords are matched (case-insensitive) against each
+  listing's description/remarks/title/address — a listing only needs to contain one of them.
 - `scripts/send_alert.py` — reads `criteria.json`, fetches listings from a data source, filters
   them, and emails the matches.
 - `.github/workflows/daily-alert.yml` — runs `send_alert.py` automatically every day at 14:00 UTC

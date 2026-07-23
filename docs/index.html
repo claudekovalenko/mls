@@ -148,6 +148,9 @@
         <label>Property Types (comma-separated)
           <input type="text" id="propertyTypes">
         </label>
+        <label>Keywords (comma-separated, matched against listing description/remarks)
+          <input type="text" id="keywords" placeholder="e.g. pool, basement, garage">
+        </label>
         <label>Recipient Email
           <input type="email" id="recipientEmail" required>
         </label>
@@ -189,6 +192,7 @@
       minBeds: document.getElementById("minBeds"),
       minBaths: document.getElementById("minBaths"),
       propertyTypes: document.getElementById("propertyTypes"),
+      keywords: document.getElementById("keywords"),
       recipientEmail: document.getElementById("recipientEmail"),
       ccEmail: document.getElementById("ccEmail"),
       notes: document.getElementById("notes"),
@@ -223,6 +227,7 @@
         els.minBeds.value = criteria.minBeds ?? "";
         els.minBaths.value = criteria.minBaths ?? "";
         els.propertyTypes.value = (criteria.propertyTypes || []).join(", ");
+        els.keywords.value = (criteria.keywords || []).join(", ");
         els.recipientEmail.value = criteria.recipientEmail || "";
         els.ccEmail.value = criteria.ccEmail || "";
         els.notes.value = criteria.notes || "";
@@ -246,6 +251,7 @@
         minBeds: Number(els.minBeds.value),
         minBaths: Number(els.minBaths.value),
         propertyTypes: els.propertyTypes.value.split(",").map(s => s.trim()).filter(Boolean),
+        keywords: els.keywords.value.split(",").map(s => s.trim()).filter(Boolean),
         recipientEmail: els.recipientEmail.value,
         ccEmail: els.ccEmail.value,
         notes: els.notes.value,
