@@ -3,202 +3,197 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atlanta Listing Alerts</title>
+<title>House Tracker</title>
 <style>
-  :root {
-    --bg: #f4f6f5;
-    --card: #ffffff;
-    --ink: #16211b;
-    --sub: #5b6a62;
-    --line: #e2e8e4;
-    --accent: #1f6f4a;
-    --accent-dark: #16543a;
-    --ok: #1f6f4a;
-    --err: #b3261e;
-    --radius: 14px;
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .sub { color: #555; margin-top: 0; }
+  nav { font-size: 0.9rem; margin-bottom: 16px; }
+  .toolbar { display: flex; gap: 12px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+  .toolbar select { padding: 6px; }
+  button { padding: 8px 14px; font-size: 0.95rem; cursor: pointer; }
+  #status { margin: 10px 0; font-size: 0.9rem; min-height: 1.2em; }
+  #status.ok { color: #147a2e; }
+  #status.err { color: #b3261e; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e2e2e2; font-size: 0.92rem; vertical-align: top; }
+  th { font-size: 0.8rem; text-transform: uppercase; color: #666; }
+  tr.status-Purchased { background: #eafaf0; }
+  tr.status-Rejected { opacity: 0.55; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.78rem; font-weight: 600; }
+  .pill-Interested { background: #e3edff; color: #1d4ed8; }
+  .pill-Touring { background: #fff3cd; color: #8a6100; }
+  .pill-Toured { background: #ffe8cc; color: #a85400; }
+  .pill-Offer { background: #f3e0ff; color: #7a1fa8; }
+  .pill-Contract { background: #d6f0ff; color: #0a6ea8; }
+  .pill-Purchased { background: #d6f5df; color: #147a2e; }
+  .pill-Rejected { background: #f0d6d6; color: #a3251e; }
+  .stars { color: #d9a400; letter-spacing: 1px; }
+  .row-actions button { padding: 4px 8px; font-size: 0.8rem; margin-right: 4px; }
+  a.addr-link { text-decoration: none; color: #1d4ed8; font-weight: 600; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e2e2; margin-top: 18px; }
+  .tab-btn { background: none; border: none; padding: 8px 14px; font-size: 0.95rem; cursor: pointer; color: #666; border-bottom: 2px solid transparent; }
+  .tab-btn.active { color: #1d4ed8; border-bottom-color: #1d4ed8; font-weight: 600; }
+  .like-btn { background: none; border: none; font-size: 1.1rem; cursor: pointer; padding: 2px 4px; }
+  .like-btn.liked { color: #e0245e; }
+  .like-btn:not(.liked) { color: #bbb; }
+  .badge-new { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: #147a2e; color: #fff; vertical-align: middle; }
+
+  dialog { border: none; border-radius: 8px; padding: 0; width: 480px; max-width: 90vw; }
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  .dialog-body { padding: 20px; }
+  .dialog-body h2 { margin-top: 0; font-size: 1.15rem; }
+  .dialog-body label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.85rem; }
+  .dialog-body input, .dialog-body select, .dialog-body textarea {
+    width: 100%; padding: 7px; margin-top: 4px; box-sizing: border-box; font-size: 0.95rem;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #101512;
-      --card: #1a221d;
-      --ink: #eef3f0;
-      --sub: #9fb0a6;
-      --line: #2a352e;
-      --accent: #4caf7d;
-      --accent-dark: #6fcf9a;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-    margin: 0;
-    padding: 48px 20px 80px;
-  }
-  .wrap { max-width: 640px; margin: 0 auto; }
-  .eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--accent);
-    margin-bottom: 8px;
-  }
-  h1 { font-size: 1.7rem; margin: 0 0 6px; letter-spacing: -0.01em; }
-  .sub { color: var(--sub); margin: 0 0 32px; font-size: 0.95rem; line-height: 1.5; }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 28px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .card + .card { margin-top: 20px; }
-  label {
-    display: block;
-    margin-top: 18px;
-    font-weight: 600;
-    font-size: 0.82rem;
-    color: var(--sub);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  label:first-child { margin-top: 0; }
-  input, select, textarea {
-    width: 100%;
-    padding: 10px 12px;
-    margin-top: 6px;
-    font-size: 0.98rem;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: inherit;
-  }
-  input:focus, textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  .row { display: flex; gap: 14px; }
-  .row > div { flex: 1; }
-  button {
-    margin-top: 24px;
-    padding: 12px 20px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    border-radius: 8px;
-    background: var(--accent);
-    color: #fff;
-    transition: background 0.15s ease;
-  }
-  button:hover { background: var(--accent-dark); }
-  button.secondary {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--line);
-  }
-  button.secondary:hover { background: var(--line); }
-  #status { margin-top: 14px; font-size: 0.88rem; font-weight: 500; }
-  #status.ok { color: var(--ok); }
-  #status.err { color: var(--err); }
-  details summary {
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--sub);
-  }
-  details p { color: var(--sub); font-size: 0.88rem; line-height: 1.5; }
-  details a { color: var(--accent); }
-  .pill {
-    display: inline-block;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: rgba(31,111,74,0.12);
-    color: var(--accent);
-    margin-bottom: 20px;
-  }
+  .dialog-row { display: flex; gap: 10px; }
+  .dialog-row > div { flex: 1; }
+  .dialog-actions { margin-top: 18px; display: flex; justify-content: space-between; gap: 8px; }
+  details { margin-top: 28px; }
+  .empty { color: #777; padding: 20px 0; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="eyebrow">Daily Listing Alert</div>
-    <h1>Atlanta Search Criteria</h1>
-    <p class="sub">Everything below controls what shows up in your daily listings email. Update it any time — the next scheduled run picks up changes automatically.</p>
+  <nav><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
+  <h1>House Tracker</h1>
+  <p class="sub" id="page-sub">Every house we're considering buying, with status, rating, and notes — synced
+     straight to <code>houses.json</code> in this repo.</p>
 
-    <div class="card">
-      <span class="pill">🏠 Atlanta, GA</span>
-      <form id="criteria-form">
-        <label>Location
-          <input type="text" id="location" required>
-        </label>
-        <div class="row">
-          <div><label>Min Price <input type="number" id="minPrice" required></label></div>
-          <div><label>Max Price <input type="number" id="maxPrice" required></label></div>
-        </div>
-        <div class="row">
-          <div><label>Min Beds <input type="number" id="minBeds" required></label></div>
-          <div><label>Min Baths <input type="number" id="minBaths" required></label></div>
-        </div>
-        <label>Property Types (comma-separated)
-          <input type="text" id="propertyTypes">
-        </label>
-        <label>Keywords (comma-separated, matched against listing description/remarks)
-          <input type="text" id="keywords" placeholder="e.g. pool, basement, garage">
-        </label>
-        <label>Recipient Email
-          <input type="email" id="recipientEmail" required>
-        </label>
-        <label>CC Email (optional)
-          <input type="email" id="ccEmail">
-        </label>
-        <label>Notes
-          <textarea id="notes" rows="2"></textarea>
-        </label>
-        <button type="submit">Save Criteria</button>
-      </form>
-      <div id="status"></div>
-    </div>
-
-    <div class="card">
-      <details>
-        <summary>GitHub access token (needed once, to save changes)</summary>
-        <p>Create a fine-grained <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub token</a>
-           with read/write access to this repo's contents, then paste it below. It's stored only in this browser
-           (localStorage), never sent anywhere except GitHub's API.</p>
-        <label>GitHub Token
-          <input type="password" id="ghToken">
-        </label>
-        <button class="secondary" id="save-token" type="button">Save Token</button>
-      </details>
-    </div>
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-all">All Houses</button>
+    <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
   </div>
+
+  <div class="toolbar">
+    <button id="add-btn">+ Add House</button>
+    <label>Filter status:
+      <select id="filter-status">
+        <option value="">All</option>
+        <option>Interested</option>
+        <option>Touring Scheduled</option>
+        <option>Toured</option>
+        <option>Offer Made</option>
+        <option>Under Contract</option>
+        <option>Purchased</option>
+        <option>Rejected</option>
+      </select>
+    </label>
+    <label>Sort by:
+      <select id="sort-by">
+        <option value="dateAdded">Date Added</option>
+        <option value="price">Price</option>
+        <option value="rating">Rating</option>
+        <option value="address">Address</option>
+      </select>
+    </label>
+  </div>
+  <div id="status"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Address</th>
+        <th>Price</th>
+        <th>Bd/Ba</th>
+        <th>Status</th>
+        <th>Rating</th>
+        <th>Notes</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="house-rows"></tbody>
+  </table>
+  <div id="empty-msg" class="empty" style="display:none;">No houses yet — click "+ Add House" to start tracking one.</div>
+
+  <details>
+    <summary>GitHub access token (needed once, to save changes)</summary>
+    <p>Create a fine-grained <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub token</a>
+       with read/write access to this repo's contents, then paste it below. It's stored only in this browser
+       (localStorage), never sent anywhere except GitHub's API.</p>
+    <label>GitHub Token
+      <input type="password" id="ghToken" style="width:320px;padding:8px;">
+    </label>
+    <button id="save-token">Save Token</button>
+  </details>
+
+  <dialog id="house-dialog">
+    <form class="dialog-body" id="house-form">
+      <h2 id="dialog-title">Add House</h2>
+      <input type="hidden" id="house-id">
+      <label>Address <input type="text" id="f-address" required></label>
+      <label>Listing URL <input type="url" id="f-url" placeholder="https://..."></label>
+      <div class="dialog-row">
+        <div><label>Price <input type="number" id="f-price"></label></div>
+        <div><label>Beds <input type="number" id="f-beds"></label></div>
+        <div><label>Baths <input type="number" id="f-baths"></label></div>
+      </div>
+      <div class="dialog-row">
+        <div>
+          <label>Status
+            <select id="f-status">
+              <option>Interested</option>
+              <option>Touring Scheduled</option>
+              <option>Toured</option>
+              <option>Offer Made</option>
+              <option>Under Contract</option>
+              <option>Purchased</option>
+              <option>Rejected</option>
+            </select>
+          </label>
+        </div>
+        <div>
+          <label>Rating
+            <select id="f-rating">
+              <option value="0">— none —</option>
+              <option value="1">★</option>
+              <option value="2">★★</option>
+              <option value="3">★★★</option>
+              <option value="4">★★★★</option>
+              <option value="5">★★★★★</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <label>Notes <textarea id="f-notes" rows="3"></textarea></label>
+      <div class="dialog-actions">
+        <button type="button" id="delete-btn" style="display:none;color:#b3261e;">Delete</button>
+        <span style="flex:1;"></span>
+        <button type="button" id="cancel-btn">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     const OWNER = "claudekovalenko";
     const REPO = "mls";
     const BRANCH = "main";
-    const PATH = "criteria.json";
+    const PATH = "houses.json";
 
-    const els = {
-      location: document.getElementById("location"),
-      minPrice: document.getElementById("minPrice"),
-      maxPrice: document.getElementById("maxPrice"),
-      minBeds: document.getElementById("minBeds"),
-      minBaths: document.getElementById("minBaths"),
-      propertyTypes: document.getElementById("propertyTypes"),
-      keywords: document.getElementById("keywords"),
-      recipientEmail: document.getElementById("recipientEmail"),
-      ccEmail: document.getElementById("ccEmail"),
-      notes: document.getElementById("notes"),
-    };
+    let houses = [];
+    let sha = null;
+    let activeTab = "all";
+
     const statusEl = document.getElementById("status");
     const tokenEl = document.getElementById("ghToken");
+    const rowsEl = document.getElementById("house-rows");
+    const emptyMsg = document.getElementById("empty-msg");
+    const dialog = document.getElementById("house-dialog");
+    const form = document.getElementById("house-form");
+
+    const STATUS_CLASS = {
+      "Interested": "Interested",
+      "Touring Scheduled": "Touring",
+      "Toured": "Toured",
+      "Offer Made": "Offer",
+      "Under Contract": "Contract",
+      "Purchased": "Purchased",
+      "Rejected": "Rejected",
+    };
 
     tokenEl.value = localStorage.getItem("gh_token") || "";
     document.getElementById("save-token").addEventListener("click", () => {
@@ -215,53 +210,26 @@
       return `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`;
     }
 
-    async function loadCriteria() {
+    async function loadHouses() {
       try {
         const res = await fetch(apiUrl());
         if (!res.ok) throw new Error(`GitHub API ${res.status}`);
         const data = await res.json();
-        const criteria = JSON.parse(atob(data.content));
-        els.location.value = criteria.location || "";
-        els.minPrice.value = criteria.minPrice ?? "";
-        els.maxPrice.value = criteria.maxPrice ?? "";
-        els.minBeds.value = criteria.minBeds ?? "";
-        els.minBaths.value = criteria.minBaths ?? "";
-        els.propertyTypes.value = (criteria.propertyTypes || []).join(", ");
-        els.keywords.value = (criteria.keywords || []).join(", ");
-        els.recipientEmail.value = criteria.recipientEmail || "";
-        els.ccEmail.value = criteria.ccEmail || "";
-        els.notes.value = criteria.notes || "";
+        sha = data.sha;
+        houses = JSON.parse(atob(data.content));
+        render();
       } catch (err) {
-        setStatus("Could not load current criteria: " + err.message, false);
+        setStatus("Could not load houses: " + err.message, false);
       }
     }
 
-    document.getElementById("criteria-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
+    async function saveHouses(message) {
       const token = localStorage.getItem("gh_token");
       if (!token) {
         setStatus("Add a GitHub token below first (needed to save).", false);
-        return;
+        return false;
       }
-
-      const criteria = {
-        location: els.location.value,
-        minPrice: Number(els.minPrice.value),
-        maxPrice: Number(els.maxPrice.value),
-        minBeds: Number(els.minBeds.value),
-        minBaths: Number(els.minBaths.value),
-        propertyTypes: els.propertyTypes.value.split(",").map(s => s.trim()).filter(Boolean),
-        keywords: els.keywords.value.split(",").map(s => s.trim()).filter(Boolean),
-        recipientEmail: els.recipientEmail.value,
-        ccEmail: els.ccEmail.value,
-        notes: els.notes.value,
-      };
-
       try {
-        const getRes = await fetch(apiUrl());
-        const getData = await getRes.json();
-        const sha = getData.sha;
-
         const putRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`, {
           method: "PUT",
           headers: {
@@ -269,24 +237,176 @@
             "Accept": "application/vnd.github+json",
           },
           body: JSON.stringify({
-            message: "Update listing alert criteria via dashboard",
-            content: btoa(JSON.stringify(criteria, null, 2) + "\n"),
+            message,
+            content: btoa(JSON.stringify(houses, null, 2) + "\n"),
             sha,
             branch: BRANCH,
           }),
         });
-
         if (!putRes.ok) {
           const errBody = await putRes.json().catch(() => ({}));
           throw new Error(errBody.message || `GitHub API ${putRes.status}`);
         }
-        setStatus("Saved. Tomorrow's email will use the new criteria.", true);
+        const putData = await putRes.json();
+        sha = putData.content.sha;
+        setStatus("Saved.", true);
+        return true;
       } catch (err) {
         setStatus("Save failed: " + err.message, false);
+        return false;
+      }
+    }
+
+    function render() {
+      const filter = document.getElementById("filter-status").value;
+      const sortBy = document.getElementById("sort-by").value;
+
+      let list = houses.slice();
+      if (activeTab === "highlights") list = list.filter(h => h.liked || h.source === "email");
+      if (filter) list = list.filter(h => h.status === filter);
+      list.sort((a, b) => {
+        if (sortBy === "price") return (a.price || 0) - (b.price || 0);
+        if (sortBy === "rating") return (b.rating || 0) - (a.rating || 0);
+        if (sortBy === "address") return (a.address || "").localeCompare(b.address || "");
+        return (b.dateAdded || "").localeCompare(a.dateAdded || "");
+      });
+
+      rowsEl.innerHTML = "";
+      emptyMsg.textContent = activeTab === "highlights"
+        ? 'No highlights yet — heart a house in "All Houses", or reply "LIKE 1,2" to a daily alert email.'
+        : 'No houses yet — click "+ Add House" to start tracking one.';
+      emptyMsg.style.display = list.length ? "none" : "block";
+
+      for (const h of list) {
+        const tr = document.createElement("tr");
+        tr.className = "status-" + (STATUS_CLASS[h.status] || "");
+        const addr = h.url
+          ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
+          : escapeHtml(h.address);
+        const newBadge = h.source === "email" ? '<span class="badge-new">NEW</span>' : "";
+        tr.innerHTML = `
+          <td><button class="like-btn ${h.liked ? "liked" : ""}" data-id="${h.id}" title="Toggle highlight">${h.liked ? "♥" : "♡"}</button></td>
+          <td>${addr}${newBadge}</td>
+          <td>${h.price ? "$" + Number(h.price).toLocaleString() : "—"}</td>
+          <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba</td>
+          <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
+          <td class="stars">${"★".repeat(h.rating || 0)}${"☆".repeat(5 - (h.rating || 0))}</td>
+          <td>${escapeHtml(h.notes || "")}</td>
+          <td class="row-actions"><button data-id="${h.id}" class="edit-btn">Edit</button></td>
+        `;
+        rowsEl.appendChild(tr);
+      }
+
+      document.querySelectorAll(".edit-btn").forEach(btn => {
+        btn.addEventListener("click", () => openDialog(btn.dataset.id));
+      });
+      document.querySelectorAll(".like-btn").forEach(btn => {
+        btn.addEventListener("click", () => toggleLike(btn.dataset.id));
+      });
+    }
+
+    async function toggleLike(id) {
+      const house = houses.find(h => h.id === id);
+      if (!house) return;
+      const prev = !!house.liked;
+      house.liked = !prev;
+      render();
+      const ok = await saveHouses(`${house.liked ? "Highlight" : "Un-highlight"} house: ${house.address}`);
+      if (!ok) {
+        house.liked = prev;
+        render();
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function openDialog(id) {
+      const house = id ? houses.find(h => h.id === id) : null;
+      document.getElementById("dialog-title").textContent = house ? "Edit House" : "Add House";
+      document.getElementById("house-id").value = house ? house.id : "";
+      document.getElementById("f-address").value = house?.address || "";
+      document.getElementById("f-url").value = house?.url || "";
+      document.getElementById("f-price").value = house?.price ?? "";
+      document.getElementById("f-beds").value = house?.beds ?? "";
+      document.getElementById("f-baths").value = house?.baths ?? "";
+      document.getElementById("f-status").value = house?.status || "Interested";
+      document.getElementById("f-rating").value = house?.rating ?? 0;
+      document.getElementById("f-notes").value = house?.notes || "";
+      document.getElementById("delete-btn").style.display = house ? "inline-block" : "none";
+      dialog.showModal();
+    }
+
+    document.getElementById("add-btn").addEventListener("click", () => openDialog(null));
+    document.getElementById("cancel-btn").addEventListener("click", () => dialog.close());
+    document.getElementById("filter-status").addEventListener("change", render);
+    document.getElementById("sort-by").addEventListener("change", render);
+
+    const tabAll = document.getElementById("tab-all");
+    const tabHighlights = document.getElementById("tab-highlights");
+    const pageSub = document.getElementById("page-sub");
+
+    function setTab(tab) {
+      activeTab = tab;
+      tabAll.classList.toggle("active", tab === "all");
+      tabHighlights.classList.toggle("active", tab === "highlights");
+      pageSub.textContent = tab === "highlights"
+        ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
+        : "Every house we're considering buying, with status, rating, and notes — synced straight to houses.json in this repo.";
+      render();
+    }
+    tabAll.addEventListener("click", () => setTab("all"));
+    tabHighlights.addEventListener("click", () => setTab("highlights"));
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("house-id").value || crypto.randomUUID();
+      const existing = houses.find(h => h.id === id);
+      const entry = {
+        id,
+        address: document.getElementById("f-address").value.trim(),
+        url: document.getElementById("f-url").value.trim(),
+        price: Number(document.getElementById("f-price").value) || null,
+        beds: Number(document.getElementById("f-beds").value) || null,
+        baths: Number(document.getElementById("f-baths").value) || null,
+        status: document.getElementById("f-status").value,
+        rating: Number(document.getElementById("f-rating").value) || 0,
+        notes: document.getElementById("f-notes").value.trim(),
+        liked: existing?.liked || false,
+        source: existing?.source || "manual",
+        dateAdded: existing?.dateAdded || new Date().toISOString().slice(0, 10),
+      };
+
+      const idx = houses.findIndex(h => h.id === id);
+      if (idx >= 0) houses[idx] = entry; else houses.push(entry);
+
+      const ok = await saveHouses(idx >= 0 ? `Update house: ${entry.address}` : `Add house: ${entry.address}`);
+      if (ok) {
+        dialog.close();
+        render();
+      } else {
+        if (idx >= 0) houses[idx] = entry; else houses.pop();
       }
     });
 
-    loadCriteria();
+    document.getElementById("delete-btn").addEventListener("click", async () => {
+      const id = document.getElementById("house-id").value;
+      const idx = houses.findIndex(h => h.id === id);
+      if (idx < 0) return;
+      const removed = houses.splice(idx, 1)[0];
+      const ok = await saveHouses(`Remove house: ${removed.address}`);
+      if (ok) {
+        dialog.close();
+        render();
+      } else {
+        houses.splice(idx, 0, removed);
+      }
+    });
+
+    loadHouses();
   </script>
 </body>
 </html>

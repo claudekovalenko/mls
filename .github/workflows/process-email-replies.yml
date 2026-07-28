@@ -1,32 +1,30 @@
-name: MLS Daily Listing Alert
+name: Process Alert Email Replies
 
 on:
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 jobs:
-  send-alert:
+  process-replies:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Send listing alert
+      - name: Process replies
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          LISTINGS_API_URL: ${{ secrets.LISTINGS_API_URL }}
-          LISTINGS_API_KEY: ${{ secrets.LISTINGS_API_KEY }}
-        run: python scripts/send_alert.py
-      - name: Commit today's listing snapshot
+        run: python scripts/process_replies.py
+      - name: Commit liked houses from email
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add last_alert_listings.json
-          git diff --cached --quiet || git commit -m "Update last alert listings snapshot"
+          git add houses.json
+          git diff --cached --quiet || git commit -m "Add house(s) liked via email reply"
           git push

@@ -15,6 +15,7 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 CRITERIA_PATH = Path(__file__).resolve().parent.parent / "criteria.json"
+LAST_ALERT_PATH = Path(__file__).resolve().parent.parent / "last_alert_listings.json"
 
 
 def load_criteria():
@@ -34,6 +35,7 @@ def fetch_listings(criteria):
     with urllib.request.urlopen(req, timeout=30) as resp:
         listings = json.loads(resp.read())
 
+    location = criteria.get("location", "").strip().lower()
     keywords = [k.lower() for k in criteria.get("keywords", [])]
 
     def matches_keywords(listing):
@@ -52,20 +54,32 @@ def fetch_listings(criteria):
         and listing.get("beds", 0) >= criteria["minBeds"]
         and listing.get("baths", 0) >= criteria["minBaths"]
         and (not criteria.get("propertyTypes") or listing.get("propertyType") in criteria["propertyTypes"])
+        and (not location or location in listing.get("address", "").strip().lower())
         and matches_keywords(listing)
     ]
 
 
+def save_last_alert_listings(listings):
+    LAST_ALERT_PATH.write_text(json.dumps(listings, indent=2) + "\n")
+
+
 def build_email(criteria, listings):
     if listings:
-        body_lines = [f"{len(listings)} listing(s) matching your criteria today:\n"]
-        for listing in listings:
+        body_lines = [
+            f"{len(listings)} listing(s) matching your criteria today:\n",
+        ]
+        for i, listing in enumerate(listings, start=1):
             body_lines.append(
-                f"- {listing.get('address', 'Unknown address')} — "
+                f"{i}. {listing.get('address', 'Unknown address')} — "
                 f"${listing.get('price', 0):,} — "
                 f"{listing.get('beds', '?')}bd/{listing.get('baths', '?')}ba\n"
-                f"  {listing.get('url', '')}"
+                f"   {listing.get('url', '')}"
             )
+        body_lines.append(
+            "\n---\nLike one or more of these? Reply to this email with:\n"
+            "  LIKE 1,3\n"
+            "(the numbers of the listings you want added to the House Tracker)"
+        )
         body = "\n".join(body_lines)
     else:
         body = "No new listings matched your criteria today."
@@ -98,6 +112,7 @@ def send_email(msg):
 def main():
     criteria = load_criteria()
     listings = fetch_listings(criteria)
+    save_last_alert_listings(listings)
     msg = build_email(criteria, listings)
     send_email(msg)
 
