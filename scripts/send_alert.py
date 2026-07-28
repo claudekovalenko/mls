@@ -36,6 +36,16 @@ def fetch_listings(criteria):
         listings = json.loads(resp.read())
 
     location = criteria.get("location", "").strip().lower()
+    keywords = [k.lower() for k in criteria.get("keywords", [])]
+
+    def matches_keywords(listing):
+        if not keywords:
+            return True
+        haystack = " ".join(
+            str(listing.get(field, ""))
+            for field in ("description", "remarks", "title", "address")
+        ).lower()
+        return any(keyword in haystack for keyword in keywords)
 
     return [
         listing
@@ -45,6 +55,7 @@ def fetch_listings(criteria):
         and listing.get("baths", 0) >= criteria["minBaths"]
         and (not criteria.get("propertyTypes") or listing.get("propertyType") in criteria["propertyTypes"])
         and (not location or location in listing.get("address", "").strip().lower())
+        and matches_keywords(listing)
     ]
 
 

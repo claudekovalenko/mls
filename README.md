@@ -17,7 +17,8 @@ tracker UI are intentionally simple for now.
   **All Houses** (everything) and **Highlights** (liked houses, plus new ones added via email
   reply). Add, edit, heart, filter, and sort houses from the browser.
 - `criteria.json` — the daily email alert's search filter (location, price range, beds/baths,
-  property types, recipient email).
+  property types, keywords, recipient email). Keywords are matched (case-insensitive) against
+  each listing's description/remarks/title/address — a listing only needs to contain one of them.
 - `scripts/send_alert.py` — reads `criteria.json`, fetches listings from a data source, filters
   them, numbers them in the email body, saves that day's list to `last_alert_listings.json`, and
   emails the matches.
