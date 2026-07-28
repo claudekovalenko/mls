@@ -33,6 +33,14 @@
   .row-actions button { padding: 4px 8px; font-size: 0.8rem; margin-right: 4px; }
   a.addr-link { text-decoration: none; color: #1d4ed8; font-weight: 600; }
 
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e2e2; margin-top: 18px; }
+  .tab-btn { background: none; border: none; padding: 8px 14px; font-size: 0.95rem; cursor: pointer; color: #666; border-bottom: 2px solid transparent; }
+  .tab-btn.active { color: #1d4ed8; border-bottom-color: #1d4ed8; font-weight: 600; }
+  .like-btn { background: none; border: none; font-size: 1.1rem; cursor: pointer; padding: 2px 4px; }
+  .like-btn.liked { color: #e0245e; }
+  .like-btn:not(.liked) { color: #bbb; }
+  .badge-new { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: #147a2e; color: #fff; vertical-align: middle; }
+
   dialog { border: none; border-radius: 8px; padding: 0; width: 480px; max-width: 90vw; }
   dialog::backdrop { background: rgba(0,0,0,0.4); }
   .dialog-body { padding: 20px; }
@@ -51,8 +59,13 @@
 <body>
   <nav><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
   <h1>House Tracker</h1>
-  <p class="sub">Every house we're considering buying, with status, rating, and notes — synced straight to
-     <code>houses.json</code> in this repo.</p>
+  <p class="sub" id="page-sub">Every house we're considering buying, with status, rating, and notes — synced
+     straight to <code>houses.json</code> in this repo.</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-all">All Houses</button>
+    <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
+  </div>
 
   <div class="toolbar">
     <button id="add-btn">+ Add House</button>
@@ -82,6 +95,7 @@
   <table>
     <thead>
       <tr>
+        <th></th>
         <th>Address</th>
         <th>Price</th>
         <th>Bd/Ba</th>
@@ -162,6 +176,7 @@
 
     let houses = [];
     let sha = null;
+    let activeTab = "all";
 
     const statusEl = document.getElementById("status");
     const tokenEl = document.getElementById("ghToken");
@@ -247,15 +262,19 @@
       const sortBy = document.getElementById("sort-by").value;
 
       let list = houses.slice();
+      if (activeTab === "highlights") list = list.filter(h => h.liked || h.source === "email");
       if (filter) list = list.filter(h => h.status === filter);
       list.sort((a, b) => {
         if (sortBy === "price") return (a.price || 0) - (b.price || 0);
         if (sortBy === "rating") return (b.rating || 0) - (a.rating || 0);
         if (sortBy === "address") return (a.address || "").localeCompare(b.address || "");
-        return (a.dateAdded || "").localeCompare(b.dateAdded || "");
+        return (b.dateAdded || "").localeCompare(a.dateAdded || "");
       });
 
       rowsEl.innerHTML = "";
+      emptyMsg.textContent = activeTab === "highlights"
+        ? 'No highlights yet — heart a house in "All Houses", or reply "LIKE 1,2" to a daily alert email.'
+        : 'No houses yet — click "+ Add House" to start tracking one.';
       emptyMsg.style.display = list.length ? "none" : "block";
 
       for (const h of list) {
@@ -264,8 +283,10 @@
         const addr = h.url
           ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
           : escapeHtml(h.address);
+        const newBadge = h.source === "email" ? '<span class="badge-new">NEW</span>' : "";
         tr.innerHTML = `
-          <td>${addr}</td>
+          <td><button class="like-btn ${h.liked ? "liked" : ""}" data-id="${h.id}" title="Toggle highlight">${h.liked ? "♥" : "♡"}</button></td>
+          <td>${addr}${newBadge}</td>
           <td>${h.price ? "$" + Number(h.price).toLocaleString() : "—"}</td>
           <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba</td>
           <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
@@ -279,6 +300,22 @@
       document.querySelectorAll(".edit-btn").forEach(btn => {
         btn.addEventListener("click", () => openDialog(btn.dataset.id));
       });
+      document.querySelectorAll(".like-btn").forEach(btn => {
+        btn.addEventListener("click", () => toggleLike(btn.dataset.id));
+      });
+    }
+
+    async function toggleLike(id) {
+      const house = houses.find(h => h.id === id);
+      if (!house) return;
+      const prev = !!house.liked;
+      house.liked = !prev;
+      render();
+      const ok = await saveHouses(`${house.liked ? "Highlight" : "Un-highlight"} house: ${house.address}`);
+      if (!ok) {
+        house.liked = prev;
+        render();
+      }
     }
 
     function escapeHtml(s) {
@@ -308,9 +345,26 @@
     document.getElementById("filter-status").addEventListener("change", render);
     document.getElementById("sort-by").addEventListener("change", render);
 
+    const tabAll = document.getElementById("tab-all");
+    const tabHighlights = document.getElementById("tab-highlights");
+    const pageSub = document.getElementById("page-sub");
+
+    function setTab(tab) {
+      activeTab = tab;
+      tabAll.classList.toggle("active", tab === "all");
+      tabHighlights.classList.toggle("active", tab === "highlights");
+      pageSub.textContent = tab === "highlights"
+        ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
+        : "Every house we're considering buying, with status, rating, and notes — synced straight to houses.json in this repo.";
+      render();
+    }
+    tabAll.addEventListener("click", () => setTab("all"));
+    tabHighlights.addEventListener("click", () => setTab("highlights"));
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const id = document.getElementById("house-id").value || crypto.randomUUID();
+      const existing = houses.find(h => h.id === id);
       const entry = {
         id,
         address: document.getElementById("f-address").value.trim(),
@@ -321,7 +375,9 @@
         status: document.getElementById("f-status").value,
         rating: Number(document.getElementById("f-rating").value) || 0,
         notes: document.getElementById("f-notes").value.trim(),
-        dateAdded: houses.find(h => h.id === id)?.dateAdded || new Date().toISOString().slice(0, 10),
+        liked: existing?.liked || false,
+        source: existing?.source || "manual",
+        dateAdded: existing?.dateAdded || new Date().toISOString().slice(0, 10),
       };
 
       const idx = houses.findIndex(h => h.id === id);
