@@ -3,53 +3,97 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atlanta Listing Alert Filter</title>
+<title>House Tracker</title>
 <style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
-  h1 { font-size: 1.4rem; }
-  label { display: block; margin-top: 14px; font-weight: 600; font-size: 0.9rem; }
-  input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 1rem; }
-  .row { display: flex; gap: 12px; }
-  .row > div { flex: 1; }
-  button { margin-top: 20px; padding: 10px 18px; font-size: 1rem; cursor: pointer; }
-  #status { margin-top: 12px; font-size: 0.9rem; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .sub { color: #555; margin-top: 0; }
+  nav { font-size: 0.9rem; margin-bottom: 16px; }
+  .toolbar { display: flex; gap: 12px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+  .toolbar select { padding: 6px; }
+  button { padding: 8px 14px; font-size: 0.95rem; cursor: pointer; }
+  #status { margin: 10px 0; font-size: 0.9rem; min-height: 1.2em; }
   #status.ok { color: #147a2e; }
   #status.err { color: #b3261e; }
-  details { margin-top: 24px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e2e2e2; font-size: 0.92rem; vertical-align: top; }
+  th { font-size: 0.8rem; text-transform: uppercase; color: #666; }
+  tr.status-Purchased { background: #eafaf0; }
+  tr.status-Rejected { opacity: 0.55; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.78rem; font-weight: 600; }
+  .pill-Interested { background: #e3edff; color: #1d4ed8; }
+  .pill-Touring { background: #fff3cd; color: #8a6100; }
+  .pill-Toured { background: #ffe8cc; color: #a85400; }
+  .pill-Offer { background: #f3e0ff; color: #7a1fa8; }
+  .pill-Contract { background: #d6f0ff; color: #0a6ea8; }
+  .pill-Purchased { background: #d6f5df; color: #147a2e; }
+  .pill-Rejected { background: #f0d6d6; color: #a3251e; }
+  .stars { color: #d9a400; letter-spacing: 1px; }
+  .row-actions button { padding: 4px 8px; font-size: 0.8rem; margin-right: 4px; }
+  a.addr-link { text-decoration: none; color: #1d4ed8; font-weight: 600; }
+
+  dialog { border: none; border-radius: 8px; padding: 0; width: 480px; max-width: 90vw; }
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  .dialog-body { padding: 20px; }
+  .dialog-body h2 { margin-top: 0; font-size: 1.15rem; }
+  .dialog-body label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.85rem; }
+  .dialog-body input, .dialog-body select, .dialog-body textarea {
+    width: 100%; padding: 7px; margin-top: 4px; box-sizing: border-box; font-size: 0.95rem;
+  }
+  .dialog-row { display: flex; gap: 10px; }
+  .dialog-row > div { flex: 1; }
+  .dialog-actions { margin-top: 18px; display: flex; justify-content: space-between; gap: 8px; }
+  details { margin-top: 28px; }
+  .empty { color: #777; padding: 20px 0; }
 </style>
 </head>
 <body>
-  <h1>Atlanta Listing Alert — Filter</h1>
-  <p>Set the filter used to search Atlanta-area listings for the daily email alert. Changes save
-     directly to <code>criteria.json</code> in this repo, and the next scheduled run will use them.</p>
+  <nav><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
+  <h1>House Tracker</h1>
+  <p class="sub">Every house we're considering buying, with status, rating, and notes — synced straight to
+     <code>houses.json</code> in this repo.</p>
 
-  <form id="criteria-form">
-    <label>Location
-      <input type="text" id="location" required>
+  <div class="toolbar">
+    <button id="add-btn">+ Add House</button>
+    <label>Filter status:
+      <select id="filter-status">
+        <option value="">All</option>
+        <option>Interested</option>
+        <option>Touring Scheduled</option>
+        <option>Toured</option>
+        <option>Offer Made</option>
+        <option>Under Contract</option>
+        <option>Purchased</option>
+        <option>Rejected</option>
+      </select>
     </label>
-    <div class="row">
-      <div><label>Min Price <input type="number" id="minPrice" required></label></div>
-      <div><label>Max Price <input type="number" id="maxPrice" required></label></div>
-    </div>
-    <div class="row">
-      <div><label>Min Beds <input type="number" id="minBeds" required></label></div>
-      <div><label>Min Baths <input type="number" id="minBaths" required></label></div>
-    </div>
-    <label>Property Types (comma-separated)
-      <input type="text" id="propertyTypes">
+    <label>Sort by:
+      <select id="sort-by">
+        <option value="dateAdded">Date Added</option>
+        <option value="price">Price</option>
+        <option value="rating">Rating</option>
+        <option value="address">Address</option>
+      </select>
     </label>
-    <label>Recipient Email
-      <input type="email" id="recipientEmail" required>
-    </label>
-    <label>CC Email (optional)
-      <input type="email" id="ccEmail">
-    </label>
-    <label>Notes
-      <textarea id="notes" rows="2"></textarea>
-    </label>
-    <button type="submit">Save Criteria</button>
-  </form>
+  </div>
   <div id="status"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Address</th>
+        <th>Price</th>
+        <th>Bd/Ba</th>
+        <th>Status</th>
+        <th>Rating</th>
+        <th>Notes</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="house-rows"></tbody>
+  </table>
+  <div id="empty-msg" class="empty" style="display:none;">No houses yet — click "+ Add House" to start tracking one.</div>
 
   <details>
     <summary>GitHub access token (needed once, to save changes)</summary>
@@ -57,30 +101,84 @@
        with read/write access to this repo's contents, then paste it below. It's stored only in this browser
        (localStorage), never sent anywhere except GitHub's API.</p>
     <label>GitHub Token
-      <input type="password" id="ghToken">
+      <input type="password" id="ghToken" style="width:320px;padding:8px;">
     </label>
     <button id="save-token">Save Token</button>
   </details>
+
+  <dialog id="house-dialog">
+    <form class="dialog-body" id="house-form">
+      <h2 id="dialog-title">Add House</h2>
+      <input type="hidden" id="house-id">
+      <label>Address <input type="text" id="f-address" required></label>
+      <label>Listing URL <input type="url" id="f-url" placeholder="https://..."></label>
+      <div class="dialog-row">
+        <div><label>Price <input type="number" id="f-price"></label></div>
+        <div><label>Beds <input type="number" id="f-beds"></label></div>
+        <div><label>Baths <input type="number" id="f-baths"></label></div>
+      </div>
+      <div class="dialog-row">
+        <div>
+          <label>Status
+            <select id="f-status">
+              <option>Interested</option>
+              <option>Touring Scheduled</option>
+              <option>Toured</option>
+              <option>Offer Made</option>
+              <option>Under Contract</option>
+              <option>Purchased</option>
+              <option>Rejected</option>
+            </select>
+          </label>
+        </div>
+        <div>
+          <label>Rating
+            <select id="f-rating">
+              <option value="0">— none —</option>
+              <option value="1">★</option>
+              <option value="2">★★</option>
+              <option value="3">★★★</option>
+              <option value="4">★★★★</option>
+              <option value="5">★★★★★</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <label>Notes <textarea id="f-notes" rows="3"></textarea></label>
+      <div class="dialog-actions">
+        <button type="button" id="delete-btn" style="display:none;color:#b3261e;">Delete</button>
+        <span style="flex:1;"></span>
+        <button type="button" id="cancel-btn">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     const OWNER = "claudekovalenko";
     const REPO = "mls";
     const BRANCH = "main";
-    const PATH = "criteria.json";
+    const PATH = "houses.json";
 
-    const els = {
-      location: document.getElementById("location"),
-      minPrice: document.getElementById("minPrice"),
-      maxPrice: document.getElementById("maxPrice"),
-      minBeds: document.getElementById("minBeds"),
-      minBaths: document.getElementById("minBaths"),
-      propertyTypes: document.getElementById("propertyTypes"),
-      recipientEmail: document.getElementById("recipientEmail"),
-      ccEmail: document.getElementById("ccEmail"),
-      notes: document.getElementById("notes"),
-    };
+    let houses = [];
+    let sha = null;
+
     const statusEl = document.getElementById("status");
     const tokenEl = document.getElementById("ghToken");
+    const rowsEl = document.getElementById("house-rows");
+    const emptyMsg = document.getElementById("empty-msg");
+    const dialog = document.getElementById("house-dialog");
+    const form = document.getElementById("house-form");
+
+    const STATUS_CLASS = {
+      "Interested": "Interested",
+      "Touring Scheduled": "Touring",
+      "Toured": "Toured",
+      "Offer Made": "Offer",
+      "Under Contract": "Contract",
+      "Purchased": "Purchased",
+      "Rejected": "Rejected",
+    };
 
     tokenEl.value = localStorage.getItem("gh_token") || "";
     document.getElementById("save-token").addEventListener("click", () => {
@@ -97,51 +195,26 @@
       return `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`;
     }
 
-    async function loadCriteria() {
+    async function loadHouses() {
       try {
         const res = await fetch(apiUrl());
         if (!res.ok) throw new Error(`GitHub API ${res.status}`);
         const data = await res.json();
-        const criteria = JSON.parse(atob(data.content));
-        els.location.value = criteria.location || "";
-        els.minPrice.value = criteria.minPrice ?? "";
-        els.maxPrice.value = criteria.maxPrice ?? "";
-        els.minBeds.value = criteria.minBeds ?? "";
-        els.minBaths.value = criteria.minBaths ?? "";
-        els.propertyTypes.value = (criteria.propertyTypes || []).join(", ");
-        els.recipientEmail.value = criteria.recipientEmail || "";
-        els.ccEmail.value = criteria.ccEmail || "";
-        els.notes.value = criteria.notes || "";
+        sha = data.sha;
+        houses = JSON.parse(atob(data.content));
+        render();
       } catch (err) {
-        setStatus("Could not load current criteria: " + err.message, false);
+        setStatus("Could not load houses: " + err.message, false);
       }
     }
 
-    document.getElementById("criteria-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
+    async function saveHouses(message) {
       const token = localStorage.getItem("gh_token");
       if (!token) {
         setStatus("Add a GitHub token below first (needed to save).", false);
-        return;
+        return false;
       }
-
-      const criteria = {
-        location: els.location.value,
-        minPrice: Number(els.minPrice.value),
-        maxPrice: Number(els.maxPrice.value),
-        minBeds: Number(els.minBeds.value),
-        minBaths: Number(els.minBaths.value),
-        propertyTypes: els.propertyTypes.value.split(",").map(s => s.trim()).filter(Boolean),
-        recipientEmail: els.recipientEmail.value,
-        ccEmail: els.ccEmail.value,
-        notes: els.notes.value,
-      };
-
       try {
-        const getRes = await fetch(apiUrl());
-        const getData = await getRes.json();
-        const sha = getData.sha;
-
         const putRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`, {
           method: "PUT",
           headers: {
@@ -149,24 +222,135 @@
             "Accept": "application/vnd.github+json",
           },
           body: JSON.stringify({
-            message: "Update listing alert criteria via dashboard",
-            content: btoa(JSON.stringify(criteria, null, 2) + "\n"),
+            message,
+            content: btoa(JSON.stringify(houses, null, 2) + "\n"),
             sha,
             branch: BRANCH,
           }),
         });
-
         if (!putRes.ok) {
           const errBody = await putRes.json().catch(() => ({}));
           throw new Error(errBody.message || `GitHub API ${putRes.status}`);
         }
-        setStatus("Saved. Tomorrow's email will use the new criteria.", true);
+        const putData = await putRes.json();
+        sha = putData.content.sha;
+        setStatus("Saved.", true);
+        return true;
       } catch (err) {
         setStatus("Save failed: " + err.message, false);
+        return false;
+      }
+    }
+
+    function render() {
+      const filter = document.getElementById("filter-status").value;
+      const sortBy = document.getElementById("sort-by").value;
+
+      let list = houses.slice();
+      if (filter) list = list.filter(h => h.status === filter);
+      list.sort((a, b) => {
+        if (sortBy === "price") return (a.price || 0) - (b.price || 0);
+        if (sortBy === "rating") return (b.rating || 0) - (a.rating || 0);
+        if (sortBy === "address") return (a.address || "").localeCompare(b.address || "");
+        return (a.dateAdded || "").localeCompare(b.dateAdded || "");
+      });
+
+      rowsEl.innerHTML = "";
+      emptyMsg.style.display = list.length ? "none" : "block";
+
+      for (const h of list) {
+        const tr = document.createElement("tr");
+        tr.className = "status-" + (STATUS_CLASS[h.status] || "");
+        const addr = h.url
+          ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
+          : escapeHtml(h.address);
+        tr.innerHTML = `
+          <td>${addr}</td>
+          <td>${h.price ? "$" + Number(h.price).toLocaleString() : "—"}</td>
+          <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba</td>
+          <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
+          <td class="stars">${"★".repeat(h.rating || 0)}${"☆".repeat(5 - (h.rating || 0))}</td>
+          <td>${escapeHtml(h.notes || "")}</td>
+          <td class="row-actions"><button data-id="${h.id}" class="edit-btn">Edit</button></td>
+        `;
+        rowsEl.appendChild(tr);
+      }
+
+      document.querySelectorAll(".edit-btn").forEach(btn => {
+        btn.addEventListener("click", () => openDialog(btn.dataset.id));
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function openDialog(id) {
+      const house = id ? houses.find(h => h.id === id) : null;
+      document.getElementById("dialog-title").textContent = house ? "Edit House" : "Add House";
+      document.getElementById("house-id").value = house ? house.id : "";
+      document.getElementById("f-address").value = house?.address || "";
+      document.getElementById("f-url").value = house?.url || "";
+      document.getElementById("f-price").value = house?.price ?? "";
+      document.getElementById("f-beds").value = house?.beds ?? "";
+      document.getElementById("f-baths").value = house?.baths ?? "";
+      document.getElementById("f-status").value = house?.status || "Interested";
+      document.getElementById("f-rating").value = house?.rating ?? 0;
+      document.getElementById("f-notes").value = house?.notes || "";
+      document.getElementById("delete-btn").style.display = house ? "inline-block" : "none";
+      dialog.showModal();
+    }
+
+    document.getElementById("add-btn").addEventListener("click", () => openDialog(null));
+    document.getElementById("cancel-btn").addEventListener("click", () => dialog.close());
+    document.getElementById("filter-status").addEventListener("change", render);
+    document.getElementById("sort-by").addEventListener("change", render);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("house-id").value || crypto.randomUUID();
+      const entry = {
+        id,
+        address: document.getElementById("f-address").value.trim(),
+        url: document.getElementById("f-url").value.trim(),
+        price: Number(document.getElementById("f-price").value) || null,
+        beds: Number(document.getElementById("f-beds").value) || null,
+        baths: Number(document.getElementById("f-baths").value) || null,
+        status: document.getElementById("f-status").value,
+        rating: Number(document.getElementById("f-rating").value) || 0,
+        notes: document.getElementById("f-notes").value.trim(),
+        dateAdded: houses.find(h => h.id === id)?.dateAdded || new Date().toISOString().slice(0, 10),
+      };
+
+      const idx = houses.findIndex(h => h.id === id);
+      if (idx >= 0) houses[idx] = entry; else houses.push(entry);
+
+      const ok = await saveHouses(idx >= 0 ? `Update house: ${entry.address}` : `Add house: ${entry.address}`);
+      if (ok) {
+        dialog.close();
+        render();
+      } else {
+        if (idx >= 0) houses[idx] = entry; else houses.pop();
       }
     });
 
-    loadCriteria();
+    document.getElementById("delete-btn").addEventListener("click", async () => {
+      const id = document.getElementById("house-id").value;
+      const idx = houses.findIndex(h => h.id === id);
+      if (idx < 0) return;
+      const removed = houses.splice(idx, 1)[0];
+      const ok = await saveHouses(`Remove house: ${removed.address}`);
+      if (ok) {
+        dialog.close();
+        render();
+      } else {
+        houses.splice(idx, 0, removed);
+      }
+    });
+
+    loadHouses();
   </script>
 </body>
 </html>
