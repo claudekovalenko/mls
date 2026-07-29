@@ -1,8 +1,8 @@
-name: Refresh Tracked Listing Prices & Photos
+name: Refresh Tracked Listing Details
 
 on:
   schedule:
-    - cron: "0 13 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch: {}
 
 permissions:

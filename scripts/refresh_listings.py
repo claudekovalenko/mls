@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Refresh price/photo for tracked houses by re-checking each listing URL.
+"""Refresh price/photo/beds/baths/address for tracked houses from their listing URL.
 
 Best-effort only: every house is refreshed independently inside its own
 try/except, so one broken/blocked listing (anti-scraping, layout change,
 timeout) never stops the rest from updating or fails the workflow. Sites
 like Zillow actively block scrapers, so this may often do nothing for a
-given house — that's expected and fine, the price/photo can always be
-edited by hand in the tracker.
+given house — that's expected and fine, every field can always be edited
+by hand in the tracker.
 
-Looks for Open Graph meta tags (og:image, og:price:amount / a $-prefixed
-price in the title/description) in the listing page's HTML. Appends a
-{date, price} entry to priceHistory whenever the detected price differs
-from what's stored.
+Looks for Open Graph meta tags (og:image, og:title) and common JSON
+fields (price/bedrooms/bathrooms) embedded in the listing page's HTML.
+Appends a {date, price} entry to priceHistory whenever the detected price
+differs from what's stored. Only overwrites the address if it was a
+guessed placeholder (quick-add sets addressIsGuessed: true) so a manually
+entered address is never clobbered.
 """
 import json
 import re
@@ -30,6 +32,11 @@ USER_AGENT = (
 PRICE_RE = re.compile(r'"price"\s*:\s*"?\$?([\d,]+)"?', re.IGNORECASE)
 PRICE_FALLBACK_RE = re.compile(r"\$([\d]{2,3}(?:,\d{3})+)")
 OG_IMAGE_RE = re.compile(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', re.IGNORECASE)
+BEDS_RE = re.compile(r'"bedrooms"\s*:\s*(\d+(?:\.\d+)?)', re.IGNORECASE)
+BEDS_FALLBACK_RE = re.compile(r'(\d+)\s*(?:bd|bed(?:room)?s?)\b', re.IGNORECASE)
+BATHS_RE = re.compile(r'"bathrooms"\s*:\s*(\d+(?:\.\d+)?)', re.IGNORECASE)
+BATHS_FALLBACK_RE = re.compile(r'(\d+(?:\.\d+)?)\s*(?:ba|bath(?:room)?s?)\b', re.IGNORECASE)
+TITLE_RE = re.compile(r"<title>([^<]+)</title>", re.IGNORECASE)
 
 
 def load_houses():
@@ -62,6 +69,28 @@ def extract_price(html):
 def extract_photo(html):
     match = OG_IMAGE_RE.search(html)
     return match.group(1) if match else None
+
+
+def extract_number(html, precise_re, fallback_re):
+    match = precise_re.search(html) or fallback_re.search(html)
+    if not match:
+        return None
+    try:
+        value = float(match.group(1))
+        return int(value) if value.is_integer() else value
+    except ValueError:
+        return None
+
+
+def extract_title_address(html):
+    match = TITLE_RE.search(html)
+    if not match:
+        return None
+    title = match.group(1).strip()
+    # Strip common site suffixes like " | Zillow", " - Redfin", " | realtor.com®".
+    title = re.split(r"\s*[|–—-]\s*(?:zillow|redfin|realtor|trulia)", title, flags=re.IGNORECASE)[0]
+    title = title.strip()
+    return title or None
 
 
 def refresh_house(house):
@@ -101,6 +130,35 @@ def refresh_house(house):
                 print(f"  photo set for {house.get('address', url)}")
     except Exception as exc:
         print(f"  photo parse failed for {house.get('address', url)}: {exc}")
+
+    try:
+        if house.get("beds") is None:
+            beds = extract_number(html, BEDS_RE, BEDS_FALLBACK_RE)
+            if beds is not None:
+                house["beds"] = beds
+                changed = True
+    except Exception as exc:
+        print(f"  beds parse failed for {house.get('address', url)}: {exc}")
+
+    try:
+        if house.get("baths") is None:
+            baths = extract_number(html, BATHS_RE, BATHS_FALLBACK_RE)
+            if baths is not None:
+                house["baths"] = baths
+                changed = True
+    except Exception as exc:
+        print(f"  baths parse failed for {house.get('address', url)}: {exc}")
+
+    try:
+        if house.get("addressIsGuessed"):
+            address = extract_title_address(html)
+            if address:
+                house["address"] = address
+                house["addressIsGuessed"] = False
+                changed = True
+                print(f"  address filled in: {address}")
+    except Exception as exc:
+        print(f"  address parse failed for {house.get('address', url)}: {exc}")
 
     return changed
 

@@ -415,6 +415,7 @@
       const entry = {
         id: crypto.randomUUID(),
         address: labelForUrl(url),
+        addressIsGuessed: true,
         url,
         photoUrl: "",
         price: null,
@@ -467,6 +468,7 @@
       const entry = {
         id,
         address: addressVal || labelForUrl(urlVal),
+        addressIsGuessed: !addressVal,
         url: urlVal,
         photoUrl: document.getElementById("f-photo").value.trim(),
         price: newPrice,
