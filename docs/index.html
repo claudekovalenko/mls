@@ -4,110 +4,66 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>House Tracker</title>
-<style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 16px; color: #222; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; }
-  .sub { color: #555; margin-top: 0; }
-  nav { font-size: 0.9rem; margin-bottom: 16px; }
-  .toolbar { display: flex; gap: 12px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
-  .toolbar select { padding: 6px; }
-  button { padding: 8px 14px; font-size: 0.95rem; cursor: pointer; }
-  #status { margin: 10px 0; font-size: 0.9rem; min-height: 1.2em; }
-  #status.ok { color: #147a2e; }
-  #status.err { color: #b3261e; }
-
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e2e2e2; font-size: 0.92rem; vertical-align: top; }
-  th { font-size: 0.8rem; text-transform: uppercase; color: #666; }
-  tr.status-Purchased { background: #eafaf0; }
-  tr.status-Rejected { opacity: 0.55; }
-  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.78rem; font-weight: 600; }
-  .pill-Interested { background: #e3edff; color: #1d4ed8; }
-  .pill-Touring { background: #fff3cd; color: #8a6100; }
-  .pill-Toured { background: #ffe8cc; color: #a85400; }
-  .pill-Offer { background: #f3e0ff; color: #7a1fa8; }
-  .pill-Contract { background: #d6f0ff; color: #0a6ea8; }
-  .pill-Purchased { background: #d6f5df; color: #147a2e; }
-  .pill-Rejected { background: #f0d6d6; color: #a3251e; }
-  .stars { color: #d9a400; letter-spacing: 1px; }
-  .row-actions button { padding: 4px 8px; font-size: 0.8rem; margin-right: 4px; }
-  a.addr-link { text-decoration: none; color: #1d4ed8; font-weight: 600; }
-
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e2e2; margin-top: 18px; }
-  .tab-btn { background: none; border: none; padding: 8px 14px; font-size: 0.95rem; cursor: pointer; color: #666; border-bottom: 2px solid transparent; }
-  .tab-btn.active { color: #1d4ed8; border-bottom-color: #1d4ed8; font-weight: 600; }
-  .like-btn { background: none; border: none; font-size: 1.1rem; cursor: pointer; padding: 2px 4px; }
-  .like-btn.liked { color: #e0245e; }
-  .like-btn:not(.liked) { color: #bbb; }
-  .badge-new { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: #147a2e; color: #fff; vertical-align: middle; }
-
-  dialog { border: none; border-radius: 8px; padding: 0; width: 480px; max-width: 90vw; }
-  dialog::backdrop { background: rgba(0,0,0,0.4); }
-  .dialog-body { padding: 20px; }
-  .dialog-body h2 { margin-top: 0; font-size: 1.15rem; }
-  .dialog-body label { display: block; margin-top: 12px; font-weight: 600; font-size: 0.85rem; }
-  .dialog-body input, .dialog-body select, .dialog-body textarea {
-    width: 100%; padding: 7px; margin-top: 4px; box-sizing: border-box; font-size: 0.95rem;
-  }
-  .dialog-row { display: flex; gap: 10px; }
-  .dialog-row > div { flex: 1; }
-  .dialog-actions { margin-top: 18px; display: flex; justify-content: space-between; gap: 8px; }
-  details { margin-top: 28px; }
-  .empty { color: #777; padding: 20px 0; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <nav><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
+<div class="wrap">
+  <nav class="top-nav"><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
+  <div class="eyebrow">Atlanta House Hunt</div>
   <h1>House Tracker</h1>
   <p class="sub" id="page-sub">Every house we're considering buying, with status, rating, and notes — synced
      straight to <code>houses.json</code> in this repo.</p>
 
-  <div class="tabs">
-    <button class="tab-btn active" id="tab-all">All Houses</button>
-    <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
-  </div>
+  <div class="card">
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-all">All Houses</button>
+      <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
+    </div>
 
-  <div class="toolbar">
-    <button id="add-btn">+ Add House</button>
-    <label>Filter status:
-      <select id="filter-status">
-        <option value="">All</option>
-        <option>Interested</option>
-        <option>Touring Scheduled</option>
-        <option>Toured</option>
-        <option>Offer Made</option>
-        <option>Under Contract</option>
-        <option>Purchased</option>
-        <option>Rejected</option>
-      </select>
-    </label>
-    <label>Sort by:
-      <select id="sort-by">
-        <option value="dateAdded">Date Added</option>
-        <option value="price">Price</option>
-        <option value="rating">Rating</option>
-        <option value="address">Address</option>
-      </select>
-    </label>
-  </div>
-  <div id="status"></div>
+    <div class="toolbar">
+      <button class="primary" id="add-btn">+ Add House</button>
+      <label>Filter status
+        <select id="filter-status">
+          <option value="">All</option>
+          <option>Interested</option>
+          <option>Touring Scheduled</option>
+          <option>Toured</option>
+          <option>Offer Made</option>
+          <option>Under Contract</option>
+          <option>Purchased</option>
+          <option>Rejected</option>
+        </select>
+      </label>
+      <label>Sort by
+        <select id="sort-by">
+          <option value="dateAdded">Date Added</option>
+          <option value="price">Price</option>
+          <option value="rating">Rating</option>
+          <option value="address">Address</option>
+        </select>
+      </label>
+    </div>
+    <div id="status"></div>
 
-  <table>
-    <thead>
-      <tr>
-        <th></th>
-        <th>Address</th>
-        <th>Price</th>
-        <th>Bd/Ba</th>
-        <th>Status</th>
-        <th>Rating</th>
-        <th>Notes</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="house-rows"></tbody>
-  </table>
-  <div id="empty-msg" class="empty" style="display:none;">No houses yet — click "+ Add House" to start tracking one.</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Address</th>
+            <th>Price</th>
+            <th>Bd/Ba</th>
+            <th>Status</th>
+            <th>Rating</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="house-rows"></tbody>
+      </table>
+    </div>
+    <div id="empty-msg" class="empty" style="display:none;">No houses yet — click "+ Add House" to start tracking one.</div>
+  </div>
 
   <details>
     <summary>GitHub access token (needed once, to save changes)</summary>
@@ -115,10 +71,11 @@
        with read/write access to this repo's contents, then paste it below. It's stored only in this browser
        (localStorage), never sent anywhere except GitHub's API.</p>
     <label>GitHub Token
-      <input type="password" id="ghToken" style="width:320px;padding:8px;">
+      <input type="password" id="ghToken" style="max-width:320px;">
     </label>
-    <button id="save-token">Save Token</button>
+    <button class="secondary" id="save-token">Save Token</button>
   </details>
+</div>
 
   <dialog id="house-dialog">
     <form class="dialog-body" id="house-form">
@@ -126,12 +83,12 @@
       <input type="hidden" id="house-id">
       <label>Address <input type="text" id="f-address" required></label>
       <label>Listing URL <input type="url" id="f-url" placeholder="https://..."></label>
-      <div class="dialog-row">
+      <div class="row">
         <div><label>Price <input type="number" id="f-price"></label></div>
         <div><label>Beds <input type="number" id="f-beds"></label></div>
         <div><label>Baths <input type="number" id="f-baths"></label></div>
       </div>
-      <div class="dialog-row">
+      <div class="row">
         <div>
           <label>Status
             <select id="f-status">
@@ -160,10 +117,10 @@
       </div>
       <label>Notes <textarea id="f-notes" rows="3"></textarea></label>
       <div class="dialog-actions">
-        <button type="button" id="delete-btn" style="display:none;color:#b3261e;">Delete</button>
+        <button type="button" id="delete-btn" style="display:none;">Delete</button>
         <span style="flex:1;"></span>
-        <button type="button" id="cancel-btn">Cancel</button>
-        <button type="submit">Save</button>
+        <button type="button" class="secondary" id="cancel-btn">Cancel</button>
+        <button type="submit" class="primary">Save</button>
       </div>
     </form>
   </dialog>
@@ -292,7 +249,7 @@
           <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
           <td class="stars">${"★".repeat(h.rating || 0)}${"☆".repeat(5 - (h.rating || 0))}</td>
           <td>${escapeHtml(h.notes || "")}</td>
-          <td class="row-actions"><button data-id="${h.id}" class="edit-btn">Edit</button></td>
+          <td class="row-actions"><button class="secondary edit-btn" data-id="${h.id}">Edit</button></td>
         `;
         rowsEl.appendChild(tr);
       }
