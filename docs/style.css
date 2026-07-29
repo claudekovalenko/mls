@@ -179,6 +179,26 @@ details[open] { padding-bottom: 4px; }
   padding: 0 22px;
 }
 
+.bookmarklet-hint {
+  font-size: 0.82rem;
+  color: var(--sub);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+.bookmarklet-btn {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 3px 10px;
+  border: 1px dashed var(--accent);
+  border-radius: 999px;
+  color: var(--accent-dark);
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-decoration: none;
+  cursor: grab;
+  white-space: nowrap;
+}
+
 /* ---- Tabs ---- */
 .tabs {
   display: flex;

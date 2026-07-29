@@ -14,6 +14,7 @@
   <p class="sub" id="sub-text">One second.</p>
 
   <div class="card" id="preview-card" style="display:none;">
+    <img id="p-photo" class="thumb" style="width:100%;height:180px;display:none;margin-bottom:14px;" alt="">
     <h2 id="p-address">—</h2>
     <p class="sub" id="p-details" style="margin-bottom:0;">—</p>
   </div>
@@ -42,6 +43,7 @@
   const listing = {
     url: params.get("u") || "",
     address: params.get("a") || "",
+    photoUrl: params.get("photo") || "",
     price: params.get("p") ? Number(params.get("p")) : null,
     beds: params.get("bd") ? Number(params.get("bd")) : null,
     baths: params.get("ba") ? Number(params.get("ba")) : null,
@@ -62,6 +64,11 @@
     if (!listing.address && !listing.url) return;
     previewCard.style.display = "block";
     document.getElementById("p-address").textContent = listing.address || listing.url;
+    if (listing.photoUrl) {
+      const img = document.getElementById("p-photo");
+      img.src = listing.photoUrl;
+      img.style.display = "block";
+    }
     const bits = [];
     if (listing.price) bits.push("$" + listing.price.toLocaleString());
     if (listing.beds != null) bits.push(listing.beds + "bd");
@@ -101,7 +108,7 @@
         id: crypto.randomUUID(),
         address: listing.address || (() => { try { return new URL(listing.url).hostname.replace(/^www\./, "") + " listing"; } catch { return "New listing"; } })(),
         url: listing.url,
-        photoUrl: "",
+        photoUrl: listing.photoUrl,
         price: listing.price,
         priceHistory: [],
         beds: listing.beds,
