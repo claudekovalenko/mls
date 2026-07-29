@@ -3,7 +3,9 @@
     "id": "b1e2f3a4-1c2d-4e5f-9a8b-471surreypl001",
     "address": "471 Surrey Pl, Marietta, GA 30068",
     "url": "https://www.zillow.com/homedetails/471-Surrey-Pl-Marietta-GA-30068/14275604_zpid/",
+    "photoUrl": "",
     "price": null,
+    "priceHistory": [],
     "beds": null,
     "baths": null,
     "status": "Interested",
@@ -11,6 +13,7 @@
     "notes": "",
     "liked": true,
     "source": "manual",
+    "addedBy": "",
     "dateAdded": "2026-07-29"
   }
 ]

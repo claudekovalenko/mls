@@ -10,12 +10,21 @@ tracker UI are intentionally simple for now.
 
 ## How it works
 
-- `houses.json` — every house we're tracking: address, price, beds/baths, listing URL, status
+- `houses.json` — every house we're tracking: address, price, `priceHistory` (logged
+  automatically whenever the price changes), beds/baths, listing URL, photo URL, status
   (Interested / Touring Scheduled / Toured / Offer Made / Under Contract / Purchased / Rejected),
-  star rating, notes, `liked` flag, `source` (`manual` or `email`), date added.
+  star rating, notes, `liked` flag, `source` (`manual` or `email`), `addedBy` (Ryan or Ivan),
+  date added.
 - `docs/index.html` — the House Tracker (see below), published via GitHub Pages. Two tabs:
   **All Houses** (everything) and **Highlights** (liked houses, plus new ones added via email
   reply). Add, edit, heart, filter, and sort houses from the browser.
+- `scripts/refresh_listings.py` — best-effort daily re-check of each house's listing URL for a
+  new price or photo (via Open Graph tags). Every house is refreshed independently, so one
+  blocked/broken listing never stops the rest or fails the workflow. Anti-scraping sites (Zillow
+  in particular) may often yield nothing — that's expected; price/photo can always be edited by
+  hand.
+- `.github/workflows/refresh-listings.yml` — runs `refresh_listings.py` daily and commits any
+  price/photo updates.
 - `criteria.json` — the daily email alert's search filter (location, price range, beds/baths,
   property types, keywords, recipient email). Keywords are matched (case-insensitive) against
   each listing's description/remarks/title/address — a listing only needs to contain one of them.

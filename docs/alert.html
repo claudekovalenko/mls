@@ -33,11 +33,8 @@
       <label>Keywords (comma-separated, matched against description/remarks/title/address)
         <input type="text" id="keywords" placeholder="e.g. pool, basement, garage">
       </label>
-      <label>Recipient Email
-        <input type="email" id="recipientEmail" required>
-      </label>
-      <label>CC Email (optional)
-        <input type="email" id="ccEmail">
+      <label>Recipient Emails (comma-separated — everyone here gets the daily alert)
+        <input type="text" id="recipientEmails" placeholder="you@gmail.com, someone.else@gmail.com" required>
       </label>
       <label>Notes
         <textarea id="notes" rows="2"></textarea>
@@ -73,8 +70,7 @@
       minBaths: document.getElementById("minBaths"),
       propertyTypes: document.getElementById("propertyTypes"),
       keywords: document.getElementById("keywords"),
-      recipientEmail: document.getElementById("recipientEmail"),
-      ccEmail: document.getElementById("ccEmail"),
+      recipientEmails: document.getElementById("recipientEmails"),
       notes: document.getElementById("notes"),
     };
     const statusEl = document.getElementById("status");
@@ -108,8 +104,9 @@
         els.minBaths.value = criteria.minBaths ?? "";
         els.propertyTypes.value = (criteria.propertyTypes || []).join(", ");
         els.keywords.value = (criteria.keywords || []).join(", ");
-        els.recipientEmail.value = criteria.recipientEmail || "";
-        els.ccEmail.value = criteria.ccEmail || "";
+        const existingRecipients = criteria.recipientEmails
+          || [criteria.recipientEmail, criteria.ccEmail].filter(Boolean);
+        els.recipientEmails.value = existingRecipients.join(", ");
         els.notes.value = criteria.notes || "";
       } catch (err) {
         setStatus("Could not load current criteria: " + err.message, false);
@@ -132,8 +129,7 @@
         minBaths: Number(els.minBaths.value),
         propertyTypes: els.propertyTypes.value.split(",").map(s => s.trim()).filter(Boolean),
         keywords: els.keywords.value.split(",").map(s => s.trim()).filter(Boolean),
-        recipientEmail: els.recipientEmail.value,
-        ccEmail: els.ccEmail.value,
+        recipientEmails: els.recipientEmails.value.split(",").map(s => s.trim()).filter(Boolean),
         notes: els.notes.value,
       };
 
