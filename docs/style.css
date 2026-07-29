@@ -280,10 +280,10 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
 }
 
 .thumb {
-  width: 56px;
-  height: 42px;
+  width: 140px;
+  height: 100px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 10px;
   display: block;
   background: var(--accent-soft);
 }
