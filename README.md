@@ -55,6 +55,17 @@ tracker UI are intentionally simple for now.
      runs but skips fetching and sends "no matches" each day.
 3. Without secrets configured, the alert workflow still runs and prints the would-be email to the
    Action log instead of sending it, and the reply-processing workflow just skips checking.
+4. **Create your GitHub token** at
+   [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta), scoped to
+   only this repo (`Repository access` → `Only select repositories` → `mls`). Under
+   `Permissions`, click **+ Add permissions** and add:
+   - **Contents** → Read and write (required — this is what lets the site save houses/criteria)
+   - **Actions** → Read and write (optional — lets the tracker instantly trigger a detail refresh
+     right after you add a house by URL; without it, details just wait for the next scheduled run)
+
+   Paste the generated token into the tracker's "GitHub access token" section and click
+   **Save Token**, then **Test Token** to confirm it actually has write access before relying on
+   it.
 
 ## Using the House Tracker
 

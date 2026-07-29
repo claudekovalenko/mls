@@ -79,8 +79,14 @@
   <details>
     <summary>GitHub access token (needed once, to save changes)</summary>
     <p>Create a fine-grained <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub token</a>
-       with read/write access to this repo's contents, then paste it below. It's stored only in this browser
-       (localStorage), never sent anywhere except GitHub's API.</p>
+       scoped to only this repo. Under "Permissions" click <strong>+ Add permissions</strong> and add:</p>
+    <ul>
+      <li><strong>Contents</strong> &rarr; Read and write (lets it save houses/criteria)</li>
+      <li><strong>Actions</strong> &rarr; Read and write (lets it instantly trigger the detail-refresh
+        after you add a house — optional, but without it details only fill in on the next scheduled run)</li>
+    </ul>
+    <p>Then paste the token below. It's stored only in this browser (localStorage), never sent
+       anywhere except GitHub's API.</p>
     <label>GitHub Token
       <input type="password" id="ghToken" style="max-width:320px;">
     </label>
@@ -279,6 +285,32 @@
       }
     }
 
+    async function triggerRefresh() {
+      const token = localStorage.getItem("gh_token");
+      if (!token) return;
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/refresh-listings.yml/dispatches`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Accept": "application/vnd.github+json",
+            },
+            body: JSON.stringify({ ref: BRANCH }),
+          }
+        );
+        if (res.status === 403 || res.status === 404) {
+          setStatus(
+            "Saved, but couldn't auto-trigger the detail refresh (token needs \"Actions: Read and write\" permission too — details will fill in on the next scheduled run instead).",
+            false
+          );
+        }
+      } catch {
+        // Best-effort only — the scheduled workflow will still catch it later.
+      }
+    }
+
     async function saveHouses(message) {
       const token = localStorage.getItem("gh_token");
       if (!token) {
@@ -473,6 +505,8 @@
       if (!ok) {
         houses.pop();
         render();
+      } else {
+        triggerRefresh();
       }
       return ok;
     }
@@ -524,10 +558,12 @@
       const idx = houses.findIndex(h => h.id === id);
       if (idx >= 0) houses[idx] = entry; else houses.push(entry);
 
-      const ok = await saveHouses(idx >= 0 ? `Update house: ${entry.address}` : `Add house: ${entry.address}`);
+      const isNew = idx < 0;
+      const ok = await saveHouses(isNew ? `Add house: ${entry.address}` : `Update house: ${entry.address}`);
       if (ok) {
         dialog.close();
         render();
+        if (isNew && entry.url) triggerRefresh();
       } else {
         if (idx >= 0) houses[idx] = entry; else houses.pop();
       }
