@@ -17,6 +17,10 @@
   <div class="card">
     <form id="quick-add-form" class="quick-add">
       <input type="url" id="quick-add-url" placeholder="Paste a listing URL and press Enter to add it" required>
+      <select id="quick-add-who" title="Who's adding this?">
+        <option value="Ryan">Ryan</option>
+        <option value="Ivan">Ivan</option>
+      </select>
       <button type="submit" class="primary">Add</button>
     </form>
 
@@ -55,12 +59,14 @@
         <thead>
           <tr>
             <th></th>
+            <th>Photo</th>
             <th>Address</th>
             <th>Price</th>
             <th>Bd/Ba</th>
             <th>Status</th>
             <th>Rating</th>
             <th>Notes</th>
+            <th>Added</th>
             <th></th>
           </tr>
         </thead>
@@ -79,6 +85,8 @@
       <input type="password" id="ghToken" style="max-width:320px;">
     </label>
     <button class="secondary" id="save-token">Save Token</button>
+    <button class="secondary" id="test-token" type="button">Test Token</button>
+    <div id="token-test-result" style="margin-top:8px;"></div>
   </details>
 </div>
 
@@ -88,11 +96,13 @@
       <input type="hidden" id="house-id">
       <label>Listing URL <input type="url" id="f-url" placeholder="https://..."></label>
       <label>Address (optional if you have a URL) <input type="text" id="f-address"></label>
+      <label>Photo URL (optional) <input type="url" id="f-photo" placeholder="https://... .jpg"></label>
       <div class="row">
         <div><label>Price <input type="number" id="f-price"></label></div>
         <div><label>Beds <input type="number" id="f-beds"></label></div>
         <div><label>Baths <input type="number" id="f-baths"></label></div>
       </div>
+      <div id="price-history" class="price-history" style="display:none;"></div>
       <div class="row">
         <div>
           <label>Status
@@ -120,6 +130,12 @@
           </label>
         </div>
       </div>
+      <label>Added by
+        <select id="f-added-by">
+          <option value="Ryan">Ryan</option>
+          <option value="Ivan">Ivan</option>
+        </select>
+      </label>
       <label>Notes <textarea id="f-notes" rows="3"></textarea></label>
       <div class="dialog-actions">
         <button type="button" id="delete-btn" style="display:none;">Delete</button>
@@ -162,6 +178,47 @@
       localStorage.setItem("gh_token", tokenEl.value.trim());
       setStatus("Token saved locally.", true);
     });
+
+    const tokenTestResult = document.getElementById("token-test-result");
+    document.getElementById("test-token").addEventListener("click", async () => {
+      const token = localStorage.getItem("gh_token");
+      tokenTestResult.textContent = "Testing…";
+      tokenTestResult.className = "";
+      if (!token) {
+        tokenTestResult.textContent = "No token saved yet — paste one above and click Save Token first.";
+        tokenTestResult.className = "err";
+        return;
+      }
+      try {
+        const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json" },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          tokenTestResult.textContent = "401 Bad credentials — this token is invalid, expired, or was revoked. Generate a new one.";
+          tokenTestResult.className = "err";
+        } else if (res.status === 404 || res.status === 403) {
+          tokenTestResult.textContent = `${res.status} — token is valid but doesn't have access to ${OWNER}/${REPO}. Check the token's repository access and Contents permission.`;
+          tokenTestResult.className = "err";
+        } else if (res.ok) {
+          const canWrite = body.permissions && body.permissions.push;
+          tokenTestResult.textContent = canWrite
+            ? "Token works and has write access. You're good to go."
+            : "Token can read the repo but doesn't have write access — check the Contents permission is set to Read and write.";
+          tokenTestResult.className = canWrite ? "ok" : "err";
+        } else {
+          tokenTestResult.textContent = `Unexpected response: ${res.status} ${body.message || ""}`;
+          tokenTestResult.className = "err";
+        }
+      } catch (err) {
+        tokenTestResult.textContent = "Network error testing token: " + err.message;
+        tokenTestResult.className = "err";
+      }
+    });
+
+    const quickAddWho = document.getElementById("quick-add-who");
+    quickAddWho.value = localStorage.getItem("added_by") || "Ryan";
+    quickAddWho.addEventListener("change", () => localStorage.setItem("added_by", quickAddWho.value));
 
     function setStatus(msg, ok) {
       statusEl.textContent = msg;
@@ -246,14 +303,24 @@
           ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
           : escapeHtml(h.address);
         const newBadge = h.source === "email" ? '<span class="badge-new">NEW</span>' : "";
+        const photoCell = h.photoUrl
+          ? `<img class="thumb" src="${escapeHtml(h.photoUrl)}" alt="">`
+          : `<div class="thumb thumb-empty"></div>`;
+        const priceChanged = h.priceHistory && h.priceHistory.length > 0;
+        const priceCell = h.price
+          ? `$${Number(h.price).toLocaleString()}${priceChanged ? ' <span class="price-changed" title="Price has changed since first added">±</span>' : ""}`
+          : "—";
+        const addedCell = `${escapeHtml(h.addedBy || "—")}<br><span style="color:var(--sub);font-size:0.78rem;">${escapeHtml(h.dateAdded || "")}</span>`;
         tr.innerHTML = `
           <td><button class="like-btn ${h.liked ? "liked" : ""}" data-id="${h.id}" title="Toggle highlight">${h.liked ? "♥" : "♡"}</button></td>
+          <td>${photoCell}</td>
           <td>${addr}${newBadge}</td>
-          <td>${h.price ? "$" + Number(h.price).toLocaleString() : "—"}</td>
+          <td>${priceCell}</td>
           <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba</td>
           <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
           <td class="stars">${"★".repeat(h.rating || 0)}${"☆".repeat(5 - (h.rating || 0))}</td>
           <td>${escapeHtml(h.notes || "")}</td>
+          <td>${addedCell}</td>
           <td class="row-actions"><button class="secondary edit-btn" data-id="${h.id}">Edit</button></td>
         `;
         rowsEl.appendChild(tr);
@@ -292,13 +359,26 @@
       document.getElementById("house-id").value = house ? house.id : "";
       document.getElementById("f-address").value = house?.address || "";
       document.getElementById("f-url").value = house?.url || "";
+      document.getElementById("f-photo").value = house?.photoUrl || "";
       document.getElementById("f-price").value = house?.price ?? "";
       document.getElementById("f-beds").value = house?.beds ?? "";
       document.getElementById("f-baths").value = house?.baths ?? "";
       document.getElementById("f-status").value = house?.status || "Interested";
       document.getElementById("f-rating").value = house?.rating ?? 0;
+      document.getElementById("f-added-by").value = house?.addedBy || localStorage.getItem("added_by") || "Ryan";
       document.getElementById("f-notes").value = house?.notes || "";
       document.getElementById("delete-btn").style.display = house ? "inline-block" : "none";
+
+      const historyEl = document.getElementById("price-history");
+      if (house?.priceHistory?.length) {
+        historyEl.style.display = "block";
+        historyEl.innerHTML = "Price history: " + house.priceHistory
+          .map(p => `$${Number(p.price).toLocaleString()} (${p.date})`)
+          .join(" &rarr; ") + ` &rarr; $${Number(house.price).toLocaleString()} (now)`;
+      } else {
+        historyEl.style.display = "none";
+      }
+
       dialog.showModal();
     }
 
@@ -336,7 +416,9 @@
         id: crypto.randomUUID(),
         address: labelForUrl(url),
         url,
+        photoUrl: "",
         price: null,
+        priceHistory: [],
         beds: null,
         baths: null,
         status: "Interested",
@@ -344,6 +426,7 @@
         notes: "",
         liked: false,
         source: "manual",
+        addedBy: localStorage.getItem("added_by") || "Ryan",
         dateAdded: new Date().toISOString().slice(0, 10),
       };
       houses.push(entry);
@@ -375,11 +458,19 @@
         setStatus("Add a listing URL or an address.", false);
         return;
       }
+      const newPrice = Number(document.getElementById("f-price").value) || null;
+      const priceHistory = existing?.priceHistory ? existing.priceHistory.slice() : [];
+      if (existing && existing.price && newPrice && newPrice !== existing.price) {
+        priceHistory.push({ date: new Date().toISOString().slice(0, 10), price: existing.price });
+      }
+
       const entry = {
         id,
         address: addressVal || labelForUrl(urlVal),
         url: urlVal,
-        price: Number(document.getElementById("f-price").value) || null,
+        photoUrl: document.getElementById("f-photo").value.trim(),
+        price: newPrice,
+        priceHistory,
         beds: Number(document.getElementById("f-beds").value) || null,
         baths: Number(document.getElementById("f-baths").value) || null,
         status: document.getElementById("f-status").value,
@@ -387,6 +478,7 @@
         notes: document.getElementById("f-notes").value.trim(),
         liked: existing?.liked || false,
         source: existing?.source || "manual",
+        addedBy: document.getElementById("f-added-by").value,
         dateAdded: existing?.dateAdded || new Date().toISOString().slice(0, 10),
       };
 

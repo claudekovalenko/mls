@@ -95,7 +95,9 @@ def add_liked_houses(numbers, last_listings, houses):
             "id": str(uuid.uuid4()),
             "address": listing.get("address", "Unknown address"),
             "url": url or "",
+            "photoUrl": listing.get("photoUrl", ""),
             "price": listing.get("price"),
+            "priceHistory": [],
             "beds": listing.get("beds"),
             "baths": listing.get("baths"),
             "status": "Interested",
@@ -103,6 +105,7 @@ def add_liked_houses(numbers, last_listings, houses):
             "notes": "",
             "liked": True,
             "source": "email",
+            "addedBy": "",
             "dateAdded": date.today().isoformat(),
         }
         houses.append(house)

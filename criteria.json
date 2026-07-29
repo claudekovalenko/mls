@@ -6,7 +6,6 @@
   "minBaths": 1,
   "propertyTypes": ["Single Family", "Condo", "Townhouse"],
   "keywords": ["pool", "basement", "garage"],
-  "recipientEmail": "claudekovalenko@gmail.com",
-  "ccEmail": "",
-  "notes": "Ryan Swedberg listing search criteria. Set recipientEmail to Ryan's email address. Edit via the dashboard or directly in this file."
+  "recipientEmails": ["claudekovalenko@gmail.com", "ryan.swedberg@gmail.com"],
+  "notes": "Atlanta listing search criteria, shared between Ryan and Ivan. Edit recipients or filters via the dashboard or directly in this file."
 }

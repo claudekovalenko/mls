@@ -135,19 +135,28 @@ def build_html_body(listings):
     """
 
 
-def build_email(criteria, listings):
+def get_recipients(criteria):
+    recipients = criteria.get("recipientEmails")
+    if recipients:
+        return [r.strip() for r in recipients if r.strip()]
+    # Back-compat with the old single-recipient/cc schema.
+    legacy = [criteria.get("recipientEmail", "")]
+    if criteria.get("ccEmail"):
+        legacy.append(criteria["ccEmail"])
+    return [r.strip() for r in legacy if r.strip()]
+
+
+def build_email(criteria, listings, recipients):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"Daily listing alert ({len(listings)} match{'es' if len(listings) != 1 else ''})"
     msg["From"] = os.environ.get("GMAIL_USER", "")
-    msg["To"] = criteria["recipientEmail"]
-    if criteria.get("ccEmail"):
-        msg["Cc"] = criteria["ccEmail"]
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(build_plain_body(listings), "plain"))
     msg.attach(MIMEText(build_html_body(listings), "html"))
     return msg
 
 
-def send_email(msg):
+def send_email(msg, recipients):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     if not gmail_user or not gmail_pass:
@@ -155,7 +164,6 @@ def send_email(msg):
         print(msg.as_string())
         return
 
-    recipients = [msg["To"]] + ([msg["Cc"]] if msg.get("Cc") else [])
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(gmail_user, gmail_pass)
         server.sendmail(gmail_user, recipients, msg.as_string())
@@ -166,8 +174,9 @@ def main():
     criteria = load_criteria()
     listings = fetch_listings(criteria)
     save_last_alert_listings(listings)
-    msg = build_email(criteria, listings)
-    send_email(msg)
+    recipients = get_recipients(criteria)
+    msg = build_email(criteria, listings, recipients)
+    send_email(msg, recipients)
 
 
 if __name__ == "__main__":

@@ -101,7 +101,9 @@
         id: crypto.randomUUID(),
         address: listing.address || (() => { try { return new URL(listing.url).hostname.replace(/^www\./, "") + " listing"; } catch { return "New listing"; } })(),
         url: listing.url,
+        photoUrl: "",
         price: listing.price,
+        priceHistory: [],
         beds: listing.beds,
         baths: listing.baths,
         status: "Interested",
@@ -109,6 +111,7 @@
         notes: "",
         liked: true,
         source: "email",
+        addedBy: "",
         dateAdded: new Date().toISOString().slice(0, 10),
       });
 
