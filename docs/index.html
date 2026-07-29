@@ -190,26 +190,63 @@
         return;
       }
       try {
-        const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
+        const readRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
           headers: { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json" },
         });
-        const body = await res.json().catch(() => ({}));
-        if (res.status === 401) {
+        if (readRes.status === 401) {
           tokenTestResult.textContent = "401 Bad credentials — this token is invalid, expired, or was revoked. Generate a new one.";
           tokenTestResult.className = "err";
-        } else if (res.status === 404 || res.status === 403) {
-          tokenTestResult.textContent = `${res.status} — token is valid but doesn't have access to ${OWNER}/${REPO}. Check the token's repository access and Contents permission.`;
-          tokenTestResult.className = "err";
-        } else if (res.ok) {
-          const canWrite = body.permissions && body.permissions.push;
-          tokenTestResult.textContent = canWrite
-            ? "Token works and has write access. You're good to go."
-            : "Token can read the repo but doesn't have write access — check the Contents permission is set to Read and write.";
-          tokenTestResult.className = canWrite ? "ok" : "err";
-        } else {
-          tokenTestResult.textContent = `Unexpected response: ${res.status} ${body.message || ""}`;
-          tokenTestResult.className = "err";
+          return;
         }
+        if (readRes.status === 404 || readRes.status === 403) {
+          tokenTestResult.textContent = `${readRes.status} — token can't see ${OWNER}/${REPO} at all. Check the token's "Repository access" includes this repo.`;
+          tokenTestResult.className = "err";
+          return;
+        }
+        if (!readRes.ok) {
+          const body = await readRes.json().catch(() => ({}));
+          tokenTestResult.textContent = `Unexpected response reading repo: ${readRes.status} ${body.message || ""}`;
+          tokenTestResult.className = "err";
+          return;
+        }
+
+        // The repo-level "push" permission reflects the account's access, not what
+        // THIS token is scoped to — so actually attempt a real write to find out.
+        const testPath = ".token-test.json";
+        const testUrl = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${testPath}`;
+        const existing = await fetch(`${testUrl}?ref=${BRANCH}`, {
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json" },
+        });
+        const existingData = existing.ok ? await existing.json() : null;
+
+        const writeRes = await fetch(testUrl, {
+          method: "PUT",
+          headers: { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json" },
+          body: JSON.stringify({
+            message: "Test token write access",
+            content: btoa(JSON.stringify({ testedAt: new Date().toISOString() })),
+            sha: existingData ? existingData.sha : undefined,
+            branch: BRANCH,
+          }),
+        });
+
+        if (writeRes.status === 403) {
+          const body = await writeRes.json().catch(() => ({}));
+          tokenTestResult.textContent = `403 ${body.message || "Resource not accessible by personal access token"} — `
+            + `the token's Contents permission is set to Read-only (or missing). Edit the token on GitHub: `
+            + `Repository permissions → Contents → set to "Read and write", then regenerate/update it.`;
+          tokenTestResult.className = "err";
+          return;
+        }
+        if (!writeRes.ok) {
+          const body = await writeRes.json().catch(() => ({}));
+          tokenTestResult.textContent = `Write test failed: ${writeRes.status} ${body.message || ""}`;
+          tokenTestResult.className = "err";
+          return;
+        }
+
+        tokenTestResult.textContent = "Token works and can actually write to this repo. You're good to go.";
+        tokenTestResult.className = "ok";
       } catch (err) {
         tokenTestResult.textContent = "Network error testing token: " + err.message;
         tokenTestResult.className = "err";
