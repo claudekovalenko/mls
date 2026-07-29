@@ -24,6 +24,12 @@
       <button type="submit" class="primary">Add</button>
     </form>
 
+    <p class="bookmarklet-hint">
+      Want it filled in automatically? Drag this to your bookmarks bar, then click it while
+      viewing any listing (Zillow, Redfin, etc) to auto-fill price/beds/baths/photo:
+      <a href="javascript:(function%20()%20%7B%20const%20text%20%3D%20document.body.innerText%20%7C%7C%20%22%22%3B%20const%20priceMatch%20%3D%20text.match(%2F%5C%24%5B%5Cd%5D%7B2%2C3%7D(%3F%3A%2C%5Cd%7B3%7D)%2B%2F)%3B%20const%20price%20%3D%20priceMatch%20%3F%20priceMatch%5B0%5D.replace(%2F%5B%24%2C%5D%2Fg%2C%20%22%22)%20%3A%20%22%22%3B%20const%20bedsMatch%20%3D%20text.match(%2F(%5Cd%2B(%3F%3A%5C.%5Cd%2B)%3F)%5Cs*(%3F%3Abds%3F%7Cbeds%3F%7Cbedrooms%3F)%5Cb%2Fi)%3B%20const%20beds%20%3D%20bedsMatch%20%3F%20bedsMatch%5B1%5D%20%3A%20%22%22%3B%20const%20bathsMatch%20%3D%20text.match(%2F(%5Cd%2B(%3F%3A%5C.%5Cd%2B)%3F)%5Cs*(%3F%3Abas%3F%7Cbaths%3F%7Cbathrooms%3F)%5Cb%2Fi)%3B%20const%20baths%20%3D%20bathsMatch%20%3F%20bathsMatch%5B1%5D%20%3A%20%22%22%3B%20const%20ogImage%20%3D%20document.querySelector('meta%5Bproperty%3D%22og%3Aimage%22%5D')%3B%20const%20photo%20%3D%20ogImage%20%3F%20ogImage.content%20%3A%20%22%22%3B%20const%20ogTitle%20%3D%20document.querySelector('meta%5Bproperty%3D%22og%3Atitle%22%5D')%3B%20let%20address%20%3D%20ogTitle%20%3F%20ogTitle.content%20%3A%20document.title%3B%20address%20%3D%20address.replace(%2F%5Cs*%5B%7C%E2%80%93%E2%80%94-%5D%5Cs*(zillow%7Credfin%7Crealtor%7Ctrulia).*%24%2Fi%2C%20%22%22).trim()%3B%20const%20params%20%3D%20new%20URLSearchParams()%3B%20params.set(%22u%22%2C%20window.location.href.split(%22%3F%22)%5B0%5D)%3B%20if%20(address)%20params.set(%22a%22%2C%20address)%3B%20if%20(price)%20params.set(%22p%22%2C%20price)%3B%20if%20(beds)%20params.set(%22bd%22%2C%20beds)%3B%20if%20(baths)%20params.set(%22ba%22%2C%20baths)%3B%20if%20(photo)%20params.set(%22photo%22%2C%20photo)%3B%20window.open(%22https%3A%2F%2Fclaudekovalenko.github.io%2Fmls%2Fadd.html%3F%22%20%2B%20params.toString()%2C%20%22_blank%22)%3B%20%7D)()%3B" class="bookmarklet-btn" onclick="alert('Drag this link to your bookmarks bar instead of clicking it.'); return false;">+ Add to Tracker</a>
+    </p>
+
     <div class="tabs">
       <button class="tab-btn active" id="tab-all">All Houses</button>
       <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
