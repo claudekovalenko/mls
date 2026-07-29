@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add to House Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap-narrow">
+  <nav class="top-nav"><a href="index.html">&larr; House Tracker</a></nav>
+  <div class="eyebrow">Add from Email</div>
+  <h1 id="heading">Adding to House Tracker&hellip;</h1>
+  <p class="sub" id="sub-text">One second.</p>
+
+  <div class="card" id="preview-card" style="display:none;">
+    <h2 id="p-address">—</h2>
+    <p class="sub" id="p-details" style="margin-bottom:0;">—</p>
+  </div>
+
+  <div id="status"></div>
+
+  <details id="token-details" style="display:none;">
+    <summary>GitHub access token (needed once, to save changes)</summary>
+    <p>Create a fine-grained <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub token</a>
+       with read/write access to this repo's contents, then paste it below. It's stored only in this browser
+       (localStorage), never sent anywhere except GitHub's API.</p>
+    <label>GitHub Token
+      <input type="password" id="ghToken">
+    </label>
+    <button class="primary" id="save-token-btn">Save Token &amp; Add House</button>
+  </details>
+</div>
+
+<script>
+  const OWNER = "claudekovalenko";
+  const REPO = "mls";
+  const BRANCH = "main";
+  const PATH = "houses.json";
+
+  const params = new URLSearchParams(window.location.search);
+  const listing = {
+    url: params.get("u") || "",
+    address: params.get("a") || "",
+    price: params.get("p") ? Number(params.get("p")) : null,
+    beds: params.get("bd") ? Number(params.get("bd")) : null,
+    baths: params.get("ba") ? Number(params.get("ba")) : null,
+  };
+
+  const heading = document.getElementById("heading");
+  const subText = document.getElementById("sub-text");
+  const statusEl = document.getElementById("status");
+  const previewCard = document.getElementById("preview-card");
+  const tokenDetails = document.getElementById("token-details");
+
+  function setStatus(msg, ok) {
+    statusEl.textContent = msg;
+    statusEl.className = ok ? "ok" : "err";
+  }
+
+  function showPreview() {
+    if (!listing.address && !listing.url) return;
+    previewCard.style.display = "block";
+    document.getElementById("p-address").textContent = listing.address || listing.url;
+    const bits = [];
+    if (listing.price) bits.push("$" + listing.price.toLocaleString());
+    if (listing.beds != null) bits.push(listing.beds + "bd");
+    if (listing.baths != null) bits.push(listing.baths + "ba");
+    document.getElementById("p-details").textContent = bits.join(" · ") || listing.url;
+  }
+
+  function apiUrl() {
+    return `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${BRANCH}`;
+  }
+
+  async function addHouse(token) {
+    if (!listing.url && !listing.address) {
+      heading.textContent = "Nothing to add";
+      subText.textContent = "This link is missing a listing URL or address.";
+      return;
+    }
+    setStatus("Adding to your House Tracker…", true);
+    try {
+      const getRes = await fetch(apiUrl());
+      if (!getRes.ok) throw new Error(`GitHub API ${getRes.status}`);
+      const getData = await getRes.json();
+      const sha = getData.sha;
+      const houses = JSON.parse(atob(getData.content));
+
+      const existingUrls = new Set(houses.filter(h => h.url).map(h => h.url));
+      const existingAddrs = new Set(houses.map(h => (h.address || "").trim().toLowerCase()));
+      const addrKey = (listing.address || "").trim().toLowerCase();
+      if ((listing.url && existingUrls.has(listing.url)) || (addrKey && existingAddrs.has(addrKey))) {
+        heading.textContent = "Already in your tracker";
+        subText.textContent = "This listing is already there — no changes made.";
+        statusEl.textContent = "";
+        return;
+      }
+
+      houses.push({
+        id: crypto.randomUUID(),
+        address: listing.address || (() => { try { return new URL(listing.url).hostname.replace(/^www\./, "") + " listing"; } catch { return "New listing"; } })(),
+        url: listing.url,
+        price: listing.price,
+        beds: listing.beds,
+        baths: listing.baths,
+        status: "Interested",
+        rating: 0,
+        notes: "",
+        liked: true,
+        source: "email",
+        dateAdded: new Date().toISOString().slice(0, 10),
+      });
+
+      const putRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json",
+        },
+        body: JSON.stringify({
+          message: `Add house via email button: ${listing.address || listing.url}`,
+          content: btoa(JSON.stringify(houses, null, 2) + "\n"),
+          sha,
+          branch: BRANCH,
+        }),
+      });
+      if (!putRes.ok) {
+        const errBody = await putRes.json().catch(() => ({}));
+        throw new Error(errBody.message || `GitHub API ${putRes.status}`);
+      }
+
+      heading.textContent = "Added! ✓";
+      subText.textContent = "This house is now on your Highlights tab.";
+      statusEl.textContent = "";
+      tokenDetails.style.display = "none";
+    } catch (err) {
+      heading.textContent = "Couldn't add automatically";
+      subText.textContent = "Enter your GitHub token below to finish adding it.";
+      setStatus(err.message, false);
+      tokenDetails.style.display = "block";
+    }
+  }
+
+  showPreview();
+
+  const savedToken = localStorage.getItem("gh_token");
+  if (savedToken) {
+    addHouse(savedToken);
+  } else {
+    heading.textContent = "One more step";
+    subText.textContent = "Paste your GitHub token below once — it'll be remembered for next time.";
+    tokenDetails.style.display = "block";
+  }
+
+  document.getElementById("save-token-btn").addEventListener("click", () => {
+    const token = document.getElementById("ghToken").value.trim();
+    if (!token) return;
+    localStorage.setItem("gh_token", token);
+    addHouse(token);
+  });
+</script>
+</body>
+</html>

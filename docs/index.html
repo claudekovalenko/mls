@@ -15,13 +15,18 @@
      straight to <code>houses.json</code> in this repo.</p>
 
   <div class="card">
+    <form id="quick-add-form" class="quick-add">
+      <input type="url" id="quick-add-url" placeholder="Paste a listing URL and press Enter to add it" required>
+      <button type="submit" class="primary">Add</button>
+    </form>
+
     <div class="tabs">
       <button class="tab-btn active" id="tab-all">All Houses</button>
       <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
     </div>
 
     <div class="toolbar">
-      <button class="primary" id="add-btn">+ Add House</button>
+      <button class="secondary" id="add-btn">+ Add with details</button>
       <label>Filter status
         <select id="filter-status">
           <option value="">All</option>
@@ -81,8 +86,8 @@
     <form class="dialog-body" id="house-form">
       <h2 id="dialog-title">Add House</h2>
       <input type="hidden" id="house-id">
-      <label>Address <input type="text" id="f-address" required></label>
       <label>Listing URL <input type="url" id="f-url" placeholder="https://..."></label>
+      <label>Address (optional if you have a URL) <input type="text" id="f-address"></label>
       <div class="row">
         <div><label>Price <input type="number" id="f-price"></label></div>
         <div><label>Beds <input type="number" id="f-beds"></label></div>
@@ -318,14 +323,62 @@
     tabAll.addEventListener("click", () => setTab("all"));
     tabHighlights.addEventListener("click", () => setTab("highlights"));
 
+    function labelForUrl(url) {
+      try {
+        return new URL(url).hostname.replace(/^www\./, "") + " listing";
+      } catch {
+        return "New listing";
+      }
+    }
+
+    async function addHouseByUrl(url) {
+      const entry = {
+        id: crypto.randomUUID(),
+        address: labelForUrl(url),
+        url,
+        price: null,
+        beds: null,
+        baths: null,
+        status: "Interested",
+        rating: 0,
+        notes: "",
+        liked: false,
+        source: "manual",
+        dateAdded: new Date().toISOString().slice(0, 10),
+      };
+      houses.push(entry);
+      render();
+      const ok = await saveHouses(`Add house: ${entry.address}`);
+      if (!ok) {
+        houses.pop();
+        render();
+      }
+      return ok;
+    }
+
+    document.getElementById("quick-add-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const urlInput = document.getElementById("quick-add-url");
+      const url = urlInput.value.trim();
+      if (!url) return;
+      const ok = await addHouseByUrl(url);
+      if (ok) urlInput.value = "";
+    });
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const id = document.getElementById("house-id").value || crypto.randomUUID();
       const existing = houses.find(h => h.id === id);
+      const urlVal = document.getElementById("f-url").value.trim();
+      const addressVal = document.getElementById("f-address").value.trim();
+      if (!urlVal && !addressVal) {
+        setStatus("Add a listing URL or an address.", false);
+        return;
+      }
       const entry = {
         id,
-        address: document.getElementById("f-address").value.trim(),
-        url: document.getElementById("f-url").value.trim(),
+        address: addressVal || labelForUrl(urlVal),
+        url: urlVal,
         price: Number(document.getElementById("f-price").value) || null,
         beds: Number(document.getElementById("f-beds").value) || null,
         baths: Number(document.getElementById("f-baths").value) || null,
