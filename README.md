@@ -51,8 +51,11 @@ tracker UI are intentionally simple for now.
 
 Open the site (`docs/index.html`), paste a GitHub token once (instructions are on the page), and:
 
-- **+ Add House** — save a new house with address, price, beds/baths, listing URL, status,
-  rating, and notes.
+- **Paste a listing URL and hit Add** — the quickest way to add a house. It's saved instantly
+  with just the URL (address is guessed from the domain); fill in price/status/notes later via
+  **Edit** if you want.
+- **+ Add with details** — the full form, for adding price/beds/baths/status/rating/notes up
+  front instead of a bare URL.
 - Click the heart (♡/♥) on any row to highlight it — highlighted houses show up on the
   **Highlights** tab.
 - Click **Edit** on any row to update its status/rating/notes as you go through the process, or
@@ -62,18 +65,22 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
 All changes commit straight to `houses.json` on `main`. You can also edit that file directly in
 GitHub if you prefer.
 
-## Liking listings from the daily alert email
+## Adding listings from the daily alert email
 
-Each alert email numbers its listings. Reply to the email with:
+Each listing in the alert email has an **"+ Add to Tracker" button**. Click it and it opens
+`docs/add.html`, which adds that listing straight into `houses.json` via the GitHub API — using
+the same browser-saved GitHub token as the tracker (first click on a new device/browser asks for
+the token once, then remembers it). Houses added this way are marked highlighted and show a
+**NEW** badge on the Highlights tab.
+
+If you'd rather not click through, you can also reply to the email with:
 
 ```
 LIKE 1,3
 ```
 
-to add listings #1 and #3 from that day's alert straight into the House Tracker (marked
-highlighted, status "Interested"). `process-email-replies.yml` checks for these replies every 30
-minutes and commits the additions — no need to touch the tracker UI. Houses added this way show a
-**NEW** badge and appear on the **Highlights** tab automatically.
+to add listings #1 and #3 from that day's alert. `process-email-replies.yml` checks for these
+replies every 30 minutes (via IMAP) and commits the additions.
 
 ## Updating the alert filter
 
