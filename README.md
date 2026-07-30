@@ -71,15 +71,10 @@ tracker UI are intentionally simple for now.
 
 Open the site (`docs/index.html`), paste a GitHub token once (instructions are on the page), and:
 
-- **Paste a listing URL and hit Add** — the quickest way to add a house. It's saved instantly
-  with just the URL (address is guessed from the domain); fill in price/status/notes later via
-  **Edit** if you want.
-- **The "+ Add to Tracker" bookmarklet** (below the quick-add bar) — drag it to your bookmarks
-  bar. While viewing any listing (Zillow, Redfin, etc), click it: it reads price/beds/baths/photo
-  straight off the page you're already looking at and opens `add.html` with everything pre-filled.
-  This works even for sites like Zillow that block server-side auto-refresh, because it runs in
-  your own browser tab reading a page you're already viewing — not a new automated request that
-  can be blocked.
+- **Paste a listing URL and hit Add** — the quickest way to add a house. It's saved instantly;
+  the address is parsed straight out of the URL text itself (works for Zillow, Redfin, etc, with
+  no network request involved), so it usually shows the real street address right away. Fill in
+  price/status/notes later via **Edit** if you want.
 - **+ Add with details** — the full form, for adding price/beds/baths/status/rating/notes up
   front instead of a bare URL.
 - Click the heart (♡/♥) on any row to highlight it — highlighted houses show up on the
