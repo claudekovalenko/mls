@@ -75,7 +75,11 @@ tracker UI are intentionally simple for now.
 4. **Create your GitHub token** at
    [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta), scoped to
    only this repo (`Repository access` → `Only select repositories` → `mls`). Under
-   `Permissions`, click **+ Add permissions** and add **Contents** → Read and write.
+   `Permissions`, click **+ Add permissions** and add:
+   - **Contents** → Read and write (required — lets it save houses/criteria)
+   - **Actions** → Read and write (lets it instantly trigger the price/beds/baths/photo auto-fill
+     right after you add a house; without it, houses still get filled in by the next scheduled
+     run, within 2 hours)
 
    Paste the generated token into the tracker's "GitHub access token" section and click
    **Save Token**, then **Test Token** to confirm it actually has write access before relying on
@@ -87,8 +91,11 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
 
 - **Paste a listing URL and hit Add** — the quickest way to add a house. It's saved instantly;
   the address is parsed straight out of the URL text itself (works for Zillow, Redfin, etc, with
-  no network request involved), so it usually shows the real street address right away. Fill in
-  price/status/notes later via **Edit** if you want.
+  no network request involved), so it usually shows the real street address right away. If your
+  token has the Actions permission, it also immediately kicks off the price/beds/baths/photo
+  lookup (RentCast + Street View) instead of waiting for the next scheduled run — and if either
+  service's monthly limit has already been hit, the status message tells you so instead of
+  silently doing nothing. Fill in price/status/notes later via **Edit** if you want.
 - **+ Add with details** — the full form, for adding price/beds/baths/status/rating/notes up
   front instead of a bare URL.
 - Click the heart (♡/♥) on any row to highlight it — highlighted houses show up on the
