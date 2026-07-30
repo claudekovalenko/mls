@@ -11,8 +11,7 @@
   <nav class="top-nav"><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
   <div class="eyebrow">Atlanta House Hunt</div>
   <h1>House Tracker</h1>
-  <p class="sub" id="page-sub">Every house we're considering buying, with status, rating, and notes — synced
-     straight to <code>houses.json</code> in this repo.</p>
+  <p class="sub" id="page-sub">Every house we're considering buying, with status, rating, and notes.</p>
 
   <div class="card">
     <form id="quick-add-form" class="quick-add">
@@ -440,7 +439,7 @@
       tabHighlights.classList.toggle("active", tab === "highlights");
       pageSub.textContent = tab === "highlights"
         ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
-        : "Every house we're considering buying, with status, rating, and notes — synced straight to houses.json in this repo.";
+        : "Every house we're considering buying, with status, rating, and notes.";
       render();
     }
     tabAll.addEventListener("click", () => setTab("all"));
