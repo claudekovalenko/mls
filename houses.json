@@ -16,23 +16,5 @@
     "source": "manual",
     "addedBy": "Ryan",
     "dateAdded": "2026-07-29"
-  },
-  {
-    "id": "c830a0c0-fa21-44e3-94c2-11e9c7c97c62",
-    "address": "zillow.com listing",
-    "addressIsGuessed": true,
-    "url": "https://www.zillow.com/homedetails/471-Surrey-Pl-Marietta-GA-30068/14275604_zpid/?utm_campaign=iosappmessage&utm_medium=referral&utm_source=txtshare",
-    "photoUrl": "",
-    "price": null,
-    "priceHistory": [],
-    "beds": null,
-    "baths": null,
-    "status": "Interested",
-    "rating": 0,
-    "notes": "",
-    "liked": false,
-    "source": "manual",
-    "addedBy": "Ryan",
-    "dateAdded": "2026-07-30"
   }
 ]
