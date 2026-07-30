@@ -109,6 +109,17 @@ def extract_photo(html):
     return match.group(1) if match else None
 
 
+def looks_like_real_address(address):
+    """True if this looks like an actual street address (has a number and
+    letters) rather than a bare fallback like "zillow.com listing". Quick-add
+    now parses the real address out of the URL text itself, so addressIsGuessed
+    (meaning "not manually typed/confirmed") no longer implies "bad address" —
+    this checks the address content directly instead."""
+    if not address:
+        return False
+    return bool(re.search(r"\d", address)) and bool(re.search(r"[a-zA-Z]", address)) and not address.lower().endswith("listing")
+
+
 def extract_number(html, precise_re, fallback_re):
     match = precise_re.search(html) or fallback_re.search(html)
     if not match:
@@ -148,7 +159,7 @@ def refresh_from_rentcast(house, usage):
     if not api_key or house.get("rentcastChecked"):
         return False
     address = house.get("address")
-    if not address or house.get("addressIsGuessed"):
+    if not looks_like_real_address(address):
         return False
 
     house["rentcastChecked"] = True
@@ -232,7 +243,7 @@ def refresh_from_streetview(house, usage):
     if not api_key or house.get("streetViewChecked") or house.get("photoUrl"):
         return False
     address = house.get("address")
-    if not address or house.get("addressIsGuessed"):
+    if not looks_like_real_address(address):
         return False
 
     house["streetViewChecked"] = True
