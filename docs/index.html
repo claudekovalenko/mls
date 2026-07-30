@@ -102,6 +102,7 @@
         <div><label>Price <input type="number" id="f-price"></label></div>
         <div><label>Beds <input type="number" id="f-beds"></label></div>
         <div><label>Baths <input type="number" id="f-baths"></label></div>
+        <div><label>Sqft <input type="number" id="f-sqft"></label></div>
       </div>
       <div id="price-history" class="price-history" style="display:none;"></div>
       <div class="row">
@@ -346,7 +347,10 @@
           : `<div class="thumb thumb-empty"></div>`;
         const priceChanged = h.priceHistory && h.priceHistory.length > 0;
         const priceCell = h.price
-          ? `$${Number(h.price).toLocaleString()}${priceChanged ? ' <span class="price-changed" title="Price has changed since first added">±</span>' : ""}`
+          ? (h.priceIsEstimate
+              ? `<span title="Estimated value from RentCast, not the actual listing price">~$${Number(h.price).toLocaleString()}</span>`
+              : `$${Number(h.price).toLocaleString()}`)
+            + (priceChanged ? ' <span class="price-changed" title="Price has changed since first added">±</span>' : "")
           : "—";
         const addedCell = `${escapeHtml(h.addedBy || "—")}<br><span style="color:var(--sub);font-size:0.78rem;">${escapeHtml(h.dateAdded || "")}</span>`;
         tr.innerHTML = `
@@ -354,7 +358,7 @@
           <td>${photoCell}</td>
           <td>${addr}${newBadge}</td>
           <td>${priceCell}</td>
-          <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba</td>
+          <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba${h.sqft ? `<br><span style="color:var(--sub);font-size:0.78rem;">${Number(h.sqft).toLocaleString()} sqft</span>` : ""}</td>
           <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
           <td class="stars">${"★".repeat(h.rating || 0)}${"☆".repeat(5 - (h.rating || 0))}</td>
           <td>${escapeHtml(h.notes || "")}</td>
@@ -401,6 +405,7 @@
       document.getElementById("f-price").value = house?.price ?? "";
       document.getElementById("f-beds").value = house?.beds ?? "";
       document.getElementById("f-baths").value = house?.baths ?? "";
+      document.getElementById("f-sqft").value = house?.sqft ?? "";
       document.getElementById("f-status").value = house?.status || "Interested";
       document.getElementById("f-rating").value = house?.rating ?? 0;
       document.getElementById("f-added-by").value = house?.addedBy || localStorage.getItem("added_by") || "Ryan";
@@ -520,9 +525,11 @@
         url: urlVal,
         photoUrl: document.getElementById("f-photo").value.trim(),
         price: newPrice,
+        priceIsEstimate: newPrice ? false : (existing?.priceIsEstimate || false),
         priceHistory,
         beds: Number(document.getElementById("f-beds").value) || null,
         baths: Number(document.getElementById("f-baths").value) || null,
+        sqft: Number(document.getElementById("f-sqft").value) || null,
         status: document.getElementById("f-status").value,
         rating: Number(document.getElementById("f-rating").value) || 0,
         notes: document.getElementById("f-notes").value.trim(),

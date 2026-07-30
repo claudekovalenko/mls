@@ -54,6 +54,12 @@ tracker UI are intentionally simple for now.
      JSON array of objects like `{price, beds, baths, address, url, propertyType}`. Point this
      at whatever feed you're using (an MLS/IDX API, a broker feed, etc.) — without it, the script
      runs but skips fetching and sends "no matches" each day.
+   - `RENTCAST_API_KEY` (optional) — a free API key from [rentcast.io](https://rentcast.io) used
+     to fill in beds/baths/sqft/estimated value for tracked houses by address, as a fallback for
+     whatever the listing-page scrape couldn't get (which is most of the time for sites like
+     Zillow that block scraping outright). Only queried once per house to stay within the free
+     tier's monthly quota. Price filled in this way is a valuation estimate, not the real listing
+     price — shown with a `~` prefix in the tracker.
 3. Without secrets configured, the alert workflow still runs and prints the would-be email to the
    Action log instead of sending it, and the reply-processing workflow just skips checking.
 4. **Create your GitHub token** at
