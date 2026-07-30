@@ -18,8 +18,10 @@ or fails the workflow:
    scraping couldn't get one (which is the normal case for Zillow). Fetched
    images are saved into docs/photos/ and committed, so no API key or
    external image URL is ever exposed in houses.json. Only runs if
-   GOOGLE_MAPS_API_KEY is set, and only once per house (streetViewChecked)
-   to stay well within Google's monthly free credit.
+   GOOGLE_MAPS_API_KEY is set, and only once per house (streetViewChecked).
+   Metadata checks are free; only the image fetch is billed, at roughly
+   $0.007/call — the 100/month hard cap means at most ~$0.35/month even
+   with zero remaining trial credit.
 
 Every field can always be edited by hand in the tracker regardless of what
 any of these sources manage to find.
@@ -222,9 +224,10 @@ def refresh_from_streetview(house, usage):
     """Street View fallback photo, keyed by address. Saves the image into
     docs/photos/ (committed alongside houses.json) rather than storing an
     external URL, so the API key is never exposed. Only queried once per
-    house ever (streetViewChecked), and every call — the metadata check AND
-    the image fetch are billed separately — is counted against a persisted
-    monthly budget with a hard stop well below Google's free credit."""
+    house ever (streetViewChecked). Metadata checks are free; only the
+    image fetch is billed (~$0.007/call). Both count against a persisted
+    monthly budget hard-capped at 100 calls — worst case ~$0.35/month,
+    regardless of any Google trial credit."""
     api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
     if not api_key or house.get("streetViewChecked") or house.get("photoUrl"):
         return False
