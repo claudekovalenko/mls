@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""Refresh price/photo/beds/baths/address for tracked houses from their listing URL.
+"""Refresh price/photo/beds/baths/address/sqft for tracked houses.
 
-Best-effort only: every house is refreshed independently inside its own
-try/except, so one broken/blocked listing (anti-scraping, layout change,
-timeout) never stops the rest from updating or fails the workflow. Sites
-like Zillow actively block scrapers, so this may often do nothing for a
-given house — that's expected and fine, every field can always be edited
-by hand in the tracker.
+Two independent data sources, both best-effort — every house is refreshed
+inside its own try/except so one broken/blocked listing never stops the rest
+or fails the workflow:
 
-Looks for Open Graph meta tags (og:image, og:title) and common JSON
-fields (price/bedrooms/bathrooms) embedded in the listing page's HTML.
-Appends a {date, price} entry to priceHistory whenever the detected price
-differs from what's stored. Only overwrites the address if it was a
-guessed placeholder (quick-add sets addressIsGuessed: true) so a manually
-entered address is never clobbered.
+1. Scraping the listing URL's HTML for Open Graph tags and common JSON
+   fields. Sites like Zillow actively block this (confirmed via 403 even from
+   GitHub's own servers), so it often does nothing — that's expected.
+2. RentCast's property data API (https://rentcast.io), looked up by address,
+   used as a fallback for whatever scraping couldn't fill in (beds, baths,
+   sqft, and a price *estimate* if no real price is known yet — marked with
+   priceIsEstimate: true since it's an AVM valuation, not the listing price).
+   Only runs if RENTCAST_API_KEY is set, and only once per house
+   (rentcastChecked: true) to stay within the free tier's monthly quota.
+
+Every field can always be edited by hand in the tracker regardless of what
+either source manages to find.
 """
 import json
+import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -93,72 +98,135 @@ def extract_title_address(html):
     return title or None
 
 
+def query_rentcast(path, address, api_key):
+    url = f"https://api.rentcast.io/v1/{path}?" + urllib.parse.urlencode({"address": address})
+    req = urllib.request.Request(url, headers={"X-Api-Key": api_key, "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return json.loads(resp.read())
+
+
+def refresh_from_rentcast(house):
+    """RentCast fallback, keyed by address. Only queried once per house ever
+    (rentcastChecked) to stay within the free tier's monthly request quota."""
+    api_key = os.environ.get("RENTCAST_API_KEY")
+    if not api_key or house.get("rentcastChecked"):
+        return False
+    address = house.get("address")
+    if not address or house.get("addressIsGuessed"):
+        return False
+
+    house["rentcastChecked"] = True
+    changed = False
+
+    try:
+        records = query_rentcast("properties", address, api_key)
+        record = records[0] if isinstance(records, list) and records else None
+    except Exception as exc:
+        print(f"  rentcast property lookup failed for {address}: {exc}")
+        record = None
+
+    if record:
+        if house.get("beds") is None and record.get("bedrooms") is not None:
+            house["beds"] = record["bedrooms"]
+            changed = True
+        if house.get("baths") is None and record.get("bathrooms") is not None:
+            house["baths"] = record["bathrooms"]
+            changed = True
+        if record.get("squareFootage") and not house.get("sqft"):
+            house["sqft"] = record["squareFootage"]
+            changed = True
+
+    if house.get("price") is None:
+        try:
+            estimate = query_rentcast("avm/value", address, api_key)
+            price = estimate.get("price") if isinstance(estimate, dict) else None
+        except Exception as exc:
+            print(f"  rentcast value estimate failed for {address}: {exc}")
+            price = None
+        if price:
+            house["price"] = price
+            house["priceIsEstimate"] = True
+            changed = True
+            print(f"  rentcast price estimate for {address}: ${price:,}")
+
+    if changed:
+        print(f"  rentcast filled in details for {address}")
+    return changed
+
+
 def refresh_house(house):
     """Mutates house in place. Returns True if anything changed."""
-    url = house.get("url")
-    if not url:
-        return False
-
     changed = False
-    try:
-        html = fetch_html(url)
-    except Exception as exc:
-        print(f"  skip ({house.get('address', url)}): fetch failed: {exc}")
-        return False
+    url = house.get("url")
+    html = None
+
+    if url:
+        try:
+            html = fetch_html(url)
+        except Exception as exc:
+            print(f"  scrape skip ({house.get('address', url)}): fetch failed: {exc}")
+
+    if html:
+        try:
+            new_price = extract_price(html)
+            if new_price and new_price != house.get("price"):
+                house.setdefault("priceHistory", [])
+                if house.get("price"):
+                    house["priceHistory"].append({
+                        "date": date.today().isoformat(),
+                        "price": house["price"],
+                    })
+                house["price"] = new_price
+                house["priceIsEstimate"] = False
+                changed = True
+                print(f"  price updated for {house.get('address', url)}: ${new_price:,}")
+        except Exception as exc:
+            print(f"  price parse failed for {house.get('address', url)}: {exc}")
+
+        try:
+            if not house.get("photoUrl"):
+                photo = extract_photo(html)
+                if photo:
+                    house["photoUrl"] = photo
+                    changed = True
+                    print(f"  photo set for {house.get('address', url)}")
+        except Exception as exc:
+            print(f"  photo parse failed for {house.get('address', url)}: {exc}")
+
+        try:
+            if house.get("beds") is None:
+                beds = extract_number(html, BEDS_RE, BEDS_FALLBACK_RE)
+                if beds is not None:
+                    house["beds"] = beds
+                    changed = True
+        except Exception as exc:
+            print(f"  beds parse failed for {house.get('address', url)}: {exc}")
+
+        try:
+            if house.get("baths") is None:
+                baths = extract_number(html, BATHS_RE, BATHS_FALLBACK_RE)
+                if baths is not None:
+                    house["baths"] = baths
+                    changed = True
+        except Exception as exc:
+            print(f"  baths parse failed for {house.get('address', url)}: {exc}")
+
+        try:
+            if house.get("addressIsGuessed"):
+                address = extract_title_address(html)
+                if address:
+                    house["address"] = address
+                    house["addressIsGuessed"] = False
+                    changed = True
+                    print(f"  address filled in: {address}")
+        except Exception as exc:
+            print(f"  address parse failed for {house.get('address', url)}: {exc}")
 
     try:
-        new_price = extract_price(html)
-        if new_price and new_price != house.get("price"):
-            house.setdefault("priceHistory", [])
-            if house.get("price"):
-                house["priceHistory"].append({
-                    "date": date.today().isoformat(),
-                    "price": house["price"],
-                })
-            house["price"] = new_price
+        if refresh_from_rentcast(house):
             changed = True
-            print(f"  price updated for {house.get('address', url)}: ${new_price:,}")
     except Exception as exc:
-        print(f"  price parse failed for {house.get('address', url)}: {exc}")
-
-    try:
-        if not house.get("photoUrl"):
-            photo = extract_photo(html)
-            if photo:
-                house["photoUrl"] = photo
-                changed = True
-                print(f"  photo set for {house.get('address', url)}")
-    except Exception as exc:
-        print(f"  photo parse failed for {house.get('address', url)}: {exc}")
-
-    try:
-        if house.get("beds") is None:
-            beds = extract_number(html, BEDS_RE, BEDS_FALLBACK_RE)
-            if beds is not None:
-                house["beds"] = beds
-                changed = True
-    except Exception as exc:
-        print(f"  beds parse failed for {house.get('address', url)}: {exc}")
-
-    try:
-        if house.get("baths") is None:
-            baths = extract_number(html, BATHS_RE, BATHS_FALLBACK_RE)
-            if baths is not None:
-                house["baths"] = baths
-                changed = True
-    except Exception as exc:
-        print(f"  baths parse failed for {house.get('address', url)}: {exc}")
-
-    try:
-        if house.get("addressIsGuessed"):
-            address = extract_title_address(html)
-            if address:
-                house["address"] = address
-                house["addressIsGuessed"] = False
-                changed = True
-                print(f"  address filled in: {address}")
-    except Exception as exc:
-        print(f"  address parse failed for {house.get('address', url)}: {exc}")
+        print(f"  rentcast lookup failed for {house.get('address', url)}: {exc}")
 
     return changed
 

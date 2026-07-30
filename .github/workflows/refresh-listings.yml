@@ -17,6 +17,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Refresh listings
+        env:
+          RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
         run: python scripts/refresh_listings.py
       - name: Commit changes
         run: |
