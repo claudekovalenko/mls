@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Poll Gmail for replies to the daily listing alert and add liked listings to houses.json.
+"""Poll Gmail for two kinds of email and turn them into tracked houses.
 
-Reply to an alert email with a line like:
-    LIKE 1,3
-using the numbers from that day's alert (see last_alert_listings.json, written by
-send_alert.py each run). Matched listings are appended to houses.json with
-status "Interested", liked=true, source="email", then the message is marked read
-so it isn't processed twice.
+1. Replies to the daily listing alert containing a line like "LIKE 1,3" — the
+   numbered listings from that day's alert (last_alert_listings.json) get added.
+2. ANY unread email (to yourself, forwarded, whatever) whose subject or body
+   contains a real-estate listing URL (Zillow/Redfin/Realtor/Trulia) — the URL
+   gets added as a new house automatically, address best-effort guessed from the
+   URL's slug (no page fetch needed, so this works even for sites that block
+   scraping). This is the easiest way to add a house: just email or share a
+   listing link to the inbox this script polls.
 
-Requires GMAIL_USER / GMAIL_APP_PASSWORD (same secrets as send_alert.py) with IMAP
-access enabled on the account.
+Every matched message is marked read so it isn't processed twice. Requires
+GMAIL_USER / GMAIL_APP_PASSWORD (same secrets as send_alert.py) with IMAP access
+enabled on the account.
 """
 import imaplib
 import email
@@ -27,6 +30,10 @@ LAST_ALERT_PATH = ROOT / "last_alert_listings.json"
 HOUSES_PATH = ROOT / "houses.json"
 
 LIKE_RE = re.compile(r"\bLIKE\b[^\d]*([\d,\s]+)", re.IGNORECASE)
+LISTING_URL_RE = re.compile(
+    r"https?://(?:www\.)?(zillow|redfin|realtor|trulia|homes)\.com/\S+",
+    re.IGNORECASE,
+)
 
 
 def load_json(path):
@@ -74,6 +81,50 @@ def parse_liked_numbers(body):
         if chunk.isdigit():
             numbers.add(int(chunk))
     return sorted(numbers)
+
+
+def guess_address_from_url(url):
+    """Best-effort address from the URL slug alone — no page fetch, so it
+    works even on sites that block scraping (e.g. Zillow)."""
+    match = re.search(r"/homedetails/([^/]+)/\d+_zpid", url, re.IGNORECASE)
+    if match:
+        return match.group(1).replace("-", " ")
+    parts = [
+        p for p in url.split("/")
+        if "-" in p and any(c.isdigit() for c in p) and any(c.isalpha() for c in p)
+    ]
+    if parts:
+        return parts[0].replace("-", " ")
+    return None
+
+
+def add_house_from_url(url, houses):
+    existing_urls = {h.get("url") for h in houses if h.get("url")}
+    clean_url = url.split("?")[0]
+    if clean_url in existing_urls:
+        return None
+
+    address = guess_address_from_url(clean_url)
+    house = {
+        "id": str(uuid.uuid4()),
+        "address": address or (clean_url.split("//")[-1].split("/")[0] + " listing"),
+        "addressIsGuessed": address is None,
+        "url": clean_url,
+        "photoUrl": "",
+        "price": None,
+        "priceHistory": [],
+        "beds": None,
+        "baths": None,
+        "status": "Interested",
+        "rating": 0,
+        "notes": "",
+        "liked": True,
+        "source": "email",
+        "addedBy": "",
+        "dateAdded": date.today().isoformat(),
+    }
+    houses.append(house)
+    return house
 
 
 def add_liked_houses(numbers, last_listings, houses):
@@ -132,14 +183,14 @@ def process_mailbox():
         imap.login(gmail_user, gmail_pass)
         imap.select("INBOX")
 
-        status, data = imap.search(None, 'UNSEEN SUBJECT "Daily listing alert"')
+        status, data = imap.search(None, "UNSEEN")
         if status != "OK":
             print("IMAP search failed.")
             return []
 
         message_ids = data[0].split()
         if not message_ids:
-            print("No new alert replies.")
+            print("No new mail.")
             return []
 
         for msg_id in message_ids:
@@ -148,17 +199,28 @@ def process_mailbox():
                 continue
             msg = email.message_from_bytes(msg_data[0][1])
             subject = decode_subject(msg.get("Subject"))
-            if not subject.lower().startswith("re:"):
-                continue
-
             body = get_body_text(msg)
-            numbers = parse_liked_numbers(body)
-            if numbers:
-                added = add_liked_houses(numbers, last_listings, houses)
-                all_added.extend(added)
-                print(f"Message {msg_id.decode()}: liked listings {numbers} -> added {len(added)} house(s).")
-            else:
-                print(f"Message {msg_id.decode()}: no 'LIKE n,n' pattern found.")
+
+            handled = False
+
+            if subject.lower().startswith("re:") and "daily listing alert" in subject.lower():
+                numbers = parse_liked_numbers(body)
+                if numbers:
+                    added = add_liked_houses(numbers, last_listings, houses)
+                    all_added.extend(added)
+                    print(f"Message {msg_id.decode()}: liked listings {numbers} -> added {len(added)} house(s).")
+                    handled = True
+
+            if not handled:
+                for m in LISTING_URL_RE.finditer(subject + " " + body):
+                    house = add_house_from_url(m.group(0), houses)
+                    if house:
+                        all_added.append(house)
+                        print(f"Message {msg_id.decode()}: added house from link -> {house['address']}")
+                    handled = True
+
+            if not handled:
+                print(f"Message {msg_id.decode()}: no LIKE pattern or listing link found, skipping.")
 
             imap.store(msg_id, "+FLAGS", "\\Seen")
 
