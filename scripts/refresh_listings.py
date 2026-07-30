@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh price/photo/beds/baths/address/sqft for tracked houses.
 
-Two independent data sources, both best-effort — every house is refreshed
+Three independent data sources, all best-effort — every house is refreshed
 inside its own try/except so one broken/blocked listing never stops the rest
 or fails the workflow:
 
@@ -14,9 +14,15 @@ or fails the workflow:
    priceIsEstimate: true since it's an AVM valuation, not the listing price).
    Only runs if RENTCAST_API_KEY is set, and only once per house
    (rentcastChecked: true) to stay within the free tier's monthly quota.
+3. Google's Street View Static API, used only as a photo fallback when
+   scraping couldn't get one (which is the normal case for Zillow). Fetched
+   images are saved into docs/photos/ and committed, so no API key or
+   external image URL is ever exposed in houses.json. Only runs if
+   GOOGLE_MAPS_API_KEY is set, and only once per house (streetViewChecked)
+   to stay well within Google's monthly free credit.
 
 Every field can always be edited by hand in the tracker regardless of what
-either source manages to find.
+any of these sources manage to find.
 """
 import json
 import os
@@ -27,9 +33,13 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
-HOUSES_PATH = Path(__file__).resolve().parent.parent / "houses.json"
-RENTCAST_USAGE_PATH = Path(__file__).resolve().parent.parent / "rentcast_usage.json"
+ROOT = Path(__file__).resolve().parent.parent
+HOUSES_PATH = ROOT / "houses.json"
+PHOTOS_DIR = ROOT / "docs" / "photos"
+RENTCAST_USAGE_PATH = ROOT / "rentcast_usage.json"
 RENTCAST_MONTHLY_LIMIT = 45  # hard stop with a safety margin below the free tier's 50
+STREETVIEW_USAGE_PATH = ROOT / "streetview_usage.json"
+STREETVIEW_MONTHLY_LIMIT = 100  # generous but tiny sliver of the $200 free monthly credit
 TIMEOUT = 15
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -56,11 +66,11 @@ def save_houses(houses):
     HOUSES_PATH.write_text(json.dumps(houses, indent=2) + "\n")
 
 
-def load_rentcast_usage():
+def load_monthly_usage(path):
     current_month = date.today().strftime("%Y-%m")
-    if RENTCAST_USAGE_PATH.exists():
+    if path.exists():
         try:
-            usage = json.loads(RENTCAST_USAGE_PATH.read_text())
+            usage = json.loads(path.read_text())
         except (json.JSONDecodeError, OSError):
             usage = {}
     else:
@@ -71,8 +81,8 @@ def load_rentcast_usage():
     return usage
 
 
-def save_rentcast_usage(usage):
-    RENTCAST_USAGE_PATH.write_text(json.dumps(usage, indent=2) + "\n")
+def save_monthly_usage(path, usage):
+    path.write_text(json.dumps(usage, indent=2) + "\n")
 
 
 def fetch_html(url):
@@ -186,7 +196,77 @@ def refresh_from_rentcast(house, usage):
     return changed
 
 
-def refresh_house(house, rentcast_usage):
+def streetview_available(address, api_key):
+    url = "https://maps.googleapis.com/maps/api/streetview/metadata?" + urllib.parse.urlencode({
+        "location": address,
+        "key": api_key,
+    })
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        data = json.loads(resp.read())
+    return data.get("status") == "OK"
+
+
+def fetch_streetview_image(address, api_key):
+    url = "https://maps.googleapis.com/maps/api/streetview?" + urllib.parse.urlencode({
+        "size": "640x400",
+        "location": address,
+        "key": api_key,
+    })
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return resp.read()
+
+
+def refresh_from_streetview(house, usage):
+    """Street View fallback photo, keyed by address. Saves the image into
+    docs/photos/ (committed alongside houses.json) rather than storing an
+    external URL, so the API key is never exposed. Only queried once per
+    house ever (streetViewChecked), and every call — the metadata check AND
+    the image fetch are billed separately — is counted against a persisted
+    monthly budget with a hard stop well below Google's free credit."""
+    api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if not api_key or house.get("streetViewChecked") or house.get("photoUrl"):
+        return False
+    address = house.get("address")
+    if not address or house.get("addressIsGuessed"):
+        return False
+
+    house["streetViewChecked"] = True
+
+    if usage["calls"] >= STREETVIEW_MONTHLY_LIMIT:
+        print(f"  streetview monthly call budget ({STREETVIEW_MONTHLY_LIMIT}) reached, skipping")
+        return False
+
+    usage["calls"] += 1
+    try:
+        if not streetview_available(address, api_key):
+            print(f"  no streetview imagery available for {address}")
+            return False
+    except Exception as exc:
+        print(f"  streetview metadata check failed for {address}: {exc}")
+        return False
+
+    if usage["calls"] >= STREETVIEW_MONTHLY_LIMIT:
+        print(f"  streetview monthly call budget ({STREETVIEW_MONTHLY_LIMIT}) reached, skipping image fetch")
+        return False
+
+    usage["calls"] += 1
+    try:
+        image_bytes = fetch_streetview_image(address, api_key)
+    except Exception as exc:
+        print(f"  streetview image fetch failed for {address}: {exc}")
+        return False
+
+    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    photo_path = PHOTOS_DIR / f"{house['id']}.jpg"
+    photo_path.write_bytes(image_bytes)
+    house["photoUrl"] = f"photos/{house['id']}.jpg"
+    print(f"  streetview photo saved for {address}")
+    return True
+
+
+def refresh_house(house, rentcast_usage, streetview_usage):
     """Mutates house in place. Returns True if anything changed."""
     changed = False
     url = house.get("url")
@@ -260,25 +340,37 @@ def refresh_house(house, rentcast_usage):
     except Exception as exc:
         print(f"  rentcast lookup failed for {house.get('address', url)}: {exc}")
 
+    try:
+        if refresh_from_streetview(house, streetview_usage):
+            changed = True
+    except Exception as exc:
+        print(f"  streetview lookup failed for {house.get('address', url)}: {exc}")
+
     return changed
 
 
 def main():
     houses = load_houses()
-    rentcast_usage = load_rentcast_usage()
-    starting_calls = rentcast_usage["calls"]
+    rentcast_usage = load_monthly_usage(RENTCAST_USAGE_PATH)
+    streetview_usage = load_monthly_usage(STREETVIEW_USAGE_PATH)
+    starting_rentcast_calls = rentcast_usage["calls"]
+    starting_streetview_calls = streetview_usage["calls"]
     any_changed = False
 
     for house in houses:
         try:
-            if refresh_house(house, rentcast_usage):
+            if refresh_house(house, rentcast_usage, streetview_usage):
                 any_changed = True
         except Exception as exc:
             print(f"  unexpected error on {house.get('address', house.get('url'))}: {exc}")
 
-    if rentcast_usage["calls"] != starting_calls:
-        save_rentcast_usage(rentcast_usage)
+    if rentcast_usage["calls"] != starting_rentcast_calls:
+        save_monthly_usage(RENTCAST_USAGE_PATH, rentcast_usage)
         print(f"RentCast calls this month: {rentcast_usage['calls']}/{RENTCAST_MONTHLY_LIMIT}")
+
+    if streetview_usage["calls"] != starting_streetview_calls:
+        save_monthly_usage(STREETVIEW_USAGE_PATH, streetview_usage)
+        print(f"Street View calls this month: {streetview_usage['calls']}/{STREETVIEW_MONTHLY_LIMIT}")
 
     if any_changed:
         save_houses(houses)

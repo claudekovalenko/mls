@@ -57,9 +57,17 @@ tracker UI are intentionally simple for now.
    - `RENTCAST_API_KEY` (optional) — a free API key from [rentcast.io](https://rentcast.io) used
      to fill in beds/baths/sqft/estimated value for tracked houses by address, as a fallback for
      whatever the listing-page scrape couldn't get (which is most of the time for sites like
-     Zillow that block scraping outright). Only queried once per house to stay within the free
-     tier's monthly quota. Price filled in this way is a valuation estimate, not the real listing
-     price — shown with a `~` prefix in the tracker.
+     Zillow that block scraping outright). Hard-capped at 45 calls/month (5 below RentCast's free
+     50-call limit) via `rentcast_usage.json`, and only queried once per house ever. Price filled
+     in this way is a valuation estimate, not the real listing price — shown with a `~` prefix in
+     the tracker.
+   - `GOOGLE_MAPS_API_KEY` (optional) — a Google Maps Platform API key with the **Street View
+     Static API** enabled, used as a photo fallback when a listing has no photo (again, mainly
+     for Zillow). Requires a Google Cloud project with billing enabled — Google auto-applies
+     $200/month in free credit, and this uses ~$0.014/house (2 calls), so it stays free at any
+     realistic scale. Hard-capped at 100 calls/month via `streetview_usage.json`, and only
+     queried once per house ever. Fetched photos are saved into `docs/photos/` and committed —
+     the API key itself is never exposed in `houses.json` or anywhere public.
 3. Without secrets configured, the alert workflow still runs and prints the would-be email to the
    Action log instead of sending it, and the reply-processing workflow just skips checking.
 4. **Create your GitHub token** at
