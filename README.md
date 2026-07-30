@@ -18,13 +18,14 @@ tracker UI are intentionally simple for now.
 - `docs/index.html` — the House Tracker (see below), published via GitHub Pages. Two tabs:
   **All Houses** (everything) and **Highlights** (liked houses, plus new ones added via email
   reply). Add, edit, heart, filter, and sort houses from the browser.
-- `scripts/refresh_listings.py` — best-effort daily re-check of each house's listing URL for a
-  new price or photo (via Open Graph tags). Every house is refreshed independently, so one
+- `scripts/refresh_listings.py` — best-effort re-check (every 2 hours) of each house's listing URL
+  for a new price or photo (via Open Graph tags). Every house is refreshed independently, so one
   blocked/broken listing never stops the rest or fails the workflow. Anti-scraping sites (Zillow
-  in particular) may often yield nothing — that's expected; price/photo can always be edited by
-  hand.
-- `.github/workflows/refresh-listings.yml` — runs `refresh_listings.py` daily and commits any
-  price/photo updates.
+  in particular) reliably block this — confirmed via 403 responses even from GitHub's own
+  servers — so it usually won't do anything for Zillow listings specifically; price/photo can
+  always be edited by hand instead.
+- `.github/workflows/refresh-listings.yml` — runs `refresh_listings.py` every 2 hours and commits
+  any price/photo updates it manages to find.
 - `criteria.json` — the daily email alert's search filter (location, price range, beds/baths,
   property types, keywords, recipient email). Keywords are matched (case-insensitive) against
   each listing's description/remarks/title/address — a listing only needs to contain one of them.
@@ -58,10 +59,7 @@ tracker UI are intentionally simple for now.
 4. **Create your GitHub token** at
    [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta), scoped to
    only this repo (`Repository access` → `Only select repositories` → `mls`). Under
-   `Permissions`, click **+ Add permissions** and add:
-   - **Contents** → Read and write (required — this is what lets the site save houses/criteria)
-   - **Actions** → Read and write (optional — lets the tracker instantly trigger a detail refresh
-     right after you add a house by URL; without it, details just wait for the next scheduled run)
+   `Permissions`, click **+ Add permissions** and add **Contents** → Read and write.
 
    Paste the generated token into the tracker's "GitHub access token" section and click
    **Save Token**, then **Test Token** to confirm it actually has write access before relying on
