@@ -479,6 +479,16 @@
     tabHighlights.addEventListener("click", () => setTab("highlights"));
 
     function labelForUrl(url) {
+      // Best-effort address straight from the URL text itself — no network
+      // request, so it works instantly for every site, including ones that
+      // block scraping (Zillow etc).
+      const zillowMatch = url.match(/\/homedetails\/([^/]+)\/\d+_zpid/i);
+      if (zillowMatch) return decodeURIComponent(zillowMatch[1]).replace(/-/g, " ");
+
+      const segments = url.split("?")[0].split("/").filter(Boolean);
+      const addressLike = segments.find(s => /-/.test(s) && /\d/.test(s) && /[a-zA-Z]/.test(s));
+      if (addressLike) return decodeURIComponent(addressLike).replace(/-/g, " ");
+
       try {
         return new URL(url).hostname.replace(/^www\./, "") + " listing";
       } catch {
