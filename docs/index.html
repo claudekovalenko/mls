@@ -78,9 +78,15 @@
   <details>
     <summary>GitHub access token (needed once, to save changes)</summary>
     <p>Create a fine-grained <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub token</a>
-       scoped to only this repo. Under "Permissions" click <strong>+ Add permissions</strong> and add
-       <strong>Contents</strong> &rarr; Read and write. Then paste the token below. It's stored only
-       in this browser (localStorage), never sent anywhere except GitHub's API.</p>
+       scoped to only this repo. Under "Permissions" click <strong>+ Add permissions</strong> and add:</p>
+    <ul>
+      <li><strong>Contents</strong> &rarr; Read and write (required — lets it save houses/criteria)</li>
+      <li><strong>Actions</strong> &rarr; Read and write (lets it instantly trigger price/beds/baths/photo
+        auto-fill right after you add a house; without it, houses still get filled in on the next
+        scheduled run, within 2 hours)</li>
+    </ul>
+    <p>Then paste the token below. It's stored only in this browser (localStorage), never sent
+       anywhere except GitHub's API.</p>
     <label>GitHub Token
       <input type="password" id="ghToken" style="max-width:320px;">
     </label>
@@ -152,6 +158,8 @@
     const REPO = "mls";
     const BRANCH = "main";
     const PATH = "houses.json";
+    const RENTCAST_MONTHLY_LIMIT = 45; // keep in sync with scripts/refresh_listings.py
+    const STREETVIEW_MONTHLY_LIMIT = 100; // keep in sync with scripts/refresh_listings.py
 
     let houses = [];
     let sha = null;
@@ -277,6 +285,67 @@
         render();
       } catch (err) {
         setStatus("Could not load houses: " + err.message, false);
+      }
+    }
+
+    async function fetchUsage(filename) {
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${filename}?t=${Date.now()}`);
+        if (!res.ok) return { calls: 0 }; // file doesn't exist yet = no calls made yet
+        return await res.json();
+      } catch {
+        return null; // couldn't check — treat as unknown, don't block the trigger on a network hiccup
+      }
+    }
+
+    async function triggerAutoFill(address) {
+      const token = localStorage.getItem("gh_token");
+      if (!token) return;
+
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const [rentcastUsage, streetviewUsage] = await Promise.all([
+        fetchUsage("rentcast_usage.json"),
+        fetchUsage("streetview_usage.json"),
+      ]);
+
+      const rentcastCalls = (rentcastUsage && rentcastUsage.month === currentMonth) ? rentcastUsage.calls : 0;
+      const streetviewCalls = (streetviewUsage && streetviewUsage.month === currentMonth) ? streetviewUsage.calls : 0;
+
+      const rentcastMaxed = rentcastCalls >= RENTCAST_MONTHLY_LIMIT;
+      const streetviewMaxed = streetviewCalls >= STREETVIEW_MONTHLY_LIMIT;
+
+      if (rentcastMaxed && streetviewMaxed) {
+        setStatus("House added. Auto-fill is paused this month — both the price/beds/baths lookup and the photo lookup have hit their monthly limit. You can fill details in by hand via Edit.", false);
+        return;
+      }
+      if (rentcastMaxed) {
+        setStatus("House added. Note: the price/beds/baths auto-fill has hit its monthly limit — photo lookup will still run.", false);
+      } else if (streetviewMaxed) {
+        setStatus("House added. Note: the photo auto-fill has hit its monthly limit — price/beds/baths lookup will still run.", false);
+      } else {
+        setStatus("House added — pulling in details automatically…", true);
+      }
+
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/refresh-listings.yml/dispatches`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Accept": "application/vnd.github+json",
+            },
+            body: JSON.stringify({ ref: BRANCH }),
+          }
+        );
+        if (res.status === 403 || res.status === 404) {
+          setStatus(
+            "House added, but couldn't auto-trigger the detail lookup (token needs \"Actions: Read and write\" permission too — it'll still fill in on the next scheduled run within 2 hours).",
+            false
+          );
+        }
+      } catch {
+        // Best-effort only — the scheduled workflow will still catch it later.
       }
     }
 
@@ -488,6 +557,8 @@
       if (!ok) {
         houses.pop();
         render();
+      } else {
+        triggerAutoFill(entry.address);
       }
       return ok;
     }
@@ -546,6 +617,7 @@
       if (ok) {
         dialog.close();
         render();
+        if (isNew && entry.url) triggerAutoFill(entry.address);
       } else {
         if (idx >= 0) houses[idx] = entry; else houses.pop();
       }
