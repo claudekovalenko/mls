@@ -28,6 +28,8 @@ from datetime import date
 from pathlib import Path
 
 HOUSES_PATH = Path(__file__).resolve().parent.parent / "houses.json"
+RENTCAST_USAGE_PATH = Path(__file__).resolve().parent.parent / "rentcast_usage.json"
+RENTCAST_MONTHLY_LIMIT = 45  # hard stop with a safety margin below the free tier's 50
 TIMEOUT = 15
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -52,6 +54,25 @@ def load_houses():
 
 def save_houses(houses):
     HOUSES_PATH.write_text(json.dumps(houses, indent=2) + "\n")
+
+
+def load_rentcast_usage():
+    current_month = date.today().strftime("%Y-%m")
+    if RENTCAST_USAGE_PATH.exists():
+        try:
+            usage = json.loads(RENTCAST_USAGE_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            usage = {}
+    else:
+        usage = {}
+    if usage.get("month") != current_month:
+        usage = {"month": current_month, "calls": 0}
+    usage.setdefault("calls", 0)
+    return usage
+
+
+def save_rentcast_usage(usage):
+    RENTCAST_USAGE_PATH.write_text(json.dumps(usage, indent=2) + "\n")
 
 
 def fetch_html(url):
@@ -105,9 +126,12 @@ def query_rentcast(path, address, api_key):
         return json.loads(resp.read())
 
 
-def refresh_from_rentcast(house):
+def refresh_from_rentcast(house, usage):
     """RentCast fallback, keyed by address. Only queried once per house ever
-    (rentcastChecked) to stay within the free tier's monthly request quota."""
+    (rentcastChecked), and every actual call is counted against a persisted
+    monthly budget (usage["calls"]) with a hard stop well below the free
+    tier's 50/month limit — checked before EVERY call, not just once, so a
+    partial budget can still make one last call safely instead of two."""
     api_key = os.environ.get("RENTCAST_API_KEY")
     if not api_key or house.get("rentcastChecked"):
         return False
@@ -118,12 +142,16 @@ def refresh_from_rentcast(house):
     house["rentcastChecked"] = True
     changed = False
 
-    try:
-        records = query_rentcast("properties", address, api_key)
-        record = records[0] if isinstance(records, list) and records else None
-    except Exception as exc:
-        print(f"  rentcast property lookup failed for {address}: {exc}")
-        record = None
+    record = None
+    if usage["calls"] < RENTCAST_MONTHLY_LIMIT:
+        usage["calls"] += 1
+        try:
+            records = query_rentcast("properties", address, api_key)
+            record = records[0] if isinstance(records, list) and records else None
+        except Exception as exc:
+            print(f"  rentcast property lookup failed for {address}: {exc}")
+    else:
+        print(f"  rentcast monthly call budget ({RENTCAST_MONTHLY_LIMIT}) reached, skipping property lookup")
 
     if record:
         if house.get("beds") is None and record.get("bedrooms") is not None:
@@ -137,12 +165,16 @@ def refresh_from_rentcast(house):
             changed = True
 
     if house.get("price") is None:
-        try:
-            estimate = query_rentcast("avm/value", address, api_key)
-            price = estimate.get("price") if isinstance(estimate, dict) else None
-        except Exception as exc:
-            print(f"  rentcast value estimate failed for {address}: {exc}")
-            price = None
+        price = None
+        if usage["calls"] < RENTCAST_MONTHLY_LIMIT:
+            usage["calls"] += 1
+            try:
+                estimate = query_rentcast("avm/value", address, api_key)
+                price = estimate.get("price") if isinstance(estimate, dict) else None
+            except Exception as exc:
+                print(f"  rentcast value estimate failed for {address}: {exc}")
+        else:
+            print(f"  rentcast monthly call budget ({RENTCAST_MONTHLY_LIMIT}) reached, skipping value estimate")
         if price:
             house["price"] = price
             house["priceIsEstimate"] = True
@@ -154,7 +186,7 @@ def refresh_from_rentcast(house):
     return changed
 
 
-def refresh_house(house):
+def refresh_house(house, rentcast_usage):
     """Mutates house in place. Returns True if anything changed."""
     changed = False
     url = house.get("url")
@@ -223,7 +255,7 @@ def refresh_house(house):
             print(f"  address parse failed for {house.get('address', url)}: {exc}")
 
     try:
-        if refresh_from_rentcast(house):
+        if refresh_from_rentcast(house, rentcast_usage):
             changed = True
     except Exception as exc:
         print(f"  rentcast lookup failed for {house.get('address', url)}: {exc}")
@@ -233,13 +265,20 @@ def refresh_house(house):
 
 def main():
     houses = load_houses()
+    rentcast_usage = load_rentcast_usage()
+    starting_calls = rentcast_usage["calls"]
     any_changed = False
+
     for house in houses:
         try:
-            if refresh_house(house):
+            if refresh_house(house, rentcast_usage):
                 any_changed = True
         except Exception as exc:
             print(f"  unexpected error on {house.get('address', house.get('url'))}: {exc}")
+
+    if rentcast_usage["calls"] != starting_calls:
+        save_rentcast_usage(rentcast_usage)
+        print(f"RentCast calls this month: {rentcast_usage['calls']}/{RENTCAST_MONTHLY_LIMIT}")
 
     if any_changed:
         save_houses(houses)
