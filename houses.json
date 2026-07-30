@@ -34,7 +34,7 @@
     "status": "Under Contract",
     "rating": 0,
     "notes": "",
-    "liked": false,
+    "liked": true,
     "source": "manual",
     "addedBy": "Ryan",
     "dateAdded": "2026-07-30"
