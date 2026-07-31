@@ -25,9 +25,14 @@
     "addressIsGuessed": false,
     "url": "https://www.zillow.com/homedetails/1912-King-Arthurs-Ct-Marietta-GA-30062/14263145_zpid/",
     "photoUrl": "https://photos.zillowstatic.com/fp/cfc9af46336186ec463f122ca97b1dd8-cc_ft_1536.webp",
-    "price": 530000,
+    "price": 369000,
     "priceIsEstimate": false,
-    "priceHistory": [],
+    "priceHistory": [
+      {
+        "date": "2026-07-31",
+        "price": 530000
+      }
+    ],
     "beds": 4,
     "baths": 2,
     "sqft": 2288,
