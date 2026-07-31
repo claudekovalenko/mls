@@ -343,44 +343,96 @@
             "House added, but couldn't auto-trigger the detail lookup (token needs \"Actions: Read and write\" permission too — it'll still fill in on the next scheduled run within 2 hours).",
             false
           );
+        } else if (res.ok) {
+          // The workflow typically finishes in 15-30s. Reload automatically
+          // so newly-filled price/beds/photo show up without the user
+          // having to hit refresh themselves.
+          setTimeout(() => {
+            loadHouses().then(() => setStatus("Details updated.", true));
+          }, 25000);
         }
       } catch {
         // Best-effort only — the scheduled workflow will still catch it later.
       }
     }
 
-    async function saveHouses(message) {
+    async function putHouses(token, message) {
+      const putRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json",
+        },
+        body: JSON.stringify({
+          message,
+          content: btoa(JSON.stringify(houses, null, 2) + "\n"),
+          sha,
+          branch: BRANCH,
+        }),
+      });
+      if (!putRes.ok) {
+        const errBody = await putRes.json().catch(() => ({}));
+        const err = new Error(errBody.message || `GitHub API ${putRes.status}`);
+        err.status = putRes.status;
+        throw err;
+      }
+      return await putRes.json();
+    }
+
+    async function saveHouses(message, changedId) {
       const token = localStorage.getItem("gh_token");
       if (!token) {
         setStatus("Add a GitHub token below first (needed to save).", false);
         return false;
       }
       try {
-        const putRes = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}`, {
-          method: "PUT",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Accept": "application/vnd.github+json",
-          },
-          body: JSON.stringify({
-            message,
-            content: btoa(JSON.stringify(houses, null, 2) + "\n"),
-            sha,
-            branch: BRANCH,
-          }),
-        });
-        if (!putRes.ok) {
-          const errBody = await putRes.json().catch(() => ({}));
-          throw new Error(errBody.message || `GitHub API ${putRes.status}`);
-        }
-        const putData = await putRes.json();
+        const putData = await putHouses(token, message);
         sha = putData.content.sha;
         setStatus("Saved.", true);
         return true;
       } catch (err) {
+        // 409 = someone else (usually the auto-refresh workflow, or another
+        // browser tab) committed houses.json after we loaded it, so our sha
+        // is stale. Re-fetch the latest version, re-apply ONLY the house we
+        // actually meant to change on top of it, and retry once — this way
+        // we don't clobber auto-fill data the workflow wrote for every
+        // OTHER house in the meantime.
+        const isStaleShaConflict = err.status === 409 || /does not match/i.test(err.message);
+        if (isStaleShaConflict && changedId) {
+          setStatus("Someone else updated the data — merging and retrying…", true);
+          try {
+            const res = await fetch(apiUrl());
+            if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+            const data = await res.json();
+            const latestHouses = JSON.parse(atob(data.content));
+            sha = data.sha;
+            houses = mergeHouseChange(latestHouses, houses, changedId);
+            const putData = await putHouses(token, message);
+            sha = putData.content.sha;
+            render();
+            setStatus("Saved.", true);
+            return true;
+          } catch (retryErr) {
+            setStatus("Save failed after retry: " + retryErr.message, false);
+            return false;
+          }
+        }
         setStatus("Save failed: " + err.message, false);
         return false;
       }
+    }
+
+    function mergeHouseChange(latestHouses, localHouses, changedId) {
+      // Take the server's latest data for EVERY house (picks up any
+      // auto-fill written since we last loaded), except the one house this
+      // save was actually about — for that one, use our local version
+      // (add/edit) or omit it (delete), since that's the whole point of
+      // this save.
+      const localChanged = localHouses.find(h => h.id === changedId);
+      const merged = latestHouses
+        .filter(h => h.id !== changedId)
+        .concat(localChanged ? [localChanged] : []);
+      return merged;
     }
 
     function render() {
@@ -450,7 +502,7 @@
       const prev = !!house.liked;
       house.liked = !prev;
       render();
-      const ok = await saveHouses(`${house.liked ? "Highlight" : "Un-highlight"} house: ${house.address}`);
+      const ok = await saveHouses(`${house.liked ? "Highlight" : "Un-highlight"} house: ${house.address}`, id);
       if (!ok) {
         house.liked = prev;
         render();
@@ -553,7 +605,7 @@
       };
       houses.push(entry);
       render();
-      const ok = await saveHouses(`Add house: ${entry.address}`);
+      const ok = await saveHouses(`Add house: ${entry.address}`, entry.id);
       if (!ok) {
         houses.pop();
         render();
@@ -613,7 +665,7 @@
       if (idx >= 0) houses[idx] = entry; else houses.push(entry);
 
       const isNew = idx < 0;
-      const ok = await saveHouses(isNew ? `Add house: ${entry.address}` : `Update house: ${entry.address}`);
+      const ok = await saveHouses(isNew ? `Add house: ${entry.address}` : `Update house: ${entry.address}`, id);
       if (ok) {
         dialog.close();
         render();
@@ -628,7 +680,7 @@
       const idx = houses.findIndex(h => h.id === id);
       if (idx < 0) return;
       const removed = houses.splice(idx, 1)[0];
-      const ok = await saveHouses(`Remove house: ${removed.address}`);
+      const ok = await saveHouses(`Remove house: ${removed.address}`, removed.id);
       if (ok) {
         dialog.close();
         render();
