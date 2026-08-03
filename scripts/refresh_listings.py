@@ -154,12 +154,24 @@ def refresh_from_rentcast(house, usage):
     (rentcastChecked), and every actual call is counted against a persisted
     monthly budget (usage["calls"]) with a hard stop well below the free
     tier's 50/month limit — checked before EVERY call, not just once, so a
-    partial budget can still make one last call safely instead of two."""
+    partial budget can still make one last call safely instead of two.
+
+    Defense in depth: rentcastChecked previously got silently dropped by the
+    tracker UI's edit form (it rebuilt the whole house object without
+    preserving it), causing indefinite re-querying and real overage charges
+    on a paid API. That's fixed on the UI side now, but this function no
+    longer trusts the flag alone — it also skips if beds/baths are already
+    both known, since there'd be nothing left for the property lookup to
+    usefully fill in regardless of what wrote that data."""
     api_key = os.environ.get("RENTCAST_API_KEY")
     if not api_key or house.get("rentcastChecked"):
         return False
     address = house.get("address")
     if not looks_like_real_address(address):
+        return False
+    if house.get("beds") is not None and house.get("baths") is not None and house.get("price") is not None:
+        # Nothing this function could add — treat as checked without spending a call.
+        house["rentcastChecked"] = True
         return False
 
     house["rentcastChecked"] = True
