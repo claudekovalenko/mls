@@ -659,6 +659,13 @@
         source: existing?.source || "manual",
         addedBy: document.getElementById("f-added-by").value,
         dateAdded: existing?.dateAdded || new Date().toISOString().slice(0, 10),
+        // Preserve these "already looked up" flags across edits — otherwise
+        // saving any edit (even just a status change) would silently drop
+        // them, and the refresh workflow would treat the house as
+        // never-checked and re-query RentCast/Street View on every run
+        // forever, burning real paid API calls for no reason.
+        rentcastChecked: existing?.rentcastChecked || false,
+        streetViewChecked: existing?.streetViewChecked || false,
       };
 
       const idx = houses.findIndex(h => h.id === id);
