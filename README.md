@@ -23,9 +23,9 @@ full-screen like a native app, no App Store needed:
   (Interested / Touring Scheduled / Toured / Offer Made / Under Contract / Purchased / Rejected),
   star rating, notes, `liked` flag, `source` (`manual` or `email`), `addedBy` (Ryan or Ivan), date
   added, and flip/BRRRR analysis inputs: `rehabCost`, `arv`, `rentEstimate`.
-- `docs/index.html` — the House Tracker (see below), published via GitHub Pages. Three tabs:
-  **All Houses** (everything) and **Highlights** (liked houses, plus new ones added via email
-  reply). Add, edit, heart, filter, and sort houses from the browser.
+- `docs/index.html` — the House Tracker (see below), published via GitHub Pages. A floating
+  bottom nav switches between two full screens: **Houses** (All Houses / Highlights tabs — add,
+  edit, heart, filter, sort) and **Calculator** (see below).
 - `scripts/refresh_listings.py` — best-effort re-check (every 2 hours) of each house's listing URL
   for a new price or photo (via Open Graph tags). Every house is refreshed independently, so one
   blocked/broken listing never stops the rest or fails the workflow. Anti-scraping sites (Zillow
@@ -111,13 +111,16 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
 - Click **Edit** on any row to update its status/rating/notes as you go through the process, or
   delete it.
 - Filter by status and sort by date added / price / rating / address.
-- **Deals tab** — rough flip and BRRRR math for any house with **Rehab Cost** and **ARV**
-  (after-repair value) filled in (via Edit). Shows the 70% rule max offer, estimated flip profit
-  (assumes 8% selling costs), BRRRR cash left in the deal after a 75%-LTV refinance, BRRRR
-  cash-on-cash return (assumes 7%/30yr on the refi loan and the 50% rule for operating expenses),
-  and the 1% rule ratio. Rent Estimate auto-fills from RentCast when available, same as
-  price/beds/baths. These are quick screening heuristics, not underwriting — always verify real
-  numbers before making an offer.
+- **Calculator screen** (bottom nav) — a live, editable flip/BRRRR calculator. Type in
+  Price/Rehab Cost/ARV/Rent Estimate directly (a blank scratch-pad calculator), or pick a saved
+  house from the dropdown — or just tap any card below — to load its numbers in; edit them and
+  hit **Save these numbers to the loaded house** to write changes back. Shows the 70% rule max
+  offer, estimated flip profit (assumes 8% selling costs), BRRRR cash left in the deal after a
+  75%-LTV refinance, BRRRR cash-on-cash return (assumes 7%/30yr on the refi loan and the 50% rule
+  for operating expenses), and the 1% rule ratio, all updating live as you type. Below the
+  calculator, every house with Rehab Cost or ARV already filled in shows as its own card. Rent
+  Estimate auto-fills from RentCast when available, same as price/beds/baths. These are quick
+  screening heuristics, not underwriting — always verify real numbers before making an offer.
 
 All changes commit straight to `houses.json` on `main`. You can also edit that file directly in
 GitHub if you prefer.

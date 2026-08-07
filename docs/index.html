@@ -14,6 +14,7 @@
 </head>
 <body>
 <div class="wrap">
+  <div id="screen-houses">
   <nav class="top-nav"><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
   <div class="eyebrow">Atlanta House Hunt</div>
   <h1>House Tracker</h1>
@@ -32,7 +33,6 @@
     <div class="tabs">
       <button class="tab-btn active" id="tab-all">All Houses</button>
       <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
-      <button class="tab-btn" id="tab-deals">Deals 🧮</button>
     </div>
 
     <div class="toolbar">
@@ -79,20 +79,54 @@
         <tbody id="house-rows"></tbody>
       </table>
     </div>
-
-    <div id="deals-wrap" style="display:none;">
-      <p class="sub" style="margin-top:0;">
-        Rule-of-thumb estimates from Price / Rehab Cost / ARV / Rent Estimate — edit any house to fill
-        those in. Assumes 8% selling costs on flips, 75% ARV refinance and 7%/30yr on BRRRR, and the
-        50% rule for BRRRR operating expenses. These are ballpark numbers for screening, not underwriting.
-      </p>
-      <div id="deal-cards" class="deal-cards"></div>
-      <div id="deals-empty-msg" class="empty" style="display:none;">
-        No houses have Rehab Cost / ARV filled in yet — edit a house to add them.
-      </div>
-    </div>
     <div id="empty-msg" class="empty" style="display:none;">No houses yet — click "+ Add House" to start tracking one.</div>
   </div>
+  </div>
+
+  <div id="screen-calculator" style="display:none;">
+    <div class="eyebrow">Flip / BRRRR</div>
+    <h1>Deal Calculator</h1>
+    <p class="sub">
+      Rule-of-thumb estimates, not underwriting. Assumes 8% selling costs on flips, a 75% ARV
+      refinance at 7%/30yr on BRRRR, and the 50% rule for BRRRR operating expenses.
+    </p>
+
+    <div class="card">
+      <label>Load a saved house (optional)
+        <select id="calc-house-select">
+          <option value="">— blank calculator —</option>
+        </select>
+      </label>
+      <div class="row">
+        <div><label>Price <input type="number" id="calc-price"></label></div>
+        <div><label>Rehab Cost <input type="number" id="calc-rehab"></label></div>
+      </div>
+      <div class="row">
+        <div><label>ARV (after-repair value) <input type="number" id="calc-arv"></label></div>
+        <div><label>Rent Estimate /mo <input type="number" id="calc-rent"></label></div>
+      </div>
+      <div class="deal-stats" id="calc-stats" style="margin-top:18px;"></div>
+      <button class="secondary" id="calc-save-btn" type="button" style="display:none;margin-top:16px;">
+        Save these numbers to the loaded house
+      </button>
+    </div>
+
+    <h2 style="margin-top:28px;">All flip/BRRRR candidates</h2>
+    <p class="sub">Houses with Rehab Cost or ARV already filled in — tap one to load it above.</p>
+    <div id="deal-cards" class="deal-cards"></div>
+    <div id="deals-empty-msg" class="empty" style="display:none;">
+      No houses have Rehab Cost / ARV filled in yet.
+    </div>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="bottom-nav-btn active" id="nav-houses" type="button">
+      <span class="bottom-nav-icon">🏠</span><span>Houses</span>
+    </button>
+    <button class="bottom-nav-btn" id="nav-calculator" type="button">
+      <span class="bottom-nav-icon">🧮</span><span>Calculator</span>
+    </button>
+  </nav>
 
   <details>
     <summary>GitHub access token (needed once, to save changes)</summary>
@@ -579,33 +613,38 @@
 
     const tabAll = document.getElementById("tab-all");
     const tabHighlights = document.getElementById("tab-highlights");
-    const tabDeals = document.getElementById("tab-deals");
     const pageSub = document.getElementById("page-sub");
-    const allHighlightsWrap = document.getElementById("all-highlights-table-wrap");
-    const dealsWrap = document.getElementById("deals-wrap");
-    const toolbarEl = document.querySelector(".toolbar");
 
     function setTab(tab) {
       activeTab = tab;
       tabAll.classList.toggle("active", tab === "all");
       tabHighlights.classList.toggle("active", tab === "highlights");
-      tabDeals.classList.toggle("active", tab === "deals");
-      allHighlightsWrap.style.display = tab === "deals" ? "none" : "block";
-      dealsWrap.style.display = tab === "deals" ? "block" : "none";
-      toolbarEl.style.display = tab === "deals" ? "none" : "flex";
-      if (tab === "deals") {
-        pageSub.textContent = "Rough flip and BRRRR math for every house with Rehab Cost / ARV filled in.";
-        renderDeals();
-      } else {
-        pageSub.textContent = tab === "highlights"
-          ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
-          : "Every house we're considering buying, with status, rating, and notes.";
-        render();
-      }
+      pageSub.textContent = tab === "highlights"
+        ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
+        : "Every house we're considering buying, with status, rating, and notes.";
+      render();
     }
     tabAll.addEventListener("click", () => setTab("all"));
     tabHighlights.addEventListener("click", () => setTab("highlights"));
-    tabDeals.addEventListener("click", () => setTab("deals"));
+
+    // ---- Bottom nav: Houses vs Calculator screens ----
+    const screenHouses = document.getElementById("screen-houses");
+    const screenCalculator = document.getElementById("screen-calculator");
+    const navHouses = document.getElementById("nav-houses");
+    const navCalculator = document.getElementById("nav-calculator");
+
+    function setScreen(screen) {
+      navHouses.classList.toggle("active", screen === "houses");
+      navCalculator.classList.toggle("active", screen === "calculator");
+      screenHouses.style.display = screen === "houses" ? "block" : "none";
+      screenCalculator.style.display = screen === "calculator" ? "block" : "none";
+      if (screen === "calculator") {
+        populateCalcHouseSelect();
+        renderDeals();
+      }
+    }
+    navHouses.addEventListener("click", () => setScreen("houses"));
+    navCalculator.addEventListener("click", () => setScreen("calculator"));
 
     // ---- Flip / BRRRR deal analysis ----
     // Rule-of-thumb assumptions for quick screening, not underwriting:
@@ -677,6 +716,28 @@
       return (n * 100).toFixed(1) + "%";
     }
 
+    function dealStatsHtml(house, m) {
+      const flipGood = m.flipProfit != null && house.price != null && m.maxOffer70 != null && house.price <= m.maxOffer70;
+      const onePercentGood = m.onePercentRatio != null && m.onePercentRatio >= 0.01;
+      return `
+        <div class="deal-stat ${m.flipProfit == null ? "deal-stat-empty" : (flipGood ? "deal-stat-good" : "deal-stat-bad")}">
+          <div class="deal-stat-label">Flip Profit</div>
+          <div class="deal-stat-value">${m.flipProfit != null ? fmtMoney(m.flipProfit) : "—"}</div>
+          <div class="deal-stat-sub">Max offer (70% rule): ${fmtMoney(m.maxOffer70)}</div>
+        </div>
+        <div class="deal-stat ${m.cashOnCash == null ? "deal-stat-empty" : (m.cashOnCash >= 0 ? "deal-stat-good" : "deal-stat-bad")}">
+          <div class="deal-stat-label">BRRRR Cash-on-Cash</div>
+          <div class="deal-stat-value">${fmtPercent(m.cashOnCash)}</div>
+          <div class="deal-stat-sub">Cash left in deal: ${fmtMoney(m.cashLeftInDeal)}</div>
+        </div>
+        <div class="deal-stat ${m.onePercentRatio == null ? "deal-stat-empty" : (onePercentGood ? "deal-stat-good" : "deal-stat-bad")}">
+          <div class="deal-stat-label">1% Rule</div>
+          <div class="deal-stat-value">${m.onePercentRatio != null ? fmtPercent(m.onePercentRatio) : "—"}</div>
+          <div class="deal-stat-sub">${m.brrrrCashflow != null ? fmtMoney(m.brrrrCashflow) + "/mo cashflow" : "needs rent estimate"}</div>
+        </div>
+      `;
+    }
+
     function renderDeals() {
       const cardsEl = document.getElementById("deal-cards");
       const dealsEmptyMsg = document.getElementById("deals-empty-msg");
@@ -689,14 +750,13 @@
       withMetrics.sort((a, b) => (b.metrics.flipProfit ?? -Infinity) - (a.metrics.flipProfit ?? -Infinity));
 
       for (const { house: h, metrics: m } of withMetrics) {
-        const flipGood = m.flipProfit != null && h.price != null && m.maxOffer70 != null && h.price <= m.maxOffer70;
-        const onePercentGood = m.onePercentRatio != null && m.onePercentRatio >= 0.01;
         const addr = h.url
-          ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
+          ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(h.address)}</a>`
           : escapeHtml(h.address);
 
         const card = document.createElement("div");
-        card.className = "deal-card";
+        card.className = "deal-card deal-card-clickable";
+        card.title = "Tap to load into the calculator above";
         card.innerHTML = `
           <div class="deal-card-header">
             <div class="deal-card-address">${addr}</div>
@@ -705,27 +765,70 @@
               ${h.rentEstimate != null ? `&middot; ${fmtMoney(h.rentEstimate)}/mo rent` : ""}
             </div>
           </div>
-          <div class="deal-stats">
-            <div class="deal-stat ${m.flipProfit == null ? "deal-stat-empty" : (flipGood ? "deal-stat-good" : "deal-stat-bad")}">
-              <div class="deal-stat-label">Flip Profit</div>
-              <div class="deal-stat-value">${m.flipProfit != null ? fmtMoney(m.flipProfit) : "—"}</div>
-              <div class="deal-stat-sub">Max offer (70% rule): ${fmtMoney(m.maxOffer70)}</div>
-            </div>
-            <div class="deal-stat ${m.cashOnCash == null ? "deal-stat-empty" : (m.cashOnCash >= 0 ? "deal-stat-good" : "deal-stat-bad")}">
-              <div class="deal-stat-label">BRRRR Cash-on-Cash</div>
-              <div class="deal-stat-value">${fmtPercent(m.cashOnCash)}</div>
-              <div class="deal-stat-sub">Cash left in deal: ${fmtMoney(m.cashLeftInDeal)}</div>
-            </div>
-            <div class="deal-stat ${m.onePercentRatio == null ? "deal-stat-empty" : (onePercentGood ? "deal-stat-good" : "deal-stat-bad")}">
-              <div class="deal-stat-label">1% Rule</div>
-              <div class="deal-stat-value">${m.onePercentRatio != null ? fmtPercent(m.onePercentRatio) : "—"}</div>
-              <div class="deal-stat-sub">${m.brrrrCashflow != null ? fmtMoney(m.brrrrCashflow) + "/mo cashflow" : "needs rent estimate"}</div>
-            </div>
-          </div>
+          <div class="deal-stats">${dealStatsHtml(h, m)}</div>
         `;
+        card.addEventListener("click", () => loadHouseIntoCalculator(h.id));
         cardsEl.appendChild(card);
       }
     }
+
+    // ---- Interactive calculator ----
+    function populateCalcHouseSelect() {
+      const select = document.getElementById("calc-house-select");
+      const current = select.value;
+      select.innerHTML = '<option value="">— blank calculator —</option>' +
+        houses.map(h => `<option value="${h.id}">${escapeHtml(h.address)}</option>`).join("");
+      select.value = houses.some(h => h.id === current) ? current : "";
+    }
+
+    function loadHouseIntoCalculator(id) {
+      document.getElementById("calc-house-select").value = id || "";
+      const house = houses.find(h => h.id === id);
+      document.getElementById("calc-price").value = house?.price ?? "";
+      document.getElementById("calc-rehab").value = house?.rehabCost ?? "";
+      document.getElementById("calc-arv").value = house?.arv ?? "";
+      document.getElementById("calc-rent").value = house?.rentEstimate ?? "";
+      document.getElementById("calc-save-btn").style.display = house ? "inline-block" : "none";
+      renderCalcStats();
+    }
+
+    function readCalcInputs() {
+      return {
+        price: Number(document.getElementById("calc-price").value) || null,
+        rehabCost: Number(document.getElementById("calc-rehab").value) || null,
+        arv: Number(document.getElementById("calc-arv").value) || null,
+        rentEstimate: Number(document.getElementById("calc-rent").value) || null,
+      };
+    }
+
+    function renderCalcStats() {
+      const inputs = readCalcInputs();
+      const metrics = computeDealMetrics(inputs);
+      document.getElementById("calc-stats").innerHTML = dealStatsHtml(inputs, metrics);
+    }
+
+    ["calc-price", "calc-rehab", "calc-arv", "calc-rent"].forEach(id => {
+      document.getElementById(id).addEventListener("input", renderCalcStats);
+    });
+
+    document.getElementById("calc-house-select").addEventListener("change", (e) => {
+      loadHouseIntoCalculator(e.target.value);
+    });
+
+    document.getElementById("calc-save-btn").addEventListener("click", async () => {
+      const id = document.getElementById("calc-house-select").value;
+      const house = houses.find(h => h.id === id);
+      if (!house) return;
+      const inputs = readCalcInputs();
+      house.price = inputs.price;
+      house.rehabCost = inputs.rehabCost;
+      house.arv = inputs.arv;
+      house.rentEstimate = inputs.rentEstimate;
+      const ok = await saveHouses(`Update deal numbers: ${house.address}`, id);
+      if (ok) renderDeals();
+    });
+
+    renderCalcStats();
 
     function labelForUrl(url) {
       // Best-effort address straight from the URL text itself — no network

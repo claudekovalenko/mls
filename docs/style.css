@@ -38,7 +38,7 @@ html, body {
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   margin: 0;
-  padding: 40px 20px 80px;
+  padding: 40px 20px calc(100px + env(safe-area-inset-bottom, 0px));
   line-height: 1.45;
 }
 
@@ -313,6 +313,43 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
   font-size: 0.92rem;
 }
 
+/* ---- Bottom nav ("liquid glass" floating bar) ---- */
+.bottom-nav {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  z-index: 50;
+}
+.bottom-nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 22px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--sub);
+  min-width: 76px;
+}
+.bottom-nav-icon { font-size: 1.25rem; line-height: 1; }
+.bottom-nav-btn.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-dark);
+}
+
 /* ---- Deal cards ---- */
 .deal-cards {
   display: flex;
@@ -326,6 +363,8 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
   padding: 18px 20px;
   box-shadow: var(--shadow);
 }
+.deal-card-clickable { cursor: pointer; transition: border-color 0.12s, transform 0.12s; }
+.deal-card-clickable:hover { border-color: var(--accent); transform: translateY(-1px); }
 .deal-card-header { margin-bottom: 14px; }
 .deal-card-address { font-weight: 700; font-size: 1.02rem; }
 .deal-card-inputs { color: var(--sub); font-size: 0.82rem; margin-top: 2px; }
