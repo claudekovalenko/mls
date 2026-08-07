@@ -11,11 +11,11 @@ tracker UI are intentionally simple for now.
 ## How it works
 
 - `houses.json` — every house we're tracking: address, price, `priceHistory` (logged
-  automatically whenever the price changes), beds/baths, listing URL, photo URL, status
+  automatically whenever the price changes), beds/baths/sqft, listing URL, photo URL, status
   (Interested / Touring Scheduled / Toured / Offer Made / Under Contract / Purchased / Rejected),
-  star rating, notes, `liked` flag, `source` (`manual` or `email`), `addedBy` (Ryan or Ivan),
-  date added.
-- `docs/index.html` — the House Tracker (see below), published via GitHub Pages. Two tabs:
+  star rating, notes, `liked` flag, `source` (`manual` or `email`), `addedBy` (Ryan or Ivan), date
+  added, and flip/BRRRR analysis inputs: `rehabCost`, `arv`, `rentEstimate`.
+- `docs/index.html` — the House Tracker (see below), published via GitHub Pages. Three tabs:
   **All Houses** (everything) and **Highlights** (liked houses, plus new ones added via email
   reply). Add, edit, heart, filter, and sort houses from the browser.
 - `scripts/refresh_listings.py` — best-effort re-check (every 2 hours) of each house's listing URL
@@ -103,6 +103,13 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
 - Click **Edit** on any row to update its status/rating/notes as you go through the process, or
   delete it.
 - Filter by status and sort by date added / price / rating / address.
+- **Deals tab** — rough flip and BRRRR math for any house with **Rehab Cost** and **ARV**
+  (after-repair value) filled in (via Edit). Shows the 70% rule max offer, estimated flip profit
+  (assumes 8% selling costs), BRRRR cash left in the deal after a 75%-LTV refinance, BRRRR
+  cash-on-cash return (assumes 7%/30yr on the refi loan and the 50% rule for operating expenses),
+  and the 1% rule ratio. Rent Estimate auto-fills from RentCast when available, same as
+  price/beds/baths. These are quick screening heuristics, not underwriting — always verify real
+  numbers before making an offer.
 
 All changes commit straight to `houses.json` on `main`. You can also edit that file directly in
 GitHub if you prefer.

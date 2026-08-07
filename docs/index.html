@@ -26,6 +26,7 @@
     <div class="tabs">
       <button class="tab-btn active" id="tab-all">All Houses</button>
       <button class="tab-btn" id="tab-highlights">Highlights ⭐</button>
+      <button class="tab-btn" id="tab-deals">Deals 🧮</button>
     </div>
 
     <div class="toolbar">
@@ -53,7 +54,7 @@
     </div>
     <div id="status"></div>
 
-    <div class="table-scroll">
+    <div class="table-scroll" id="all-highlights-table-wrap">
       <table>
         <thead>
           <tr>
@@ -71,6 +72,34 @@
         </thead>
         <tbody id="house-rows"></tbody>
       </table>
+    </div>
+
+    <div class="table-scroll" id="deals-table-wrap" style="display:none;">
+      <p class="sub" style="margin-top:0;">
+        Rule-of-thumb estimates from Price / Rehab Cost / ARV / Rent Estimate — edit any house to fill
+        those in. Assumes 8% selling costs on flips, 75% ARV refinance and 7%/30yr on BRRRR, and the
+        50% rule for BRRRR operating expenses. These are ballpark numbers for screening, not underwriting.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Address</th>
+            <th>Price</th>
+            <th>Rehab</th>
+            <th>ARV</th>
+            <th>Rent Est.</th>
+            <th>70% Rule Max Offer</th>
+            <th>Flip Profit</th>
+            <th>BRRRR Cash Left</th>
+            <th>BRRRR Cash-on-Cash</th>
+            <th>1% Rule</th>
+          </tr>
+        </thead>
+        <tbody id="deal-rows"></tbody>
+      </table>
+      <div id="deals-empty-msg" class="empty" style="display:none;">
+        No houses have Rehab Cost / ARV filled in yet — edit a house to add them.
+      </div>
     </div>
     <div id="empty-msg" class="empty" style="display:none;">No houses yet — click "+ Add House" to start tracking one.</div>
   </div>
@@ -110,6 +139,11 @@
         <div><label>Sqft <input type="number" id="f-sqft"></label></div>
       </div>
       <div id="price-history" class="price-history" style="display:none;"></div>
+      <div class="row">
+        <div><label>Rehab Cost estimate <input type="number" id="f-rehab-cost" placeholder="e.g. 40000"></label></div>
+        <div><label>ARV (after-repair value) <input type="number" id="f-arv" placeholder="e.g. 480000"></label></div>
+        <div><label>Rent Estimate /mo <input type="number" id="f-rent-estimate" placeholder="auto-filled if available"></label></div>
+      </div>
       <div class="row">
         <div>
           <label>Status
@@ -526,6 +560,9 @@
       document.getElementById("f-beds").value = house?.beds ?? "";
       document.getElementById("f-baths").value = house?.baths ?? "";
       document.getElementById("f-sqft").value = house?.sqft ?? "";
+      document.getElementById("f-rehab-cost").value = house?.rehabCost ?? "";
+      document.getElementById("f-arv").value = house?.arv ?? "";
+      document.getElementById("f-rent-estimate").value = house?.rentEstimate ?? "";
       document.getElementById("f-status").value = house?.status || "Interested";
       document.getElementById("f-rating").value = house?.rating ?? 0;
       document.getElementById("f-added-by").value = house?.addedBy || localStorage.getItem("added_by") || "Ryan";
@@ -552,19 +589,134 @@
 
     const tabAll = document.getElementById("tab-all");
     const tabHighlights = document.getElementById("tab-highlights");
+    const tabDeals = document.getElementById("tab-deals");
     const pageSub = document.getElementById("page-sub");
+    const allHighlightsWrap = document.getElementById("all-highlights-table-wrap");
+    const dealsWrap = document.getElementById("deals-table-wrap");
+    const toolbarEl = document.querySelector(".toolbar");
 
     function setTab(tab) {
       activeTab = tab;
       tabAll.classList.toggle("active", tab === "all");
       tabHighlights.classList.toggle("active", tab === "highlights");
-      pageSub.textContent = tab === "highlights"
-        ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
-        : "Every house we're considering buying, with status, rating, and notes.";
-      render();
+      tabDeals.classList.toggle("active", tab === "deals");
+      allHighlightsWrap.style.display = tab === "deals" ? "none" : "block";
+      dealsWrap.style.display = tab === "deals" ? "block" : "none";
+      toolbarEl.style.display = tab === "deals" ? "none" : "flex";
+      if (tab === "deals") {
+        pageSub.textContent = "Rough flip and BRRRR math for every house with Rehab Cost / ARV filled in.";
+        renderDeals();
+      } else {
+        pageSub.textContent = tab === "highlights"
+          ? "Houses we've highlighted, plus new ones liked straight from a daily alert email reply."
+          : "Every house we're considering buying, with status, rating, and notes.";
+        render();
+      }
     }
     tabAll.addEventListener("click", () => setTab("all"));
     tabHighlights.addEventListener("click", () => setTab("highlights"));
+    tabDeals.addEventListener("click", () => setTab("deals"));
+
+    // ---- Flip / BRRRR deal analysis ----
+    // Rule-of-thumb assumptions for quick screening, not underwriting:
+    const FLIP_SELLING_COST_PCT = 0.08;   // agent commission + closing costs
+    const FLIP_MAX_OFFER_PCT = 0.70;      // classic "70% rule"
+    const BRRRR_REFI_LTV = 0.75;          // typical cash-out refi loan-to-value on ARV
+    const BRRRR_INTEREST_RATE = 0.07;     // annual, 30yr fixed assumption
+    const BRRRR_LOAN_TERM_YEARS = 30;
+    const BRRRR_EXPENSE_RATIO = 0.50;     // "50% rule": taxes/insurance/maintenance/vacancy/capex/PM
+
+    function monthlyMortgagePayment(loanAmount, annualRate, years) {
+      if (!loanAmount || loanAmount <= 0) return 0;
+      const monthlyRate = annualRate / 12;
+      const numPayments = years * 12;
+      if (monthlyRate === 0) return loanAmount / numPayments;
+      return loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, numPayments))
+        / (Math.pow(1 + monthlyRate, numPayments) - 1);
+    }
+
+    function computeDealMetrics(house) {
+      const price = house.price;
+      const rehab = house.rehabCost;
+      const arv = house.arv;
+      const rent = house.rentEstimate;
+      const m = {};
+
+      if (arv != null) {
+        m.maxOffer70 = arv * FLIP_MAX_OFFER_PCT - (rehab || 0);
+      }
+
+      if (price != null && rehab != null && arv != null) {
+        const totalInvestment = price + rehab;
+        const sellingCosts = arv * FLIP_SELLING_COST_PCT;
+        m.flipProfit = arv - totalInvestment - sellingCosts;
+      }
+
+      if (price != null && rehab != null && arv != null) {
+        const allInCost = price + rehab;
+        const refiLoan = arv * BRRRR_REFI_LTV;
+        m.cashLeftInDeal = allInCost - refiLoan;
+        if (rent != null) {
+          const payment = monthlyMortgagePayment(refiLoan, BRRRR_INTEREST_RATE, BRRRR_LOAN_TERM_YEARS);
+          const monthlyCashflow = rent * BRRRR_EXPENSE_RATIO - payment;
+          m.brrrrCashflow = monthlyCashflow;
+          if (m.cashLeftInDeal > 0) {
+            m.cashOnCash = (monthlyCashflow * 12) / m.cashLeftInDeal;
+          } else {
+            m.cashOnCash = Infinity; // $0 or negative left in the deal = infinite return
+          }
+        }
+      }
+
+      if (rent != null && price != null && price > 0) {
+        m.onePercentRatio = rent / price;
+      }
+
+      return m;
+    }
+
+    function fmtMoney(n) {
+      if (n == null || Number.isNaN(n)) return "—";
+      const sign = n < 0 ? "-" : "";
+      return sign + "$" + Math.abs(Math.round(n)).toLocaleString();
+    }
+
+    function fmtPercent(n) {
+      if (n == null || Number.isNaN(n)) return "—";
+      if (n === Infinity) return "∞";
+      return (n * 100).toFixed(1) + "%";
+    }
+
+    function renderDeals() {
+      const dealRowsEl = document.getElementById("deal-rows");
+      const dealsEmptyMsg = document.getElementById("deals-empty-msg");
+      const candidates = houses.filter(h => h.rehabCost != null || h.arv != null);
+
+      dealRowsEl.innerHTML = "";
+      dealsEmptyMsg.style.display = candidates.length ? "none" : "block";
+
+      const withMetrics = candidates.map(h => ({ house: h, metrics: computeDealMetrics(h) }));
+      withMetrics.sort((a, b) => (b.metrics.flipProfit ?? -Infinity) - (a.metrics.flipProfit ?? -Infinity));
+
+      for (const { house: h, metrics: m } of withMetrics) {
+        const tr = document.createElement("tr");
+        const flipGood = m.flipProfit != null && h.price != null && m.maxOffer70 != null && h.price <= m.maxOffer70;
+        const onePercentGood = m.onePercentRatio != null && m.onePercentRatio >= 0.01;
+        tr.innerHTML = `
+          <td>${h.url ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>` : escapeHtml(h.address)}</td>
+          <td>${fmtMoney(h.price)}</td>
+          <td>${fmtMoney(h.rehabCost)}</td>
+          <td>${fmtMoney(h.arv)}</td>
+          <td>${h.rentEstimate != null ? fmtMoney(h.rentEstimate) + "/mo" : "—"}</td>
+          <td>${fmtMoney(m.maxOffer70)}</td>
+          <td>${m.flipProfit != null ? `<span class="pill ${flipGood ? 'pill-Purchased' : 'pill-Rejected'}">${fmtMoney(m.flipProfit)}</span>` : "—"}</td>
+          <td>${fmtMoney(m.cashLeftInDeal)}</td>
+          <td>${fmtPercent(m.cashOnCash)}</td>
+          <td>${m.onePercentRatio != null ? `<span class="pill ${onePercentGood ? 'pill-Purchased' : 'pill-Rejected'}">${fmtPercent(m.onePercentRatio)}</span>` : "—"}</td>
+        `;
+        dealRowsEl.appendChild(tr);
+      }
+    }
 
     function labelForUrl(url) {
       // Best-effort address straight from the URL text itself — no network
@@ -595,6 +747,10 @@
         priceHistory: [],
         beds: null,
         baths: null,
+        sqft: null,
+        rehabCost: null,
+        arv: null,
+        rentEstimate: null,
         status: "Interested",
         rating: 0,
         notes: "",
@@ -652,6 +808,9 @@
         beds: Number(document.getElementById("f-beds").value) || null,
         baths: Number(document.getElementById("f-baths").value) || null,
         sqft: Number(document.getElementById("f-sqft").value) || null,
+        rehabCost: Number(document.getElementById("f-rehab-cost").value) || null,
+        arv: Number(document.getElementById("f-arv").value) || null,
+        rentEstimate: Number(document.getElementById("f-rent-estimate").value) || null,
         status: document.getElementById("f-status").value,
         rating: Number(document.getElementById("f-rating").value) || 0,
         notes: document.getElementById("f-notes").value.trim(),

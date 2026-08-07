@@ -169,7 +169,8 @@ def refresh_from_rentcast(house, usage):
     address = house.get("address")
     if not looks_like_real_address(address):
         return False
-    if house.get("beds") is not None and house.get("baths") is not None and house.get("price") is not None:
+    if (house.get("beds") is not None and house.get("baths") is not None
+            and house.get("price") is not None and house.get("rentEstimate") is not None):
         # Nothing this function could add — treat as checked without spending a call.
         house["rentcastChecked"] = True
         return False
@@ -215,6 +216,22 @@ def refresh_from_rentcast(house, usage):
             house["priceIsEstimate"] = True
             changed = True
             print(f"  rentcast price estimate for {address}: ${price:,}")
+
+    if house.get("rentEstimate") is None:
+        rent = None
+        if usage["calls"] < RENTCAST_MONTHLY_LIMIT:
+            usage["calls"] += 1
+            try:
+                rent_estimate = query_rentcast("avm/rent/long-term", address, api_key)
+                rent = rent_estimate.get("rent") if isinstance(rent_estimate, dict) else None
+            except Exception as exc:
+                print(f"  rentcast rent estimate failed for {address}: {exc}")
+        else:
+            print(f"  rentcast monthly call budget ({RENTCAST_MONTHLY_LIMIT}) reached, skipping rent estimate")
+        if rent:
+            house["rentEstimate"] = rent
+            changed = True
+            print(f"  rentcast rent estimate for {address}: ${rent:,}/mo")
 
     if changed:
         print(f"  rentcast filled in details for {address}")
