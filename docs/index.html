@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>House Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f4a">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Houses">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -74,29 +80,13 @@
       </table>
     </div>
 
-    <div class="table-scroll" id="deals-table-wrap" style="display:none;">
+    <div id="deals-wrap" style="display:none;">
       <p class="sub" style="margin-top:0;">
         Rule-of-thumb estimates from Price / Rehab Cost / ARV / Rent Estimate — edit any house to fill
         those in. Assumes 8% selling costs on flips, 75% ARV refinance and 7%/30yr on BRRRR, and the
         50% rule for BRRRR operating expenses. These are ballpark numbers for screening, not underwriting.
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Address</th>
-            <th>Price</th>
-            <th>Rehab</th>
-            <th>ARV</th>
-            <th>Rent Est.</th>
-            <th>70% Rule Max Offer</th>
-            <th>Flip Profit</th>
-            <th>BRRRR Cash Left</th>
-            <th>BRRRR Cash-on-Cash</th>
-            <th>1% Rule</th>
-          </tr>
-        </thead>
-        <tbody id="deal-rows"></tbody>
-      </table>
+      <div id="deal-cards" class="deal-cards"></div>
       <div id="deals-empty-msg" class="empty" style="display:none;">
         No houses have Rehab Cost / ARV filled in yet — edit a house to add them.
       </div>
@@ -592,7 +582,7 @@
     const tabDeals = document.getElementById("tab-deals");
     const pageSub = document.getElementById("page-sub");
     const allHighlightsWrap = document.getElementById("all-highlights-table-wrap");
-    const dealsWrap = document.getElementById("deals-table-wrap");
+    const dealsWrap = document.getElementById("deals-wrap");
     const toolbarEl = document.querySelector(".toolbar");
 
     function setTab(tab) {
@@ -688,33 +678,52 @@
     }
 
     function renderDeals() {
-      const dealRowsEl = document.getElementById("deal-rows");
+      const cardsEl = document.getElementById("deal-cards");
       const dealsEmptyMsg = document.getElementById("deals-empty-msg");
       const candidates = houses.filter(h => h.rehabCost != null || h.arv != null);
 
-      dealRowsEl.innerHTML = "";
+      cardsEl.innerHTML = "";
       dealsEmptyMsg.style.display = candidates.length ? "none" : "block";
 
       const withMetrics = candidates.map(h => ({ house: h, metrics: computeDealMetrics(h) }));
       withMetrics.sort((a, b) => (b.metrics.flipProfit ?? -Infinity) - (a.metrics.flipProfit ?? -Infinity));
 
       for (const { house: h, metrics: m } of withMetrics) {
-        const tr = document.createElement("tr");
         const flipGood = m.flipProfit != null && h.price != null && m.maxOffer70 != null && h.price <= m.maxOffer70;
         const onePercentGood = m.onePercentRatio != null && m.onePercentRatio >= 0.01;
-        tr.innerHTML = `
-          <td>${h.url ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>` : escapeHtml(h.address)}</td>
-          <td>${fmtMoney(h.price)}</td>
-          <td>${fmtMoney(h.rehabCost)}</td>
-          <td>${fmtMoney(h.arv)}</td>
-          <td>${h.rentEstimate != null ? fmtMoney(h.rentEstimate) + "/mo" : "—"}</td>
-          <td>${fmtMoney(m.maxOffer70)}</td>
-          <td>${m.flipProfit != null ? `<span class="pill ${flipGood ? 'pill-Purchased' : 'pill-Rejected'}">${fmtMoney(m.flipProfit)}</span>` : "—"}</td>
-          <td>${fmtMoney(m.cashLeftInDeal)}</td>
-          <td>${fmtPercent(m.cashOnCash)}</td>
-          <td>${m.onePercentRatio != null ? `<span class="pill ${onePercentGood ? 'pill-Purchased' : 'pill-Rejected'}">${fmtPercent(m.onePercentRatio)}</span>` : "—"}</td>
+        const addr = h.url
+          ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
+          : escapeHtml(h.address);
+
+        const card = document.createElement("div");
+        card.className = "deal-card";
+        card.innerHTML = `
+          <div class="deal-card-header">
+            <div class="deal-card-address">${addr}</div>
+            <div class="deal-card-inputs">
+              ${fmtMoney(h.price)} price &middot; ${fmtMoney(h.rehabCost)} rehab &middot; ${fmtMoney(h.arv)} ARV
+              ${h.rentEstimate != null ? `&middot; ${fmtMoney(h.rentEstimate)}/mo rent` : ""}
+            </div>
+          </div>
+          <div class="deal-stats">
+            <div class="deal-stat ${m.flipProfit == null ? "deal-stat-empty" : (flipGood ? "deal-stat-good" : "deal-stat-bad")}">
+              <div class="deal-stat-label">Flip Profit</div>
+              <div class="deal-stat-value">${m.flipProfit != null ? fmtMoney(m.flipProfit) : "—"}</div>
+              <div class="deal-stat-sub">Max offer (70% rule): ${fmtMoney(m.maxOffer70)}</div>
+            </div>
+            <div class="deal-stat ${m.cashOnCash == null ? "deal-stat-empty" : (m.cashOnCash >= 0 ? "deal-stat-good" : "deal-stat-bad")}">
+              <div class="deal-stat-label">BRRRR Cash-on-Cash</div>
+              <div class="deal-stat-value">${fmtPercent(m.cashOnCash)}</div>
+              <div class="deal-stat-sub">Cash left in deal: ${fmtMoney(m.cashLeftInDeal)}</div>
+            </div>
+            <div class="deal-stat ${m.onePercentRatio == null ? "deal-stat-empty" : (onePercentGood ? "deal-stat-good" : "deal-stat-bad")}">
+              <div class="deal-stat-label">1% Rule</div>
+              <div class="deal-stat-value">${m.onePercentRatio != null ? fmtPercent(m.onePercentRatio) : "—"}</div>
+              <div class="deal-stat-sub">${m.brrrrCashflow != null ? fmtMoney(m.brrrrCashflow) + "/mo cashflow" : "needs rent estimate"}</div>
+            </div>
+          </div>
         `;
-        dealRowsEl.appendChild(tr);
+        cardsEl.appendChild(card);
       }
     }
 
@@ -856,6 +865,10 @@
     });
 
     loadHouses();
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+    }
   </script>
 </body>
 </html>

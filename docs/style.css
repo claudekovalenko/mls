@@ -313,6 +313,63 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
   font-size: 0.92rem;
 }
 
+/* ---- Deal cards ---- */
+.deal-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.deal-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+.deal-card-header { margin-bottom: 14px; }
+.deal-card-address { font-weight: 700; font-size: 1.02rem; }
+.deal-card-inputs { color: var(--sub); font-size: 0.82rem; margin-top: 2px; }
+
+.deal-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.deal-stat {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+}
+.deal-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--sub);
+}
+.deal-stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+.deal-stat-sub {
+  font-size: 0.78rem;
+  color: var(--sub);
+  margin-top: 4px;
+}
+.deal-stat-good {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.deal-stat-good .deal-stat-value { color: var(--accent-dark); }
+.deal-stat-bad {
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+  border-color: color-mix(in srgb, var(--err) 30%, transparent);
+}
+.deal-stat-bad .deal-stat-value { color: var(--err); }
+.deal-stat-empty .deal-stat-value { color: var(--sub); }
+
 /* ---- Dialog ---- */
 dialog {
   border: none;

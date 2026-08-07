@@ -8,6 +8,14 @@ This currently covers the **purchasing/shopping phase**. Once we own a house, th
 into ownership/management (maintenance, docs, expenses, etc.) — but `houses.json` and the
 tracker UI are intentionally simple for now.
 
+## Installing as an app on your phone
+
+The tracker is a Progressive Web App (PWA) — it can be installed to your home screen and opens
+full-screen like a native app, no App Store needed:
+
+- **iPhone (Safari)**: open the site, tap the Share icon, tap **Add to Home Screen**.
+- **Android (Chrome)**: open the site, tap the ⋮ menu, tap **Add to Home screen** (or **Install app**).
+
 ## How it works
 
 - `houses.json` — every house we're tracking: address, price, `priceHistory` (logged
