@@ -279,6 +279,18 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
   vertical-align: middle;
 }
 
+.badge-market {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .thumb {
   width: 140px;
   height: 100px;

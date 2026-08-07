@@ -16,13 +16,17 @@
 <div class="wrap">
   <div id="screen-houses">
   <nav class="top-nav"><a href="alert.html">Daily Alert Filter Settings &rarr;</a></nav>
-  <div class="eyebrow">Atlanta House Hunt</div>
+  <div class="eyebrow">Atlanta &amp; Los Angeles House Hunt</div>
   <h1>House Tracker</h1>
   <p class="sub" id="page-sub">Every house we're considering buying, with status, rating, and notes.</p>
 
   <div class="card">
     <form id="quick-add-form" class="quick-add">
       <input type="url" id="quick-add-url" placeholder="Paste a listing URL and press Enter to add it" required>
+      <select id="quick-add-market" title="Which market is this in?">
+        <option value="Atlanta">Atlanta</option>
+        <option value="Los Angeles">Los Angeles</option>
+      </select>
       <select id="quick-add-who" title="Who's adding this?">
         <option value="Ryan">Ryan</option>
         <option value="Ivan">Ivan</option>
@@ -37,6 +41,13 @@
 
     <div class="toolbar">
       <button class="secondary" id="add-btn">+ Add with details</button>
+      <label>Market
+        <select id="filter-market">
+          <option value="">All</option>
+          <option>Atlanta</option>
+          <option>Los Angeles</option>
+        </select>
+      </label>
       <label>Filter status
         <select id="filter-status">
           <option value="">All</option>
@@ -93,6 +104,14 @@
     </p>
 
     <div id="best-deal-banner" class="best-deal-banner" style="display:none;"></div>
+
+    <label>Market
+      <select id="filter-market-calc">
+        <option value="">All markets</option>
+        <option>Atlanta</option>
+        <option>Los Angeles</option>
+      </select>
+    </label>
 
     <details class="filter-details">
       <summary>Filter criteria — what counts as a "good" deal</summary>
@@ -211,6 +230,12 @@
           </label>
         </div>
       </div>
+      <label>Market
+        <select id="f-market">
+          <option value="Atlanta">Atlanta</option>
+          <option value="Los Angeles">Los Angeles</option>
+        </select>
+      </label>
       <label>Added by
         <select id="f-added-by">
           <option value="Ryan">Ryan</option>
@@ -340,6 +365,10 @@
     const quickAddWho = document.getElementById("quick-add-who");
     quickAddWho.value = localStorage.getItem("added_by") || "Ryan";
     quickAddWho.addEventListener("change", () => localStorage.setItem("added_by", quickAddWho.value));
+
+    const quickAddMarket = document.getElementById("quick-add-market");
+    quickAddMarket.value = localStorage.getItem("market") || "Atlanta";
+    quickAddMarket.addEventListener("change", () => localStorage.setItem("market", quickAddMarket.value));
 
     function setStatus(msg, ok) {
       statusEl.textContent = msg;
@@ -512,11 +541,13 @@
 
     function render() {
       const filter = document.getElementById("filter-status").value;
+      const marketFilter = document.getElementById("filter-market").value;
       const sortBy = document.getElementById("sort-by").value;
 
       let list = houses.slice();
       if (activeTab === "highlights") list = list.filter(h => h.liked || h.source === "email");
       if (filter) list = list.filter(h => h.status === filter);
+      if (marketFilter) list = list.filter(h => (h.market || "Atlanta") === marketFilter);
       list.sort((a, b) => {
         if (sortBy === "price") return (a.price || 0) - (b.price || 0);
         if (sortBy === "rating") return (b.rating || 0) - (a.rating || 0);
@@ -537,6 +568,7 @@
           ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank">${escapeHtml(h.address)}</a>`
           : escapeHtml(h.address);
         const newBadge = h.source === "email" ? '<span class="badge-new">NEW</span>' : "";
+        const marketBadge = `<span class="badge-market">${escapeHtml(h.market || "Atlanta")}</span>`;
         const photoCell = h.photoUrl
           ? `<img class="thumb" src="${escapeHtml(h.photoUrl)}" alt="">`
           : `<div class="thumb thumb-empty"></div>`;
@@ -551,7 +583,7 @@
         tr.innerHTML = `
           <td><button class="like-btn ${h.liked ? "liked" : ""}" data-id="${h.id}" title="Toggle highlight">${h.liked ? "♥" : "♡"}</button></td>
           <td>${photoCell}</td>
-          <td>${addr}${newBadge}</td>
+          <td>${addr} ${marketBadge}${newBadge}</td>
           <td>${priceCell}</td>
           <td>${h.beds ?? "?"}bd/${h.baths ?? "?"}ba${h.sqft ? `<br><span style="color:var(--sub);font-size:0.78rem;">${Number(h.sqft).toLocaleString()} sqft</span>` : ""}</td>
           <td><span class="pill pill-${STATUS_CLASS[h.status] || ""}">${escapeHtml(h.status || "")}</span></td>
@@ -606,6 +638,7 @@
       document.getElementById("f-rent-estimate").value = house?.rentEstimate ?? "";
       document.getElementById("f-status").value = house?.status || "Interested";
       document.getElementById("f-rating").value = house?.rating ?? 0;
+      document.getElementById("f-market").value = house?.market || localStorage.getItem("market") || "Atlanta";
       document.getElementById("f-added-by").value = house?.addedBy || localStorage.getItem("added_by") || "Ryan";
       document.getElementById("f-notes").value = house?.notes || "";
       document.getElementById("delete-btn").style.display = house ? "inline-block" : "none";
@@ -626,6 +659,7 @@
     document.getElementById("add-btn").addEventListener("click", () => openDialog(null));
     document.getElementById("cancel-btn").addEventListener("click", () => dialog.close());
     document.getElementById("filter-status").addEventListener("change", render);
+    document.getElementById("filter-market").addEventListener("change", render);
     document.getElementById("sort-by").addEventListener("change", render);
 
     const tabAll = document.getElementById("tab-all");
@@ -685,7 +719,13 @@
       for (const [key, id] of Object.entries(FILTER_IDS)) {
         document.getElementById(id).value = saved[key] ?? "";
       }
+      document.getElementById("filter-market-calc").value = localStorage.getItem("calc_market_filter") || "";
     }
+
+    document.getElementById("filter-market-calc").addEventListener("change", (e) => {
+      localStorage.setItem("calc_market_filter", e.target.value);
+      renderDeals();
+    });
 
     function saveFilters() {
       const values = {};
@@ -846,7 +886,9 @@
     function renderDeals() {
       const cardsEl = document.getElementById("deal-cards");
       const dealsEmptyMsg = document.getElementById("deals-empty-msg");
-      const candidates = houses.filter(h => h.rehabCost != null || h.arv != null);
+      const marketFilter = document.getElementById("filter-market-calc").value;
+      let candidates = houses.filter(h => h.rehabCost != null || h.arv != null);
+      if (marketFilter) candidates = candidates.filter(h => (h.market || "Atlanta") === marketFilter);
 
       cardsEl.innerHTML = "";
       dealsEmptyMsg.style.display = candidates.length ? "none" : "block";
@@ -869,7 +911,7 @@
         card.title = "Tap to load into the calculator above";
         card.innerHTML = `
           <div class="deal-card-header">
-            <div class="deal-card-address">${addr}${anyFilterSet && passes ? ' <span class="badge-new">PASSES</span>' : ""}</div>
+            <div class="deal-card-address">${addr} <span class="badge-market">${escapeHtml(h.market || "Atlanta")}</span>${anyFilterSet && passes ? ' <span class="badge-new">PASSES</span>' : ""}</div>
             <div class="deal-card-inputs">
               ${fmtMoneyMaybeEstimate(h.price, h.priceIsEstimate)} price &middot;
               ${fmtMoneyMaybeEstimate(h.rehabCost, h.rehabCostIsEstimate)} rehab &middot;
@@ -982,6 +1024,7 @@
         notes: "",
         liked: false,
         source: "manual",
+        market: document.getElementById("quick-add-market").value,
         addedBy: localStorage.getItem("added_by") || "Ryan",
         dateAdded: new Date().toISOString().slice(0, 10),
       };
@@ -1044,6 +1087,7 @@
         notes: document.getElementById("f-notes").value.trim(),
         liked: existing?.liked || false,
         source: existing?.source || "manual",
+        market: document.getElementById("f-market").value,
         addedBy: document.getElementById("f-added-by").value,
         dateAdded: existing?.dateAdded || new Date().toISOString().slice(0, 10),
         // Preserve these "already looked up" flags across edits — otherwise
