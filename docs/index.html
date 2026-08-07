@@ -234,6 +234,7 @@
     const PATH = "houses.json";
     const RENTCAST_MONTHLY_LIMIT = 45; // keep in sync with scripts/refresh_listings.py
     const STREETVIEW_MONTHLY_LIMIT = 100; // keep in sync with scripts/refresh_listings.py
+    const REHAB_COST_PER_SQFT_ESTIMATE = 20; // keep in sync with scripts/refresh_listings.py
 
     let houses = [];
     let sha = null;
@@ -781,6 +782,12 @@
       return (n * 100).toFixed(1) + "%";
     }
 
+    function fmtMoneyMaybeEstimate(n, isEstimate) {
+      const formatted = fmtMoney(n);
+      if (formatted === "—" || !isEstimate) return formatted;
+      return `<span title="Estimated — RentCast value estimate for ARV, or a $${REHAB_COST_PER_SQFT_ESTIMATE}/sqft placeholder for Rehab Cost. Edit any house to override with a real number.">~${formatted}</span>`;
+    }
+
     function dealStatsHtml(house, m) {
       const flipGood = m.flipProfit != null && house.price != null && m.maxOffer70 != null && house.price <= m.maxOffer70;
       const onePercentGood = m.onePercentRatio != null && m.onePercentRatio >= 0.01;
@@ -864,7 +871,9 @@
           <div class="deal-card-header">
             <div class="deal-card-address">${addr}${anyFilterSet && passes ? ' <span class="badge-new">PASSES</span>' : ""}</div>
             <div class="deal-card-inputs">
-              ${fmtMoney(h.price)} price &middot; ${fmtMoney(h.rehabCost)} rehab &middot; ${fmtMoney(h.arv)} ARV
+              ${fmtMoneyMaybeEstimate(h.price, h.priceIsEstimate)} price &middot;
+              ${fmtMoneyMaybeEstimate(h.rehabCost, h.rehabCostIsEstimate)} rehab &middot;
+              ${fmtMoneyMaybeEstimate(h.arv, h.arvIsEstimate)} ARV
               ${h.rentEstimate != null ? `&middot; ${fmtMoney(h.rentEstimate)}/mo rent` : ""}
             </div>
           </div>
@@ -925,7 +934,9 @@
       const inputs = readCalcInputs();
       house.price = inputs.price;
       house.rehabCost = inputs.rehabCost;
+      house.rehabCostIsEstimate = false;
       house.arv = inputs.arv;
+      house.arvIsEstimate = false;
       house.rentEstimate = inputs.rentEstimate;
       const ok = await saveHouses(`Update deal numbers: ${house.address}`, id);
       if (ok) renderDeals();
@@ -1024,7 +1035,9 @@
         baths: Number(document.getElementById("f-baths").value) || null,
         sqft: Number(document.getElementById("f-sqft").value) || null,
         rehabCost: Number(document.getElementById("f-rehab-cost").value) || null,
+        rehabCostIsEstimate: false,
         arv: Number(document.getElementById("f-arv").value) || null,
+        arvIsEstimate: false,
         rentEstimate: Number(document.getElementById("f-rent-estimate").value) || null,
         status: document.getElementById("f-status").value,
         rating: Number(document.getElementById("f-rating").value) || 0,
