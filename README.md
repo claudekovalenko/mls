@@ -1,8 +1,8 @@
 # MLS House Tracker
 
-A site for tracking Atlanta-area houses we're considering buying — status, ratings, notes — plus
-a daily email of new listings matching our filter criteria, with the ability to "like" listings
-straight from a reply email.
+A site for tracking houses we're considering buying across two markets (Atlanta and Los Angeles)
+— status, ratings, notes — plus a daily email of new Atlanta listings matching our filter
+criteria, with the ability to "like" listings straight from a reply email.
 
 This currently covers the **purchasing/shopping phase**. Once we own a house, this can expand
 into ownership/management (maintenance, docs, expenses, etc.) — but `houses.json` and the
@@ -21,8 +21,9 @@ full-screen like a native app, no App Store needed:
 - `houses.json` — every house we're tracking: address, price, `priceHistory` (logged
   automatically whenever the price changes), beds/baths/sqft, listing URL, photo URL, status
   (Interested / Touring Scheduled / Toured / Offer Made / Under Contract / Purchased / Rejected),
-  star rating, notes, `liked` flag, `source` (`manual` or `email`), `addedBy` (Ryan or Ivan), date
-  added, and flip/BRRRR analysis inputs: `rehabCost`, `arv`, `rentEstimate`.
+  star rating, notes, `liked` flag, `source` (`manual` or `email`), `market` (Atlanta or Los
+  Angeles — defaults to Atlanta if absent, for houses added before this field existed), `addedBy`
+  (Ryan or Ivan), date added, and flip/BRRRR analysis inputs: `rehabCost`, `arv`, `rentEstimate`.
 - `docs/index.html` — the House Tracker (see below), published via GitHub Pages. A floating
   bottom nav switches between two full screens: **Houses** (All Houses / Highlights tabs — add,
   edit, heart, filter, sort) and **Calculator** (see below).
@@ -110,7 +111,9 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
   **Highlights** tab.
 - Click **Edit** on any row to update its status/rating/notes as you go through the process, or
   delete it.
-- Filter by status and sort by date added / price / rating / address.
+- Filter by market (Atlanta / Los Angeles / All), status, and sort by date added / price /
+  rating / address. Pick the market when adding a house (quick-add or the full form) — it's
+  remembered per-browser as the default for next time.
 - **Calculator screen** (bottom nav) — a live, editable flip/BRRRR calculator. Type in
   Price/Rehab Cost/ARV/Rent Estimate directly (a blank scratch-pad calculator), or pick a saved
   house from the dropdown — or just tap any card below — to load its numbers in; edit them and
@@ -135,7 +138,8 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
   filter you've set gets a **PASSES** badge and a highlighted border on its card; the single
   best-scoring one (by flip profit) is called out in a large banner at the top so it's impossible
   to miss. If nothing currently clears your bar, the banner says so plainly instead of going
-  silent.
+  silent. A separate Market dropdown (Atlanta / Los Angeles / All markets) narrows the
+  candidates list and Best Deal pick to one market at a time, also saved per-browser.
 
 All changes commit straight to `houses.json` on `main`. You can also edit that file directly in
 GitHub if you prefer.

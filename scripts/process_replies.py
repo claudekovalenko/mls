@@ -120,6 +120,7 @@ def add_house_from_url(url, houses):
         "notes": "",
         "liked": True,
         "source": "email",
+        "market": "Atlanta",
         "addedBy": "",
         "dateAdded": date.today().isoformat(),
     }
@@ -156,7 +157,8 @@ def add_liked_houses(numbers, last_listings, houses):
             "notes": "",
             "liked": True,
             "source": "email",
-            "addedBy": "",
+            "market": "Atlanta",
+        "addedBy": "",
             "dateAdded": date.today().isoformat(),
         }
         houses.append(house)
