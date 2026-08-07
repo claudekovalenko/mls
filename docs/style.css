@@ -363,8 +363,56 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
   padding: 18px 20px;
   box-shadow: var(--shadow);
 }
-.deal-card-clickable { cursor: pointer; transition: border-color 0.12s, transform 0.12s; }
+.deal-card-clickable { cursor: pointer; transition: border-color 0.12s, transform 0.12s, opacity 0.12s; }
 .deal-card-clickable:hover { border-color: var(--accent); transform: translateY(-1px); }
+.deal-card-passes { border-color: var(--accent); border-width: 2px; box-shadow: 0 0 0 3px var(--accent-soft); }
+.deal-card-fails { opacity: 0.45; }
+
+/* ---- Best Deal banner ---- */
+.best-deal-banner {
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+.best-deal-banner-pick {
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: #fff;
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.best-deal-banner-pick a { color: #fff; text-decoration: underline; }
+.best-deal-banner-none {
+  background: var(--card);
+  border: 1px dashed var(--line);
+  color: var(--sub);
+}
+.best-deal-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+.best-deal-address {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-top: 4px;
+}
+.best-deal-metrics {
+  margin-top: 6px;
+  font-size: 0.92rem;
+  opacity: 0.95;
+}
+
+/* ---- Filter details ---- */
+.filter-details {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-top: 8px;
+}
+.filter-details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
+.filter-details[open] summary { margin-bottom: 12px; }
 .deal-card-header { margin-bottom: 14px; }
 .deal-card-address { font-weight: 700; font-size: 1.02rem; }
 .deal-card-inputs { color: var(--sub); font-size: 0.82rem; margin-top: 2px; }
