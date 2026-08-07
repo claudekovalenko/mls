@@ -17,7 +17,8 @@
     "liked": true,
     "source": "manual",
     "addedBy": "Ryan",
-    "dateAdded": "2026-07-30"
+    "dateAdded": "2026-07-30",
+    "rentcastChecked": true
   },
   {
     "id": "85f6af17-3f4d-46c6-808e-180252acd7c4",
@@ -42,14 +43,15 @@
     "liked": false,
     "source": "manual",
     "addedBy": "Ryan",
-    "dateAdded": "2026-07-30"
+    "dateAdded": "2026-07-30",
+    "rentcastChecked": true
   },
   {
     "id": "00fa2637-a12c-4f1c-b823-9109c91b6b43",
     "address": "471 Surrey Pl Marietta GA 30068",
     "addressIsGuessed": true,
     "url": "https://www.zillow.com/homedetails/471-Surrey-Pl-Marietta-GA-30068/14275604_zpid/",
-    "photoUrl": "",
+    "photoUrl": "photos/00fa2637-a12c-4f1c-b823-9109c91b6b43.jpg",
     "price": null,
     "priceHistory": [],
     "beds": null,
@@ -64,6 +66,8 @@
     "liked": false,
     "source": "manual",
     "addedBy": "Ryan",
-    "dateAdded": "2026-08-07"
+    "dateAdded": "2026-08-07",
+    "rentcastChecked": true,
+    "streetViewChecked": true
   }
 ]
