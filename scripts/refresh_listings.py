@@ -41,7 +41,8 @@ PHOTOS_DIR = ROOT / "docs" / "photos"
 RENTCAST_USAGE_PATH = ROOT / "rentcast_usage.json"
 RENTCAST_MONTHLY_LIMIT = 45  # hard stop with a safety margin below the free tier's 50
 STREETVIEW_USAGE_PATH = ROOT / "streetview_usage.json"
-STREETVIEW_MONTHLY_LIMIT = 100  # generous but tiny sliver of the $200 free monthly credit
+STREETVIEW_MONTHLY_LIMIT = 100  # ~$0.35/month worst case at this cap (see README) regardless of trial credit
+REHAB_COST_PER_SQFT_ESTIMATE = 20  # rough "light cosmetic rehab" placeholder, always overridable
 TIMEOUT = 15
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -170,7 +171,8 @@ def refresh_from_rentcast(house, usage):
     if not looks_like_real_address(address):
         return False
     if (house.get("beds") is not None and house.get("baths") is not None
-            and house.get("price") is not None and house.get("rentEstimate") is not None):
+            and house.get("price") is not None and house.get("rentEstimate") is not None
+            and house.get("arv") is not None and house.get("rehabCost") is not None):
         # Nothing this function could add — treat as checked without spending a call.
         house["rentcastChecked"] = True
         return False
@@ -179,7 +181,10 @@ def refresh_from_rentcast(house, usage):
     changed = False
 
     record = None
-    if usage["calls"] < RENTCAST_MONTHLY_LIMIT:
+    needs_property_lookup = house.get("beds") is None or house.get("baths") is None or not house.get("sqft")
+    if not needs_property_lookup:
+        pass  # already have everything this call would provide, skip spending it
+    elif usage["calls"] < RENTCAST_MONTHLY_LIMIT:
         usage["calls"] += 1
         try:
             records = query_rentcast("properties", address, api_key)
@@ -200,22 +205,44 @@ def refresh_from_rentcast(house, usage):
             house["sqft"] = record["squareFootage"]
             changed = True
 
-    if house.get("price") is None:
-        price = None
+    # One avm/value call covers two fields: fills price if unknown, and
+    # gives a starting ARV estimate (current market value, not a true
+    # after-repair projection — no data source can know what a specific
+    # house will be worth after renovation, this is the closest available
+    # proxy) if the user hasn't entered a real ARV themselves.
+    if house.get("price") is None or house.get("arv") is None:
+        value = None
         if usage["calls"] < RENTCAST_MONTHLY_LIMIT:
             usage["calls"] += 1
             try:
                 estimate = query_rentcast("avm/value", address, api_key)
-                price = estimate.get("price") if isinstance(estimate, dict) else None
+                value = estimate.get("price") if isinstance(estimate, dict) else None
             except Exception as exc:
                 print(f"  rentcast value estimate failed for {address}: {exc}")
         else:
             print(f"  rentcast monthly call budget ({RENTCAST_MONTHLY_LIMIT}) reached, skipping value estimate")
-        if price:
-            house["price"] = price
-            house["priceIsEstimate"] = True
-            changed = True
-            print(f"  rentcast price estimate for {address}: ${price:,}")
+        if value:
+            if house.get("price") is None:
+                house["price"] = value
+                house["priceIsEstimate"] = True
+                changed = True
+                print(f"  rentcast price estimate for {address}: ${value:,}")
+            if house.get("arv") is None:
+                house["arv"] = value
+                house["arvIsEstimate"] = True
+                changed = True
+                print(f"  rentcast ARV estimate (current value, not after-repair) for {address}: ${value:,}")
+
+    # Rehab cost has no data source at all — this is a flat rule-of-thumb
+    # placeholder ($20/sqft, "light cosmetic rehab") so the calculator has
+    # something to show instead of a blank field. Clearly marked as an
+    # estimate; always overridable, and never overwrites a real number the
+    # user already entered.
+    if house.get("rehabCost") is None and house.get("sqft"):
+        house["rehabCost"] = round(house["sqft"] * REHAB_COST_PER_SQFT_ESTIMATE)
+        house["rehabCostIsEstimate"] = True
+        changed = True
+        print(f"  rehab cost placeholder estimate for {address}: ${house['rehabCost']:,}")
 
     if house.get("rentEstimate") is None:
         rent = None

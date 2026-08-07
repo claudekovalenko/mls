@@ -121,9 +121,15 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
   calculator, every house with Rehab Cost or ARV already filled in shows as its own card. Rent
   Estimate auto-fills from RentCast when available, same as price/beds/baths. These are quick
   screening heuristics, not underwriting — always verify real numbers before making an offer.
-  Note: Rehab Cost and ARV can't be scraped or estimated automatically — no data source knows
-  what a specific house needs in repairs or what it'll be worth after renovation, so those two
-  fields always require your judgment.
+  Note: true Rehab Cost and true ARV can't be scraped — no data source knows what a specific
+  house needs in repairs or what it'll actually be worth after renovation. That said,
+  `refresh_listings.py` now auto-fills **placeholder estimates** for both whenever they're
+  empty, so the calculator isn't blank by default: ARV defaults to RentCast's current-value
+  estimate (a proxy, not a true after-repair projection), and Rehab Cost defaults to
+  $20/sqft (a generic "light cosmetic rehab" assumption). Both show with a `~` prefix and an
+  explanatory tooltip in the tracker so they're clearly marked as placeholders, not real
+  numbers — editing either through the Edit dialog or the Calculator's save button replaces the
+  estimate with your real number and clears the "estimated" flag.
 - **Filter criteria + Best Deal banner** (Calculator screen) — set a minimum Flip Profit, minimum
   BRRRR Cash-on-Cash %, and/or minimum 1% Rule %, saved per-browser. Any house that clears every
   filter you've set gets a **PASSES** badge and a highlighted border on its card; the single
