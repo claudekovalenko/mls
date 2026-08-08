@@ -35,9 +35,13 @@ full-screen like a native app, no App Store needed:
   always be edited by hand instead.
 - `.github/workflows/refresh-listings.yml` — runs `refresh_listings.py` every 2 hours and commits
   any price/photo updates it manages to find.
-- `criteria.json` — the daily email alert's search filter (location, price range, beds/baths,
-  property types, keywords, recipient email). Keywords are matched (case-insensitive) against
-  each listing's description/remarks/title/address — a listing only needs to contain one of them.
+- `criteria.json` — the daily email alert's search filters, as a list of **markets** (Atlanta and
+  Los Angeles), each with its own location/price range/beds/baths/property types/keywords, plus a
+  shared recipient list. Each market is searched separately and its listings tagged with the
+  market name, so they land in the right section of the tracker. Keywords are matched
+  (case-insensitive) against each listing's description/remarks/title/address — a listing only
+  needs to contain one of them. The old flat single-market schema still loads (treated as one
+  market) for back-compat.
 - `scripts/send_alert.py` — reads `criteria.json`, fetches listings from a data source, filters
   them, numbers them in the email body, saves that day's list to `last_alert_listings.json`, and
   emails the matches.
@@ -59,10 +63,23 @@ full-screen like a native app, no App Store needed:
      [app password](https://myaccount.google.com/apppasswords). Used both to send the daily
      alert (SMTP) and to check for "LIKE" replies (IMAP) — make sure
      [IMAP access](https://support.google.com/mail/answer/7126229) is enabled on the account.
-   - `LISTINGS_API_URL` / `LISTINGS_API_KEY` — your listings data source. The script expects a
-     JSON array of objects like `{price, beds, baths, address, url, propertyType}`. Point this
-     at whatever feed you're using (an MLS/IDX API, a broker feed, etc.) — without it, the script
-     runs but skips fetching and sends "no matches" each day.
+   - `LISTINGS_API_URL` / `LISTINGS_API_KEY` / `LISTINGS_API_TYPE` — your listings data source.
+     **This is currently unset, which is why the daily alert has never found a single listing.**
+     Two modes:
+     - `LISTINGS_API_TYPE=json` (default) — a JSON array of
+       `{price, beds, baths, address, url, propertyType}`. The URL may contain `{city}`,
+       `{state}` or `{location}` placeholders, substituted per market.
+     - `LISTINGS_API_TYPE=reso` — a **RESO Web API** (OData) feed, the standard interface MLSs
+       expose for IDX. `send_alert.py` builds a per-market `$filter` using RESO's standard field
+       names (`ListPrice`, `BedroomsTotal`, `City`, `StandardStatus`, …) and maps the response
+       onto this pipeline's shape, so any compliant feed works regardless of vendor.
+
+     **Getting IDX access:** feeds are licensed through the local MLS — FMLS or GAMLS for Atlanta,
+     CRMLS for Los Angeles — and normally require a licensed agent to sponsor the feed.
+     [Bridge Interactive](https://bridgedataoutput.com/) (Zillow-owned) provides free API access
+     to MLS data once your MLS approves you. Scraping Zillow/Redfin/Realtor directly is not a
+     workable substitute: their robots.txt disallows the search paths and they actively block
+     automated clients (verified — see `scripts/probe_sources.py`).
    - `RENTCAST_API_KEY` (optional) — a free API key from [rentcast.io](https://rentcast.io) used
      to fill in beds/baths/sqft/estimated value for tracked houses by address, as a fallback for
      whatever the listing-page scrape couldn't get (which is most of the time for sites like

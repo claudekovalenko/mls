@@ -48,6 +48,7 @@
     url: params.get("u") || "",
     address: params.get("a") || "",
     photoUrl: params.get("photo") || "",
+    market: params.get("mkt") || "Atlanta",
     price: params.get("p") ? Number(params.get("p")) : null,
     beds: params.get("bd") ? Number(params.get("bd")) : null,
     baths: params.get("ba") ? Number(params.get("ba")) : null,
@@ -122,7 +123,7 @@
         notes: "",
         liked: true,
         source: "email",
-        market: "Atlanta",
+        market: listing.market,
         addedBy: "",
         dateAdded: new Date().toISOString().slice(0, 10),
       });

@@ -98,6 +98,17 @@ def guess_address_from_url(url):
     return None
 
 
+def guess_market_from_address(address):
+    """Infer the market from state/city text in the URL slug. Only used for
+    links emailed in directly, where no market tag came along with them."""
+    if not address:
+        return "Atlanta"
+    text = address.lower()
+    if re.search(r"\bca\b", text) or "los angeles" in text:
+        return "Los Angeles"
+    return "Atlanta"
+
+
 def add_house_from_url(url, houses):
     existing_urls = {h.get("url") for h in houses if h.get("url")}
     clean_url = url.split("?")[0]
@@ -120,7 +131,7 @@ def add_house_from_url(url, houses):
         "notes": "",
         "liked": True,
         "source": "email",
-        "market": "Atlanta",
+        "market": guess_market_from_address(address),
         "addedBy": "",
         "dateAdded": date.today().isoformat(),
     }
@@ -157,8 +168,11 @@ def add_liked_houses(numbers, last_listings, houses):
             "notes": "",
             "liked": True,
             "source": "email",
-            "market": "Atlanta",
-        "addedBy": "",
+            # Carry the market the alert tagged this listing with, so it lands
+            # in the right tracker section; fall back to Atlanta for listings
+            # captured before markets existed.
+            "market": listing.get("market", "Atlanta"),
+            "addedBy": "",
             "dateAdded": date.today().isoformat(),
         }
         houses.append(house)

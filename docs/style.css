@@ -380,6 +380,21 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
 .deal-card-passes { border-color: var(--accent); border-width: 2px; box-shadow: 0 0 0 3px var(--accent-soft); }
 .deal-card-fails { opacity: 0.45; }
 
+.market-fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px 18px;
+  margin: 18px 0 0;
+}
+.market-fieldset legend {
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-dark);
+  padding: 0 8px;
+}
+
 /* ---- Per-market summary tiles ---- */
 .market-summaries {
   display: grid;
