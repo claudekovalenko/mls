@@ -143,6 +143,7 @@
         <div><label>Rent Estimate /mo <input type="number" id="calc-rent"></label></div>
       </div>
       <div class="deal-stats" id="calc-stats" style="margin-top:18px;"></div>
+      <div id="calc-verdict"></div>
       <button class="secondary" id="calc-save-btn" type="button" style="display:none;margin-top:16px;">
         Save these numbers to the loaded house
       </button>
@@ -831,6 +832,93 @@
       return `<span title="Estimated — RentCast value estimate for ARV, or a $${REHAB_COST_PER_SQFT_ESTIMATE}/sqft placeholder for Rehab Cost. Edit any house to override with a real number.">~${formatted}</span>`;
     }
 
+    // ---- Automatic qualification ----
+    // Turns the raw metrics into a plain verdict per strategy, with the
+    // specific reasons behind it, so a house can be judged at a glance
+    // instead of eyeballing three numbers and doing the comparison yourself.
+    // Thresholds are conventional rules of thumb, not gospel — they're the
+    // knobs to tune if these verdicts don't match your real buy box.
+    const FLIP_STRONG_PROFIT = 50000;
+    const FLIP_OK_PROFIT = 25000;
+    const FLIP_STRONG_ROI = 0.15;
+    const FLIP_OK_ROI = 0.10;
+    const BRRRR_STRONG_COC = 0.12;
+    const BRRRR_OK_COC = 0.08;
+
+    const TIER_RANK = { STRONG: 3, GOOD: 2, MARGINAL: 1, PASS: 0, "NO DATA": -1 };
+
+    function qualifyFlip(house, m) {
+      if (m.flipProfit == null) {
+        return { tier: "NO DATA", reasons: ["Needs price, rehab cost, and ARV"] };
+      }
+      const totalIn = (house.price || 0) + (house.rehabCost || 0);
+      const roi = totalIn > 0 ? m.flipProfit / totalIn : null;
+      const meets70 = house.price != null && m.maxOffer70 != null && house.price <= m.maxOffer70;
+      const reasons = [];
+
+      if (meets70) reasons.push("Clears the 70% rule");
+      else if (m.maxOffer70 != null) reasons.push(`Over 70%-rule max offer by ${fmtMoney(house.price - m.maxOffer70)}`);
+
+      reasons.push(`${fmtMoney(m.flipProfit)} projected profit`);
+      if (roi != null) reasons.push(`${fmtPercent(roi)} return on ${fmtMoney(totalIn)} in`);
+
+      let tier;
+      if (m.flipProfit <= 0) tier = "PASS";
+      else if (meets70 && m.flipProfit >= FLIP_STRONG_PROFIT && roi != null && roi >= FLIP_STRONG_ROI) tier = "STRONG";
+      else if (m.flipProfit >= FLIP_OK_PROFIT && roi != null && roi >= FLIP_OK_ROI) tier = "GOOD";
+      else tier = "MARGINAL";
+      return { tier, reasons };
+    }
+
+    function qualifyBrrrr(house, m) {
+      if (m.cashLeftInDeal == null) {
+        return { tier: "NO DATA", reasons: ["Needs price, rehab cost, and ARV"] };
+      }
+      if (m.brrrrCashflow == null) {
+        return { tier: "NO DATA", reasons: ["Needs a rent estimate to judge cashflow"] };
+      }
+      const reasons = [];
+      if (m.cashLeftInDeal <= 0) reasons.push("All capital recycled on refi — nothing left in");
+      else reasons.push(`${fmtMoney(m.cashLeftInDeal)} left in the deal`);
+      reasons.push(`${fmtMoney(m.brrrrCashflow)}/mo cashflow`);
+      if (m.cashOnCash != null && m.cashOnCash !== Infinity) reasons.push(`${fmtPercent(m.cashOnCash)} cash-on-cash`);
+
+      let tier;
+      if (m.brrrrCashflow <= 0) tier = "PASS";
+      else if (m.cashLeftInDeal <= 0 || (m.cashOnCash != null && m.cashOnCash >= BRRRR_STRONG_COC)) tier = "STRONG";
+      else if (m.cashOnCash != null && m.cashOnCash >= BRRRR_OK_COC) tier = "GOOD";
+      else tier = "MARGINAL";
+      return { tier, reasons };
+    }
+
+    function qualifyHouse(house, m) {
+      const flip = qualifyFlip(house, m);
+      const brrrr = qualifyBrrrr(house, m);
+      const flipRank = TIER_RANK[flip.tier];
+      const brrrrRank = TIER_RANK[brrrr.tier];
+      let bestStrategy = null;
+      if (flipRank > 0 || brrrrRank > 0) {
+        bestStrategy = flipRank >= brrrrRank ? "Flip" : "BRRRR";
+      }
+      return { flip, brrrr, bestStrategy, bestRank: Math.max(flipRank, brrrrRank) };
+    }
+
+    function verdictHtml(house, m) {
+      const q = qualifyHouse(house, m);
+      const badge = (label, v) => `
+        <div class="verdict">
+          <div class="verdict-head">
+            <span class="verdict-strategy">${label}</span>
+            <span class="verdict-tier verdict-${v.tier.replace(" ", "-")}">${v.tier}</span>
+          </div>
+          <ul class="verdict-reasons">${v.reasons.map(r => `<li>${r}</li>`).join("")}</ul>
+        </div>`;
+      const rec = q.bestStrategy
+        ? `<div class="verdict-rec">Better suited to <strong>${q.bestStrategy}</strong></div>`
+        : `<div class="verdict-rec verdict-rec-none">Doesn't currently qualify for either strategy</div>`;
+      return `<div class="verdicts">${badge("Flip", q.flip)}${badge("BRRRR", q.brrrr)}</div>${rec}`;
+    }
+
     function dealStatsHtml(house, m) {
       const flipGood = m.flipProfit != null && house.price != null && m.maxOffer70 != null && house.price <= m.maxOffer70;
       const onePercentGood = m.onePercentRatio != null && m.onePercentRatio >= 0.01;
@@ -938,8 +1026,16 @@
       cardsEl.innerHTML = "";
       dealsEmptyMsg.style.display = candidates.length ? "none" : "block";
 
+      // Rank by how well each house actually qualifies first, falling back to
+      // raw flip profit only to break ties within the same tier — so a STRONG
+      // house never sits below a merely-profitable one just because the other
+      // has a bigger headline number.
       const withMetrics = candidates.map(h => ({ house: h, metrics: computeDealMetrics(h) }));
-      withMetrics.sort((a, b) => (b.metrics.flipProfit ?? -Infinity) - (a.metrics.flipProfit ?? -Infinity));
+      withMetrics.sort((a, b) => {
+        const rankDiff = qualifyHouse(b.house, b.metrics).bestRank - qualifyHouse(a.house, a.metrics).bestRank;
+        if (rankDiff !== 0) return rankDiff;
+        return (b.metrics.flipProfit ?? -Infinity) - (a.metrics.flipProfit ?? -Infinity);
+      });
 
       const filters = readFilters();
       const anyFilterSet = filters.minFlipProfit != null || filters.minCoc != null || filters.minOnePercent != null;
@@ -977,6 +1073,7 @@
               </div>
             </div>
             <div class="deal-stats">${dealStatsHtml(h, m)}</div>
+            ${verdictHtml(h, m)}
           `;
           card.addEventListener("click", () => loadHouseIntoCalculator(h.id));
           cardsEl.appendChild(card);
@@ -1017,6 +1114,7 @@
       const inputs = readCalcInputs();
       const metrics = computeDealMetrics(inputs);
       document.getElementById("calc-stats").innerHTML = dealStatsHtml(inputs, metrics);
+      document.getElementById("calc-verdict").innerHTML = verdictHtml(inputs, metrics);
     }
 
     ["calc-price", "calc-rehab", "calc-arv", "calc-rent"].forEach(id => {

@@ -445,6 +445,53 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
   font-size: 0.7rem;
 }
 
+/* ---- Qualification verdicts ---- */
+.verdicts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.verdict {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.verdict-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.verdict-strategy {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sub);
+}
+.verdict-tier {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.verdict-STRONG { background: var(--accent); color: #fff; }
+.verdict-GOOD { background: var(--accent-soft); color: var(--accent-dark); }
+.verdict-MARGINAL { background: #fff3cd; color: #8a6100; }
+.verdict-PASS { background: #f0d6d6; color: #a3251e; }
+.verdict-NO-DATA { background: var(--line); color: var(--sub); }
+.verdict-reasons {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-size: 0.78rem;
+  color: var(--sub);
+  line-height: 1.5;
+}
+.verdict-rec {
+  margin-top: 10px;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+.verdict-rec-none { color: var(--sub); }
+
 /* ---- Best Deal banner ---- */
 .best-deal-banner {
   border-radius: var(--radius);

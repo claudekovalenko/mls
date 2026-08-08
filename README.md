@@ -133,6 +133,14 @@ Open the site (`docs/index.html`), paste a GitHub token once (instructions are o
   explanatory tooltip in the tracker so they're clearly marked as placeholders, not real
   numbers — editing either through the Edit dialog or the Calculator's save button replaces the
   estimate with your real number and clears the "estimated" flag.
+- **Automatic qualification** — every candidate gets a plain verdict for Flip and for BRRRR
+  (STRONG / GOOD / MARGINAL / PASS / NO DATA) with the specific reasons behind it, plus a
+  "better suited to Flip/BRRRR" recommendation. Candidates are ranked by verdict first and raw
+  profit only as a tiebreaker, so a genuinely strong deal never sits below a merely-profitable
+  one with a bigger headline number. Flip tiers key off the 70% rule, absolute profit, and
+  return on total cash in; BRRRR tiers key off monthly cashflow, cash left in the deal after
+  refi, and cash-on-cash. The thresholds are conventional rules of thumb — tune them in
+  `docs/index.html` (the `FLIP_*` / `BRRRR_*` constants) if they don't match your real buy box.
 - **Filter criteria + Best Deal banner** (Calculator screen) — set a minimum Flip Profit, minimum
   BRRRR Cash-on-Cash %, and/or minimum 1% Rule %, saved per-browser. Any house that clears every
   filter you've set gets a **PASSES** badge and a highlighted border on its card; the single
