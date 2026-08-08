@@ -103,7 +103,9 @@
       ARV are your judgment calls — nothing can scrape those, they have to come from you.
     </p>
 
-    <div id="best-deal-banner" class="best-deal-banner" style="display:none;"></div>
+    <div id="market-summaries" class="market-summaries"></div>
+
+    <div id="best-deal-banners"></div>
 
     <label>Market
       <select id="filter-market-calc">
@@ -260,6 +262,7 @@
     const RENTCAST_MONTHLY_LIMIT = 45; // keep in sync with scripts/refresh_listings.py
     const STREETVIEW_MONTHLY_LIMIT = 100; // keep in sync with scripts/refresh_listings.py
     const REHAB_COST_PER_SQFT_ESTIMATE = 20; // keep in sync with scripts/refresh_listings.py
+    const MARKETS = ["Atlanta", "Los Angeles"];
 
     let houses = [];
     let sha = null;
@@ -850,37 +853,79 @@
       `;
     }
 
-    function renderBestDealBanner(withMetrics, filters) {
-      const banner = document.getElementById("best-deal-banner");
-      const passing = withMetrics.filter(({ metrics }) => passesFilters(metrics, filters));
+    function marketOf(house) {
+      return house.market || "Atlanta";
+    }
+
+    // Per-market rollup across ALL houses (not just deal candidates), so each
+    // region's overall picture is visible at a glance rather than having to
+    // flip the market filter back and forth to compare.
+    function renderMarketSummaries() {
+      const el = document.getElementById("market-summaries");
+      const cards = MARKETS.map(market => {
+        const inMarket = houses.filter(h => marketOf(h) === market);
+        if (!inMarket.length) {
+          return `
+            <div class="market-summary market-summary-empty">
+              <div class="market-summary-name">${escapeHtml(market)}</div>
+              <div class="market-summary-empty-text">No houses tracked yet</div>
+            </div>`;
+        }
+        const prices = inMarket.map(h => h.price).filter(p => p != null);
+        const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
+        const profits = inMarket
+          .map(h => computeDealMetrics(h).flipProfit)
+          .filter(p => p != null);
+        const bestProfit = profits.length ? Math.max(...profits) : null;
+        return `
+          <div class="market-summary">
+            <div class="market-summary-name">${escapeHtml(market)}</div>
+            <div class="market-summary-stats">
+              <div><span class="market-summary-num">${inMarket.length}</span><span class="market-summary-lbl">tracked</span></div>
+              <div><span class="market-summary-num">${avgPrice != null ? fmtMoney(avgPrice) : "—"}</span><span class="market-summary-lbl">avg price</span></div>
+              <div><span class="market-summary-num ${bestProfit != null && bestProfit > 0 ? "pos" : "neg"}">${bestProfit != null ? fmtMoney(bestProfit) : "—"}</span><span class="market-summary-lbl">best flip profit</span></div>
+            </div>
+          </div>`;
+      });
+      el.innerHTML = cards.join("");
+    }
+
+    // One "best deal" pick PER MARKET rather than a single global winner —
+    // a $700k LA flip and a $300k Atlanta flip aren't comparable head-to-head,
+    // so picking one overall winner would just always surface the pricier market.
+    function renderBestDealBanners(withMetrics, filters) {
+      const wrap = document.getElementById("best-deal-banners");
       const anyFilterSet = filters.minFlipProfit != null || filters.minCoc != null || filters.minOnePercent != null;
 
       if (!anyFilterSet) {
-        banner.style.display = "none";
+        wrap.innerHTML = "";
         return;
       }
 
-      if (!passing.length) {
-        banner.style.display = "block";
-        banner.className = "best-deal-banner best-deal-banner-none";
-        banner.innerHTML = `<div class="best-deal-label">No house currently meets your filter criteria</div>`;
-        return;
-      }
-
-      const best = passing[0]; // withMetrics is already sorted by flip profit desc
-      const addr = best.house.url
-        ? `<a href="${escapeHtml(best.house.url)}" target="_blank" style="color:inherit;">${escapeHtml(best.house.address)}</a>`
-        : escapeHtml(best.house.address);
-      banner.style.display = "block";
-      banner.className = "best-deal-banner best-deal-banner-pick";
-      banner.innerHTML = `
-        <div class="best-deal-label">🏆 Best Deal Right Now${passing.length > 1 ? ` (${passing.length} houses pass your filters)` : ""}</div>
-        <div class="best-deal-address">${addr}</div>
-        <div class="best-deal-metrics">
-          ${fmtMoney(best.metrics.flipProfit)} flip profit &middot; ${fmtPercent(best.metrics.cashOnCash)} cash-on-cash
-          &middot; ${fmtPercent(best.metrics.onePercentRatio)} rent ratio
-        </div>
-      `;
+      wrap.innerHTML = MARKETS.map(market => {
+        const passing = withMetrics.filter(
+          ({ house, metrics }) => marketOf(house) === market && passesFilters(metrics, filters)
+        );
+        if (!passing.length) {
+          return `
+            <div class="best-deal-banner best-deal-banner-none">
+              <div class="best-deal-label">${escapeHtml(market)} — nothing meets your criteria right now</div>
+            </div>`;
+        }
+        const best = passing[0]; // withMetrics is pre-sorted by flip profit desc
+        const addr = best.house.url
+          ? `<a href="${escapeHtml(best.house.url)}" target="_blank" style="color:inherit;">${escapeHtml(best.house.address)}</a>`
+          : escapeHtml(best.house.address);
+        return `
+          <div class="best-deal-banner best-deal-banner-pick">
+            <div class="best-deal-label">🏆 Best ${escapeHtml(market)} Deal${passing.length > 1 ? ` — ${passing.length} pass your filters` : ""}</div>
+            <div class="best-deal-address">${addr}</div>
+            <div class="best-deal-metrics">
+              ${fmtMoney(best.metrics.flipProfit)} flip profit &middot; ${fmtPercent(best.metrics.cashOnCash)} cash-on-cash
+              &middot; ${fmtPercent(best.metrics.onePercentRatio)} rent ratio
+            </div>
+          </div>`;
+      }).join("");
     }
 
     function renderDeals() {
@@ -897,32 +942,45 @@
       withMetrics.sort((a, b) => (b.metrics.flipProfit ?? -Infinity) - (a.metrics.flipProfit ?? -Infinity));
 
       const filters = readFilters();
-      renderBestDealBanner(withMetrics, filters);
+      const anyFilterSet = filters.minFlipProfit != null || filters.minCoc != null || filters.minOnePercent != null;
+      renderMarketSummaries();
+      renderBestDealBanners(withMetrics, filters);
 
-      for (const { house: h, metrics: m } of withMetrics) {
-        const addr = h.url
-          ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(h.address)}</a>`
-          : escapeHtml(h.address);
-        const passes = passesFilters(m, filters);
-        const anyFilterSet = filters.minFlipProfit != null || filters.minCoc != null || filters.minOnePercent != null;
+      // Group candidates under a market heading so the two regions read as
+      // separate lists, instead of interleaving by profit across markets.
+      for (const market of MARKETS) {
+        const inMarket = withMetrics.filter(({ house }) => marketOf(house) === market);
+        if (!inMarket.length) continue;
 
-        const card = document.createElement("div");
-        card.className = "deal-card deal-card-clickable" + (anyFilterSet ? (passes ? " deal-card-passes" : " deal-card-fails") : "");
-        card.title = "Tap to load into the calculator above";
-        card.innerHTML = `
-          <div class="deal-card-header">
-            <div class="deal-card-address">${addr} <span class="badge-market">${escapeHtml(h.market || "Atlanta")}</span>${anyFilterSet && passes ? ' <span class="badge-new">PASSES</span>' : ""}</div>
-            <div class="deal-card-inputs">
-              ${fmtMoneyMaybeEstimate(h.price, h.priceIsEstimate)} price &middot;
-              ${fmtMoneyMaybeEstimate(h.rehabCost, h.rehabCostIsEstimate)} rehab &middot;
-              ${fmtMoneyMaybeEstimate(h.arv, h.arvIsEstimate)} ARV
-              ${h.rentEstimate != null ? `&middot; ${fmtMoney(h.rentEstimate)}/mo rent` : ""}
+        const heading = document.createElement("h3");
+        heading.className = "market-heading";
+        heading.innerHTML = `${escapeHtml(market)} <span class="market-heading-count">${inMarket.length}</span>`;
+        cardsEl.appendChild(heading);
+
+        for (const { house: h, metrics: m } of inMarket) {
+          const addr = h.url
+            ? `<a class="addr-link" href="${escapeHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escapeHtml(h.address)}</a>`
+            : escapeHtml(h.address);
+          const passes = passesFilters(m, filters);
+
+          const card = document.createElement("div");
+          card.className = "deal-card deal-card-clickable" + (anyFilterSet ? (passes ? " deal-card-passes" : " deal-card-fails") : "");
+          card.title = "Tap to load into the calculator above";
+          card.innerHTML = `
+            <div class="deal-card-header">
+              <div class="deal-card-address">${addr} <span class="badge-market">${escapeHtml(marketOf(h))}</span>${anyFilterSet && passes ? ' <span class="badge-new">PASSES</span>' : ""}</div>
+              <div class="deal-card-inputs">
+                ${fmtMoneyMaybeEstimate(h.price, h.priceIsEstimate)} price &middot;
+                ${fmtMoneyMaybeEstimate(h.rehabCost, h.rehabCostIsEstimate)} rehab &middot;
+                ${fmtMoneyMaybeEstimate(h.arv, h.arvIsEstimate)} ARV
+                ${h.rentEstimate != null ? `&middot; ${fmtMoney(h.rentEstimate)}/mo rent` : ""}
+              </div>
             </div>
-          </div>
-          <div class="deal-stats">${dealStatsHtml(h, m)}</div>
-        `;
-        card.addEventListener("click", () => loadHouseIntoCalculator(h.id));
-        cardsEl.appendChild(card);
+            <div class="deal-stats">${dealStatsHtml(h, m)}</div>
+          `;
+          card.addEventListener("click", () => loadHouseIntoCalculator(h.id));
+          cardsEl.appendChild(card);
+        }
       }
     }
 
@@ -1127,7 +1185,30 @@
       }
     });
 
-    loadHouses();
+    loadHouses().then(() => {
+      // Re-render whichever screen is showing, since loadHouses() only calls
+      // render() (the Houses screen) directly.
+      if (navCalculator.classList.contains("active")) {
+        populateCalcHouseSelect();
+        renderDeals();
+      }
+    });
+
+    // Keep the page current without a manual refresh: re-pull houses.json
+    // periodically so background workflow updates (auto-filled price/photo/
+    // ARV, or edits made from another device) show up on their own.
+    // Guarded so it never yanks data out from under an in-progress edit or
+    // burns requests while the tab is in the background.
+    const AUTO_REFRESH_MS = 60000;
+    setInterval(async () => {
+      if (document.hidden) return;
+      if (dialog.open) return;
+      await loadHouses();
+      if (navCalculator.classList.contains("active")) {
+        populateCalcHouseSelect();
+        renderDeals();
+      }
+    }, AUTO_REFRESH_MS);
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));

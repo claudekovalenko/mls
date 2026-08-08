@@ -380,6 +380,71 @@ a.addr-link:hover { color: var(--accent-dark); text-decoration: underline; }
 .deal-card-passes { border-color: var(--accent); border-width: 2px; box-shadow: 0 0 0 3px var(--accent-soft); }
 .deal-card-fails { opacity: 0.45; }
 
+/* ---- Per-market summary tiles ---- */
+.market-summaries {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.market-summary {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+}
+.market-summary-empty { border-left-color: var(--line); opacity: 0.7; }
+.market-summary-name {
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-dark);
+}
+.market-summary-empty .market-summary-name { color: var(--sub); }
+.market-summary-empty-text { color: var(--sub); font-size: 0.85rem; margin-top: 6px; }
+.market-summary-stats {
+  display: flex;
+  gap: 18px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.market-summary-stats > div { display: flex; flex-direction: column; }
+.market-summary-num { font-size: 1.15rem; font-weight: 800; line-height: 1.2; }
+.market-summary-num.pos { color: var(--accent-dark); }
+.market-summary-num.neg { color: var(--err); }
+.market-summary-lbl {
+  font-size: 0.68rem;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+/* ---- Market grouping heading in the candidates list ---- */
+.market-heading {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-dark);
+  margin: 22px 0 2px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--accent-soft);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.market-heading:first-child { margin-top: 0; }
+.market-heading-count {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.7rem;
+}
+
 /* ---- Best Deal banner ---- */
 .best-deal-banner {
   border-radius: var(--radius);
