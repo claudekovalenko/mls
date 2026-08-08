@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atlanta Listing Alert Filter</title>
+<title>Listing Alert Filters</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1f6f4a">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -14,32 +14,19 @@
 <div class="wrap-narrow">
   <nav class="top-nav"><a href="index.html">&larr; Back to House Tracker</a></nav>
   <div class="eyebrow">Daily Alert</div>
-  <h1>Atlanta Listing Alert — Filter</h1>
-  <p class="sub">Set the filter used to search Atlanta-area listings for the daily email alert. Changes save
-     directly to <code>criteria.json</code> in this repo, and the next scheduled run will use them.</p>
+  <h1>Listing Alert Filters</h1>
+  <p class="sub">Search criteria for the daily email alert, per market. Each market is searched
+     separately and its listings tagged, so they land in the right section of the tracker. Changes
+     save directly to <code>criteria.json</code>, and the next scheduled run will use them.</p>
 
   <div class="card">
     <form id="criteria-form">
-      <label>Location
-        <input type="text" id="location" required>
-      </label>
-      <div class="row">
-        <div><label>Min Price <input type="number" id="minPrice" required></label></div>
-        <div><label>Max Price <input type="number" id="maxPrice" required></label></div>
-      </div>
-      <div class="row">
-        <div><label>Min Beds <input type="number" id="minBeds" required></label></div>
-        <div><label>Min Baths <input type="number" id="minBaths" required></label></div>
-      </div>
-      <label>Property Types (comma-separated)
-        <input type="text" id="propertyTypes">
-      </label>
-      <label>Keywords (comma-separated, matched against description/remarks/title/address)
-        <input type="text" id="keywords" placeholder="e.g. pool, basement, garage">
-      </label>
       <label>Recipient Emails (comma-separated — everyone here gets the daily alert)
         <input type="text" id="recipientEmails" placeholder="you@gmail.com, someone.else@gmail.com" required>
       </label>
+
+      <div id="markets-container"></div>
+
       <label>Notes
         <textarea id="notes" rows="2"></textarea>
       </label>
@@ -66,17 +53,40 @@
     const BRANCH = "main";
     const PATH = "criteria.json";
 
-    const els = {
-      location: document.getElementById("location"),
-      minPrice: document.getElementById("minPrice"),
-      maxPrice: document.getElementById("maxPrice"),
-      minBeds: document.getElementById("minBeds"),
-      minBaths: document.getElementById("minBaths"),
-      propertyTypes: document.getElementById("propertyTypes"),
-      keywords: document.getElementById("keywords"),
-      recipientEmails: document.getElementById("recipientEmails"),
-      notes: document.getElementById("notes"),
-    };
+    const MARKET_FIELDS = [
+      { key: "location", label: "Location", type: "text" },
+      { key: "city", label: "City", type: "text" },
+      { key: "state", label: "State", type: "text" },
+      { key: "minPrice", label: "Min Price", type: "number" },
+      { key: "maxPrice", label: "Max Price", type: "number" },
+      { key: "minBeds", label: "Min Beds", type: "number" },
+      { key: "minBaths", label: "Min Baths", type: "number" },
+      { key: "propertyTypes", label: "Property Types (comma-separated)", type: "list" },
+      { key: "keywords", label: "Keywords (comma-separated, matched against description/address)", type: "list" },
+    ];
+
+    function renderMarketForm(market, index) {
+      const fields = MARKET_FIELDS.map(f => {
+        let value = market[f.key];
+        if (f.type === "list") value = (value || []).join(", ");
+        value = value ?? "";
+        return `<label>${f.label}
+          <input type="${f.type === "number" ? "number" : "text"}"
+                 data-market-index="${index}" data-field="${f.key}"
+                 value="${String(value).replace(/"/g, "&quot;")}">
+        </label>`;
+      }).join("");
+      return `<fieldset class="market-fieldset">
+        <legend>${(market.name || "Market").replace(/</g, "&lt;")}</legend>
+        <input type="hidden" data-market-index="${index}" data-field="name" value="${(market.name || "").replace(/"/g, "&quot;")}">
+        ${fields}
+      </fieldset>`;
+    }
+
+    // Markets are the source of truth in memory; the form is just a view of
+    // them, so saving can't silently drop a market the form didn't render.
+    let markets = [];
+
     const statusEl = document.getElementById("status");
     const tokenEl = document.getElementById("ghToken");
 
@@ -101,20 +111,47 @@
         if (!res.ok) throw new Error(`GitHub API ${res.status}`);
         const data = await res.json();
         const criteria = JSON.parse(atob(data.content));
-        els.location.value = criteria.location || "";
-        els.minPrice.value = criteria.minPrice ?? "";
-        els.maxPrice.value = criteria.maxPrice ?? "";
-        els.minBeds.value = criteria.minBeds ?? "";
-        els.minBaths.value = criteria.minBaths ?? "";
-        els.propertyTypes.value = (criteria.propertyTypes || []).join(", ");
-        els.keywords.value = (criteria.keywords || []).join(", ");
+
         const existingRecipients = criteria.recipientEmails
           || [criteria.recipientEmail, criteria.ccEmail].filter(Boolean);
-        els.recipientEmails.value = existingRecipients.join(", ");
-        els.notes.value = criteria.notes || "";
+        document.getElementById("recipientEmails").value = existingRecipients.join(", ");
+        document.getElementById("notes").value = criteria.notes || "";
+
+        // Back-compat: an old flat criteria.json becomes a single market.
+        markets = criteria.markets || [{
+          name: criteria.location || "Market",
+          location: criteria.location,
+          minPrice: criteria.minPrice,
+          maxPrice: criteria.maxPrice,
+          minBeds: criteria.minBeds,
+          minBaths: criteria.minBaths,
+          propertyTypes: criteria.propertyTypes,
+          keywords: criteria.keywords,
+        }];
+        document.getElementById("markets-container").innerHTML =
+          markets.map(renderMarketForm).join("");
       } catch (err) {
         setStatus("Could not load current criteria: " + err.message, false);
       }
+    }
+
+    function readMarketsFromForm() {
+      // Start from the loaded markets so any key the form doesn't show
+      // (future fields, anything hand-added to the JSON) survives a save.
+      const updated = markets.map(m => ({ ...m }));
+      document.querySelectorAll("[data-market-index]").forEach(input => {
+        const i = Number(input.dataset.marketIndex);
+        const field = input.dataset.field;
+        const spec = MARKET_FIELDS.find(f => f.key === field);
+        let value = input.value;
+        if (spec && spec.type === "list") {
+          value = value.split(",").map(v => v.trim()).filter(Boolean);
+        } else if (spec && spec.type === "number") {
+          value = value === "" ? null : Number(value);
+        }
+        updated[i][field] = value;
+      });
+      return updated;
     }
 
     document.getElementById("criteria-form").addEventListener("submit", async (e) => {
@@ -126,15 +163,10 @@
       }
 
       const criteria = {
-        location: els.location.value,
-        minPrice: Number(els.minPrice.value),
-        maxPrice: Number(els.maxPrice.value),
-        minBeds: Number(els.minBeds.value),
-        minBaths: Number(els.minBaths.value),
-        propertyTypes: els.propertyTypes.value.split(",").map(s => s.trim()).filter(Boolean),
-        keywords: els.keywords.value.split(",").map(s => s.trim()).filter(Boolean),
-        recipientEmails: els.recipientEmails.value.split(",").map(s => s.trim()).filter(Boolean),
-        notes: els.notes.value,
+        recipientEmails: document.getElementById("recipientEmails").value
+          .split(",").map(s => s.trim()).filter(Boolean),
+        markets: readMarketsFromForm(),
+        notes: document.getElementById("notes").value,
       };
 
       try {

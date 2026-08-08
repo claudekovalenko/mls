@@ -1,11 +1,30 @@
 {
-  "location": "Atlanta, GA",
-  "minPrice": 400000,
-  "maxPrice": 900000,
-  "minBeds": 2,
-  "minBaths": 1,
-  "propertyTypes": ["Single Family", "Condo", "Townhouse"],
-  "keywords": ["pool", "basement", "garage"],
   "recipientEmails": ["claudekovalenko@gmail.com", "ryan.swedberg@gmail.com"],
-  "notes": "Atlanta listing search criteria, shared between Ryan and Ivan. Edit recipients or filters via the dashboard or directly in this file."
+  "markets": [
+    {
+      "name": "Atlanta",
+      "location": "Atlanta, GA",
+      "city": "Atlanta",
+      "state": "GA",
+      "minPrice": 400000,
+      "maxPrice": 900000,
+      "minBeds": 2,
+      "minBaths": 1,
+      "propertyTypes": ["Single Family", "Condo", "Townhouse"],
+      "keywords": ["pool", "basement", "garage"]
+    },
+    {
+      "name": "Los Angeles",
+      "location": "Los Angeles, CA",
+      "city": "Los Angeles",
+      "state": "CA",
+      "minPrice": 500000,
+      "maxPrice": 1500000,
+      "minBeds": 2,
+      "minBaths": 1,
+      "propertyTypes": ["Single Family", "Condo", "Townhouse"],
+      "keywords": []
+    }
+  ],
+  "notes": "Multi-market listing search criteria, shared between Ryan and Ivan. Each market is searched separately and tagged so listings land in the right section of the tracker. Edit via the dashboard or directly in this file."
 }
