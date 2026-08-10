@@ -51,7 +51,7 @@
     "address": "1142 Barnes Mill Rd Marietta GA 30062",
     "addressIsGuessed": true,
     "url": "https://www.zillow.com/homedetails/1142-Barnes-Mill-Rd-Marietta-GA-30062/89578624_zpid/?utm_campaign=iosappmessage&utm_medium=referral&utm_source=txtshare",
-    "photoUrl": "",
+    "photoUrl": "photos/21881372-d704-4321-87a1-d00433255a7e.jpg",
     "price": null,
     "priceHistory": [],
     "beds": null,
@@ -67,6 +67,8 @@
     "source": "manual",
     "market": "Atlanta",
     "addedBy": "Ryan",
-    "dateAdded": "2026-08-10"
+    "dateAdded": "2026-08-10",
+    "rentcastChecked": true,
+    "streetViewChecked": true
   }
 ]
