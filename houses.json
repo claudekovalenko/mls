@@ -52,7 +52,7 @@
     "addressIsGuessed": false,
     "url": "https://www.zillow.com/homedetails/1142-Barnes-Mill-Rd-Marietta-GA-30062/89578624_zpid/?utm_campaign=iosappmessage&utm_medium=referral&utm_source=txtshare",
     "photoUrl": "https://photos.zillowstatic.com/fp/e0b61f646866364e0fe85fc786291681-cc_ft_1536.webp",
-    "price": null,
+    "price": 360000,
     "priceIsEstimate": false,
     "priceHistory": [],
     "beds": null,
