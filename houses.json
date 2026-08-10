@@ -14,7 +14,7 @@
     "status": "Interested",
     "rating": 0,
     "notes": "",
-    "liked": true,
+    "liked": false,
     "source": "manual",
     "addedBy": "Ryan",
     "dateAdded": "2026-07-30",
