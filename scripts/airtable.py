@@ -35,9 +35,15 @@ SCHEMA = {
         ("Min Beds", "number"),
         ("Min Baths", "number"),
         ("Min Sqft", "number"),
+        ("Zip Codes", "singleLineText"),       # comma-separated; how "within 10 mi" is expressed
         ("Property Types", "singleLineText"),  # comma-separated
         ("Keywords", "singleLineText"),        # comma-separated, any-match
+        ("Must Haves", "singleLineText"),      # comma-separated, ALL required; "/" = alternatives
         ("Strategy", "singleSelect"),          # Flip / BRRRR / Either
+        ("Max Price Per Sqft", "number"),      # skip anything above; missing sqft passes
+        ("Max All In", "number"),              # price + rehab cap
+        ("Target Total Sqft", "number"),       # post-reno goal, informational
+        ("Min Baths After Reno", "number"),    # post-reno goal, informational
         ("Target Flip Profit", "number"),      # qualification thresholds
         ("Target Cash on Cash", "number"),     # percent, e.g. 8
         ("Target One Percent", "number"),      # percent, e.g. 1
@@ -52,6 +58,9 @@ SCHEMA = {
         ("Beds", "number"),
         ("Baths", "number"),
         ("Sqft", "number"),
+        ("Lot Sqft", "number"),
+        ("Price Per Sqft", "number"),
+        ("Value Signals", "singleLineText"),  # Basement, ADU potential, FSBO, ...
         ("Rehab Cost", "number"),
         ("ARV", "number"),
         ("Rent Estimate", "number"),
@@ -86,7 +95,7 @@ SELECT_OPTIONS = {
 # are not, and rounding them to integers in Airtable would quietly destroy the
 # distinction between a 7.9% and an 8.4% cash-on-cash.
 NUMBER_PRECISION = {
-    "Baths": 1, "Min Baths": 1,
+    "Baths": 1, "Min Baths": 1, "Min Baths After Reno": 1,
     "Cash on Cash": 1, "One Percent": 2,
     "Target Cash on Cash": 1, "Target One Percent": 2,
 }

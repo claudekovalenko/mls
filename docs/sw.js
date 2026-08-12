@@ -1,7 +1,7 @@
 // Caches only the static app shell. Airtable API calls are never cached --
 // house data must always be live, or the app would quietly show stale prices
 // and verdicts with no way for the user to tell.
-const CACHE = "house-finder-v2";
+const CACHE = "house-finder-v3";
 const SHELL = ["index.html", "app.js", "style.css", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

@@ -210,6 +210,15 @@ function renderMatches() {
     el.addEventListener("click", () => openHouse(el.dataset.houseId)));
 }
 
+// Value signals are why a house is here at all -- basement, ADU potential,
+// FSBO, missing sqft, oversized lot. They get chips, not a buried field.
+function signalChips(raw) {
+  const signals = String(raw || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!signals.length) return "";
+  return `<div class="signals">${signals.map(s =>
+    `<span class="signal">${esc(s)}</span>`).join("")}</div>`;
+}
+
 function houseCard({ id, f, v }) {
   const photo = f["Photo URL"]
     ? `<img class="card-photo" src="${esc(f["Photo URL"])}" alt="" loading="lazy">`
@@ -226,8 +235,10 @@ function houseCard({ id, f, v }) {
         <div class="card-sub">
           ${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba
           ${f.Sqft ? ` · ${Number(f.Sqft).toLocaleString()} sqft` : ""}
+          ${f["Price Per Sqft"] ? ` · $${Number(f["Price Per Sqft"]).toLocaleString()}/sqft` : ""}
           ${f.Status ? ` · ${esc(f.Status)}` : ""}
         </div>
+        ${signalChips(f["Value Signals"])}
         <div class="card-stats">
           <div><span class="stat-num ${(v.metrics.flipProfit ?? 0) > 0 ? "pos" : "neg"}">${money(v.metrics.flipProfit)}</span><span class="stat-lbl">Flip profit</span></div>
           <div><span class="stat-num">${pct(v.metrics.cashOnCash)}</span><span class="stat-lbl">Cash-on-cash</span></div>
@@ -252,8 +263,14 @@ const CRITERIA_FIELDS = [
   ["Min Beds", "number", ""],
   ["Min Baths", "number", ""],
   ["Min Sqft", "number", ""],
+  ["Zip Codes", "text", "30068, 30067, 30062"],
   ["Property Types", "text", "Single Family, Townhouse"],
-  ["Keywords", "text", "pool, basement"],
+  ["Keywords", "text", "fixer, as-is, TLC"],
+  ["Must Haves", "text", "basement, adu/oversized lot"],
+  ["Max Price Per Sqft", "number", "175"],
+  ["Max All In", "number", "350000"],
+  ["Target Total Sqft", "number", "2000"],
+  ["Min Baths After Reno", "number", "3"],
   ["Target Flip Profit", "number", "50000"],
   ["Target Cash on Cash", "number", "8"],
   ["Target One Percent", "number", "1"],
@@ -272,10 +289,12 @@ function renderCriteria() {
           <span class="badge ${f.Active ? "" : "badge-off"}">${f.Active ? "ACTIVE" : "PAUSED"}</span>
         </div>
         <div class="card-sub">
-          ${esc(f.City || "")}${f.State ? ", " + esc(f.State) : ""} ·
-          ${money(f["Min Price"])}–${money(f["Max Price"])} ·
-          ${f["Min Beds"] ?? "?"}+ bd
+          ${f["Zip Codes"] ? esc(String(f["Zip Codes"]).split(",")[0].trim()) + " +" + (String(f["Zip Codes"]).split(",").length - 1) + " zips" : esc(f.City || "")}${!f["Zip Codes"] && f.State ? ", " + esc(f.State) : ""} ·
+          ${money(f["Min Price"])}–${money(f["Max Price"])}
+          ${f["Max Price Per Sqft"] ? ` · ≤$${f["Max Price Per Sqft"]}/sqft` : ""}
+          ${f["Max All In"] ? ` · ≤${money(f["Max All In"])} all-in` : ""}
         </div>
+        ${f["Must Haves"] ? `<div class="card-sub">Must have: ${esc(f["Must Haves"])}</div>` : ""}
         <div class="card-sub">
           Targets: ${money(f["Target Flip Profit"])} profit ·
           ${f["Target Cash on Cash"] ?? "—"}% CoC ·
