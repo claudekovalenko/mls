@@ -1,203 +1,151 @@
-# MLS House Tracker
+# House Finder
 
-A site for tracking houses we're considering buying across two markets (Atlanta and Los Angeles)
-— status, ratings, notes — plus a daily email of new Atlanta listings matching our filter
-criteria, with the ability to "like" listings straight from a reply email.
+A flip / BRRRR deal finder. You describe what you're looking for, a scheduled
+worker searches listing feeds and scores every result, and anything that clears
+your targets shows up in a phone app — best deal in each market first.
 
-This currently covers the **purchasing/shopping phase**. Once we own a house, this can expand
-into ownership/management (maintenance, docs, expenses, etc.) — but `houses.json` and the
-tracker UI are intentionally simple for now.
+- **App:** https://claudekovalenko.github.io/mls/ (installable — Share → Add to Home Screen)
+- **Database:** Airtable
+- **Worker:** GitHub Actions, every 6 hours
 
-## Installing as an app on your phone
+---
 
-The tracker is a Progressive Web App (PWA) — it can be installed to your home screen and opens
-full-screen like a native app, no App Store needed:
-
-- **iPhone (Safari)**: open the site, tap the Share icon, tap **Add to Home Screen**.
-- **Android (Chrome)**: open the site, tap the ⋮ menu, tap **Add to Home screen** (or **Install app**).
-
-## How it works
-
-- `houses.json` — every house we're tracking: address, price, `priceHistory` (logged
-  automatically whenever the price changes), beds/baths/sqft, listing URL, photo URL, status
-  (Interested / Touring Scheduled / Toured / Offer Made / Under Contract / Purchased / Rejected),
-  star rating, notes, `liked` flag, `source` (`manual` or `email`), `market` (Atlanta or Los
-  Angeles — defaults to Atlanta if absent, for houses added before this field existed), `addedBy`
-  (Ryan or Ivan), date added, and flip/BRRRR analysis inputs: `rehabCost`, `arv`, `rentEstimate`.
-- `docs/index.html` — the House Tracker (see below), published via GitHub Pages. A floating
-  bottom nav switches between two full screens: **Houses** (All Houses / Highlights tabs — add,
-  edit, heart, filter, sort) and **Calculator** (see below).
-- `scripts/refresh_listings.py` — best-effort re-check (every 2 hours) of each house's listing URL
-  for a new price or photo (via Open Graph tags). Every house is refreshed independently, so one
-  blocked/broken listing never stops the rest or fails the workflow. Anti-scraping sites (Zillow
-  in particular) reliably block this — confirmed via 403 responses even from GitHub's own
-  servers — so it usually won't do anything for Zillow listings specifically; price/photo can
-  always be edited by hand instead.
-- `.github/workflows/refresh-listings.yml` — runs `refresh_listings.py` every 2 hours and commits
-  any price/photo updates it manages to find.
-- `criteria.json` — the daily email alert's search filters, as a list of **markets** (Atlanta and
-  Los Angeles), each with its own location/price range/beds/baths/property types/keywords, plus a
-  shared recipient list. Each market is searched separately and its listings tagged with the
-  market name, so they land in the right section of the tracker. Keywords are matched
-  (case-insensitive) against each listing's description/remarks/title/address — a listing only
-  needs to contain one of them. The old flat single-market schema still loads (treated as one
-  market) for back-compat.
-- `scripts/send_alert.py` — reads `criteria.json`, fetches listings from a data source, filters
-  them, numbers them in the email body, saves that day's list to `last_alert_listings.json`, and
-  emails the matches.
-- `scripts/process_replies.py` — polls the Gmail inbox (IMAP) for replies to alert emails
-  containing a line like `LIKE 1,3`, matches those numbers against `last_alert_listings.json`,
-  and appends them to `houses.json` as highlighted houses (`liked: true`, `source: "email"`).
-- `.github/workflows/daily-alert.yml` — runs `send_alert.py` daily at 14:00 UTC and commits the
-  day's listing snapshot.
-- `.github/workflows/process-email-replies.yml` — runs `process_replies.py` every 30 minutes and
-  commits any newly liked houses.
-- `docs/alert.html` — the daily alert filter settings page, linked from the tracker.
-
-## One-time setup
-
-1. **Enable GitHub Pages**: Settings → Pages → Source: Deploy from a branch → Branch `main`,
-   folder `/docs`. The tracker will be live at `https://claudekovalenko.github.io/mls/`.
-2. **Add repo secrets** (Settings → Secrets and variables → Actions):
-   - `GMAIL_USER` / `GMAIL_APP_PASSWORD` — a Gmail address + an
-     [app password](https://myaccount.google.com/apppasswords). Used both to send the daily
-     alert (SMTP) and to check for "LIKE" replies (IMAP) — make sure
-     [IMAP access](https://support.google.com/mail/answer/7126229) is enabled on the account.
-   - `LISTINGS_API_URL` / `LISTINGS_API_KEY` / `LISTINGS_API_TYPE` — your listings data source.
-     **This is currently unset, which is why the daily alert has never found a single listing.**
-     Two modes:
-     - `LISTINGS_API_TYPE=json` (default) — a JSON array of
-       `{price, beds, baths, address, url, propertyType}`. The URL may contain `{city}`,
-       `{state}` or `{location}` placeholders, substituted per market.
-     - `LISTINGS_API_TYPE=reso` — a **RESO Web API** (OData) feed, the standard interface MLSs
-       expose for IDX. `send_alert.py` builds a per-market `$filter` using RESO's standard field
-       names (`ListPrice`, `BedroomsTotal`, `City`, `StandardStatus`, …) and maps the response
-       onto this pipeline's shape, so any compliant feed works regardless of vendor.
-
-     **Getting IDX access:** feeds are licensed through the local MLS — FMLS or GAMLS for Atlanta,
-     CRMLS for Los Angeles — and normally require a licensed agent to sponsor the feed.
-     [Bridge Interactive](https://bridgedataoutput.com/) (Zillow-owned) provides free API access
-     to MLS data once your MLS approves you. Scraping Zillow/Redfin/Realtor directly is not a
-     workable substitute: their robots.txt disallows the search paths and they actively block
-     automated clients (verified — see `scripts/probe_sources.py`).
-   - `RENTCAST_API_KEY` (optional) — a free API key from [rentcast.io](https://rentcast.io) used
-     to fill in beds/baths/sqft/estimated value for tracked houses by address, as a fallback for
-     whatever the listing-page scrape couldn't get (which is most of the time for sites like
-     Zillow that block scraping outright). Hard-capped at 45 calls/month (5 below RentCast's free
-     50-call limit) via `rentcast_usage.json`, and only queried once per house ever. Price filled
-     in this way is a valuation estimate, not the real listing price — shown with a `~` prefix in
-     the tracker.
-   - `GOOGLE_MAPS_API_KEY` (optional) — a Google Maps Platform API key with the **Street View
-     Static API** enabled, used as a photo fallback when a listing has no photo (again, mainly
-     for Zillow). Requires a Google Cloud project with billing enabled — new accounts get a
-     one-time $300/90-day trial credit (not a recurring monthly amount). Actual cost here is
-     small regardless: the metadata check is free, and only the image fetch is billed
-     (~$0.007/call), so the 100-call/month hard cap tops out around **$0.35/month** even with
-     zero trial credit remaining. Only queried once per house ever, tracked in
-     `streetview_usage.json`. Fetched photos are saved into `docs/photos/` and committed — the
-     API key itself is never exposed in `houses.json` or anywhere public.
-3. Without secrets configured, the alert workflow still runs and prints the would-be email to the
-   Action log instead of sending it, and the reply-processing workflow just skips checking.
-4. **Create your GitHub token** at
-   [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta), scoped to
-   only this repo (`Repository access` → `Only select repositories` → `mls`). Under
-   `Permissions`, click **+ Add permissions** and add:
-   - **Contents** → Read and write (required — lets it save houses/criteria)
-   - **Actions** → Read and write (lets it instantly trigger the price/beds/baths/photo auto-fill
-     right after you add a house; without it, houses still get filled in by the next scheduled
-     run, within 2 hours)
-
-   Paste the generated token into the tracker's "GitHub access token" section and click
-   **Save Token**, then **Test Token** to confirm it actually has write access before relying on
-   it.
-
-## Using the House Tracker
-
-Open the site (`docs/index.html`), paste a GitHub token once (instructions are on the page), and:
-
-- **Paste a listing URL and hit Add** — the quickest way to add a house. It's saved instantly;
-  the address is parsed straight out of the URL text itself (works for Zillow, Redfin, etc, with
-  no network request involved), so it usually shows the real street address right away. If your
-  token has the Actions permission, it also immediately kicks off the price/beds/baths/photo
-  lookup (RentCast + Street View) instead of waiting for the next scheduled run — and if either
-  service's monthly limit has already been hit, the status message tells you so instead of
-  silently doing nothing. Fill in price/status/notes later via **Edit** if you want.
-- **+ Add with details** — the full form, for adding price/beds/baths/status/rating/notes up
-  front instead of a bare URL.
-- Click the heart (♡/♥) on any row to highlight it — highlighted houses show up on the
-  **Highlights** tab.
-- Click **Edit** on any row to update its status/rating/notes as you go through the process, or
-  delete it.
-- Filter by market (Atlanta / Los Angeles / All), status, and sort by date added / price /
-  rating / address. Pick the market when adding a house (quick-add or the full form) — it's
-  remembered per-browser as the default for next time.
-- **Calculator screen** (bottom nav) — a live, editable flip/BRRRR calculator. Type in
-  Price/Rehab Cost/ARV/Rent Estimate directly (a blank scratch-pad calculator), or pick a saved
-  house from the dropdown — or just tap any card below — to load its numbers in; edit them and
-  hit **Save these numbers to the loaded house** to write changes back. Shows the 70% rule max
-  offer, estimated flip profit (assumes 8% selling costs), BRRRR cash left in the deal after a
-  75%-LTV refinance, BRRRR cash-on-cash return (assumes 7%/30yr on the refi loan and the 50% rule
-  for operating expenses), and the 1% rule ratio, all updating live as you type. Below the
-  calculator, every house with Rehab Cost or ARV already filled in shows as its own card. Rent
-  Estimate auto-fills from RentCast when available, same as price/beds/baths. These are quick
-  screening heuristics, not underwriting — always verify real numbers before making an offer.
-  Note: true Rehab Cost and true ARV can't be scraped — no data source knows what a specific
-  house needs in repairs or what it'll actually be worth after renovation. That said,
-  `refresh_listings.py` now auto-fills **placeholder estimates** for both whenever they're
-  empty, so the calculator isn't blank by default: ARV defaults to RentCast's current-value
-  estimate (a proxy, not a true after-repair projection), and Rehab Cost defaults to
-  $20/sqft (a generic "light cosmetic rehab" assumption). Both show with a `~` prefix and an
-  explanatory tooltip in the tracker so they're clearly marked as placeholders, not real
-  numbers — editing either through the Edit dialog or the Calculator's save button replaces the
-  estimate with your real number and clears the "estimated" flag.
-- **Automatic qualification** — every candidate gets a plain verdict for Flip and for BRRRR
-  (STRONG / GOOD / MARGINAL / PASS / NO DATA) with the specific reasons behind it, plus a
-  "better suited to Flip/BRRRR" recommendation. Candidates are ranked by verdict first and raw
-  profit only as a tiebreaker, so a genuinely strong deal never sits below a merely-profitable
-  one with a bigger headline number. Flip tiers key off the 70% rule, absolute profit, and
-  return on total cash in; BRRRR tiers key off monthly cashflow, cash left in the deal after
-  refi, and cash-on-cash. The thresholds are conventional rules of thumb — tune them in
-  `docs/index.html` (the `FLIP_*` / `BRRRR_*` constants) if they don't match your real buy box.
-- **Filter criteria + Best Deal banner** (Calculator screen) — set a minimum Flip Profit, minimum
-  BRRRR Cash-on-Cash %, and/or minimum 1% Rule %, saved per-browser. Any house that clears every
-  filter you've set gets a **PASSES** badge and a highlighted border on its card; the single
-  best-scoring one (by flip profit) is called out in a large banner at the top so it's impossible
-  to miss. If nothing currently clears your bar, the banner says so plainly instead of going
-  silent. A separate Market dropdown (Atlanta / Los Angeles / All markets) narrows the
-  candidates list and Best Deal pick to one market at a time, also saved per-browser.
-
-All changes commit straight to `houses.json` on `main`. You can also edit that file directly in
-GitHub if you prefer.
-
-## Adding listings from the daily alert email
-
-Each listing in the alert email has an **"+ Add to Tracker" button**. Click it and it opens
-`docs/add.html`, which adds that listing straight into `houses.json` via the GitHub API — using
-the same browser-saved GitHub token as the tracker (first click on a new device/browser asks for
-the token once, then remembers it). Houses added this way are marked highlighted and show a
-**NEW** badge on the Highlights tab.
-
-If you'd rather not click through, you can also reply to the email with:
+## How it fits together
 
 ```
-LIKE 1,3
+Airtable "Search Criteria"  ──►  search_worker.py  ──►  Airtable "Houses"  ──►  PWA
+   (what you want)               (fetch, filter,          (scored results)      (browse,
+                                  score, dedupe)                                 edit, decide)
 ```
 
-to add listings #1 and #3 from that day's alert. `process-email-replies.yml` checks for these
-replies every 30 minutes (via IMAP) and commits the additions.
+Airtable is the database of record. The app talks to Airtable's REST API
+directly from your browser; there is no backend of ours in the middle.
 
-## Updating the alert filter
+## Setup
 
-Open `docs/alert.html` (linked from the tracker), paste the same GitHub token, and edit/save the
-form — it commits straight to `criteria.json` on `main`.
+### 1. Create the Airtable base
 
-## Running things manually
+Create a new base with two tables, `Search Criteria` and `Houses`. The exact
+field list lives in `SCHEMA` in [`scripts/airtable.py`](scripts/airtable.py) —
+that dict is the single source of truth, so build the tables from it rather than
+from a copy here.
 
-Actions tab → "MLS Daily Listing Alert" or "Process Alert Email Replies" → Run workflow.
+Two fields need their select options filled in:
 
-## Future: Airtable
+- `Houses → Status`: New, Interested, Touring, Toured, Offer, Under Contract, Purchased, Rejected
+- `Houses → Flip Verdict` / `BRRRR Verdict`: STRONG, GOOD, MARGINAL, PASS, NO DATA
 
-If `houses.json`-in-Git ever becomes limiting (e.g. more collaborators, richer views), the data
-model here is simple enough to swap for an Airtable base with minimal changes — `houses.json`'s
-shape maps directly to an Airtable table, and `process_replies.py` could write to Airtable's API
-instead of committing JSON. Not needed yet.
+### 2. Get a token
+
+airtable.com/create/tokens → scopes `data.records:read` and
+`data.records:write`, granted on this base. Copy the token (`pat…`) and the base
+ID (the `app…` part of the base URL).
+
+### 3. Connect the app
+
+Open the site, paste the token and base ID. They're kept in `localStorage` on
+that device and sent only to `api.airtable.com`. Nothing is committed to this
+repo and nothing is shared between devices — each phone/laptop connects once.
+
+### 4. Connect the worker
+
+Repo → Settings → Secrets and variables → Actions:
+
+| Name | Kind | Value |
+|---|---|---|
+| `AIRTABLE_TOKEN` | secret | same token as above |
+| `AIRTABLE_BASE_ID` | secret | `app…` |
+| `LISTINGS_API_TYPE` | variable | `reso` or `rentcast` |
+| `LISTINGS_API_URL` | secret | RESO OData endpoint (reso only) |
+| `LISTINGS_API_KEY` | secret | bearer token for that feed |
+| `RENTCAST_API_KEY` | secret | rentcast only |
+
+Then run **Actions → Search Listings → Run workflow** to test it.
+
+## Where listings come from
+
+The worker has two adapters:
+
+**RESO Web API (`reso`)** — the standard MLS/IDX interface, and the one worth
+having. It gives you the real, complete, current listing set for a market with
+photos and full remarks. Access is per-MLS and normally requires a licensed
+agent to sponsor the feed:
+
+- Atlanta → FMLS and/or GAMLS
+- Los Angeles → CRMLS
+
+Bridge Interactive (Zillow-owned) resells several of these for free once the MLS
+approves you. Once you have a URL and key, it's a two-secret change — no code.
+
+**RentCast (`rentcast`)** — a stopgap. Broad coverage, no MLS approval needed,
+but a metered free tier and thinner data. Fine for proving the pipeline out.
+
+### Why there's no scraper
+
+Zillow, Redfin, Realtor.com, Trulia and Homes.com were all probed directly (see
+[`scripts/probe_sources.py`](scripts/probe_sources.py), run from a GitHub Actions
+runner). Every one of them either disallows the search paths in its own
+`robots.txt` or blocks automated clients outright:
+
+| Site | robots.txt on the paths we'd need | Response to automation |
+|---|---|---|
+| Zillow | `/homes/` disallowed | 200 on homepage only |
+| Redfin | `/stingray/` disallowed | 405 |
+| Realtor.com | allowed | 429 |
+| Trulia | allowed | 403 |
+| Homes.com | robots.txt itself 403s | 403 |
+
+Building something to get around that would be against those sites' terms, on a
+repo in your name, and would break constantly anyway. IDX is the path that
+actually works.
+
+## How deals are scored
+
+`scripts/deals.py` is the reference implementation; `docs/app.js` mirrors it so
+the numbers you see while editing match what the worker wrote.
+
+**Flip**
+- 70% rule max offer: `ARV × 0.70 − rehab`
+- Profit: `ARV − price − rehab − (ARV × 8%)` selling costs
+- ROI: profit ÷ cash in
+- STRONG = clears the 70% rule, ≥$50k profit, ≥15% ROI · GOOD = ≥$25k, ≥10% · PASS = no profit
+
+**BRRRR**
+- Refi at 75% of ARV, 7% over 30 years
+- Operating expenses at 50% of rent
+- Cash left in deal = `price + rehab − refi`
+- STRONG = all capital out, or ≥12% cash-on-cash · GOOD = ≥8% · PASS = negative cashflow
+
+A house shows **QUALIFIED** when it also clears the per-search targets on its
+`Search Criteria` row, so a strict search and a loose one can run side by side.
+
+**Rehab cost and ARV cannot be known from a listing feed.** The worker seeds
+rehab from your search's `Rehab Cost Per Sqft` and uses list price as an ARV
+placeholder. Both are meant to be overwritten — open a house in the app, type
+real numbers, and every verdict updates live before you save.
+
+## Repo layout
+
+```
+docs/            the PWA (GitHub Pages)
+  index.html     screens: setup, matches, searches
+  app.js         Airtable client, deal math, rendering
+  style.css
+  sw.js          caches the app shell only, never API responses
+  manifest.json
+scripts/
+  airtable.py    REST client + SCHEMA (source of truth)
+  deals.py       flip/BRRRR math and qualification
+  search_worker.py   the scheduled search
+  migrate_to_airtable.py
+  probe_sources.py   the scraping-feasibility probe
+.github/workflows/search.yml
+```
+
+## Local use
+
+```sh
+cd scripts
+export AIRTABLE_TOKEN=pat… AIRTABLE_BASE_ID=app…
+python search_worker.py
+```

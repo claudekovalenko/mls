@@ -1,16 +1,36 @@
 {
-  "name": "House Tracker",
+  "name": "House Finder",
   "short_name": "Houses",
-  "description": "Atlanta house hunt tracker with flip/BRRRR deal calculator",
+  "description": "Flip / BRRRR deal finder backed by Airtable",
   "start_url": "index.html",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#f4f6f5",
-  "theme_color": "#1f6f4a",
+  "background_color": "#f6f8f8",
+  "theme_color": "#0f766e",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

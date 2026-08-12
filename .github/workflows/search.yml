@@ -1,0 +1,25 @@
+name: Search Listings
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # 4x/day; raise the frequency once a real feed is wired up
+  workflow_dispatch: {}
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run search
+        working-directory: scripts
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          LISTINGS_API_TYPE: ${{ vars.LISTINGS_API_TYPE }}
+          LISTINGS_API_URL: ${{ secrets.LISTINGS_API_URL }}
+          LISTINGS_API_KEY: ${{ secrets.LISTINGS_API_KEY }}
+          RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
+        run: python search_worker.py
