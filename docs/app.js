@@ -416,6 +416,45 @@ function setScreen(next) {
   $("nav-criteria").classList.toggle("active", next === "criteria");
 }
 
+// The base id is buried in an Airtable URL and is the one piece of setup with
+// no obvious home, so look it up from the token instead of asking for it.
+// Needs schema.bases:read, which a data-only token won't have -- hence the
+// fallback message rather than treating the failure as fatal.
+async function findBases() {
+  const token = $("setup-token").value.trim();
+  const out = $("setup-bases");
+  out.innerHTML = "";
+  if (!token) { setStatus("Paste your token first.", false); return; }
+  setStatus("Looking…");
+  let bases;
+  try {
+    const res = await fetch("https://api.airtable.com/v0/meta/bases", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(res.status === 403
+      ? "That token can't list bases — add the schema.bases:read scope, or paste the app… id from your Airtable URL."
+      : `Airtable said ${res.status}.`);
+    bases = (await res.json()).bases || [];
+  } catch (err) {
+    setStatus(err.message, false);
+    return;
+  }
+  if (!bases.length) {
+    setStatus("This token has no bases yet. Create one in Airtable and grant the token access.", false);
+    return;
+  }
+  setStatus(`Found ${bases.length} base${bases.length > 1 ? "es" : ""}. Pick one:`);
+  out.innerHTML = bases.map(b =>
+    `<button type="button" class="secondary base-pick" data-base-id="${esc(b.id)}">${esc(b.name)}</button>`
+  ).join("");
+  out.querySelectorAll("[data-base-id]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      $("setup-base").value = btn.dataset.baseId;
+      out.innerHTML = "";
+      setStatus(`Using ${btn.textContent} — hit Connect.`);
+    }));
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   $("setup-token").value = store.token;
   $("setup-base").value = store.baseId;
@@ -424,6 +463,8 @@ document.addEventListener("DOMContentLoaded", () => {
     store.baseId = $("setup-base").value.trim();
     await refresh();
   });
+
+  $("setup-find").addEventListener("click", findBases);
 
   $("nav-matches").addEventListener("click", () => setScreen("matches"));
   $("nav-criteria").addEventListener("click", () => setScreen("criteria"));

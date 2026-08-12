@@ -178,6 +178,8 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
 
 .card-actions { display: flex; gap: 8px; margin-top: 14px; }
 .criteria-card .card-sub { margin-top: 6px; }
+#setup-bases { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+#setup-bases button { text-align: left; }
 
 .verdict-block { margin: 14px 0; font-size: .85rem; }
 .verdict-block ul { margin: 4px 0 12px; padding-left: 18px; color: var(--sub); }

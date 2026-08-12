@@ -5,13 +5,20 @@ Creating twenty-odd fields by hand across two tables is tedious and easy to
 get subtly wrong -- one mistyped field name and the worker writes into
 nothing. This does it from the same SCHEMA everything else reads.
 
-Two modes:
+You should not have to go find a base id -- give it a token and it works it
+out, and prints the id at the end for the app and the repo secrets.
 
-  # you already made an empty base, just fill it in
+  # make a blank base named "House Finder" in Airtable, grant the token on it
+  AIRTABLE_TOKEN=pat... python bootstrap_base.py
+
+  # or let it create the base (workspace id is the wsp... in the Airtable URL)
+  AIRTABLE_TOKEN=pat... AIRTABLE_WORKSPACE_ID=wsp... python bootstrap_base.py
+
+  # or name the base outright
   AIRTABLE_TOKEN=pat... AIRTABLE_BASE_ID=app... python bootstrap_base.py
 
-  # make the base too (needs the workspace id from the Airtable URL)
-  AIRTABLE_TOKEN=pat... AIRTABLE_WORKSPACE_ID=wsp... python bootstrap_base.py
+If it can't identify a single base it lists every one the token can see, with
+ids, rather than picking for you.
 
 Token scopes: schema.bases:write (plus schema.bases:read). Creating a base
 also needs the token granted on the whole workspace rather than one base.
@@ -29,6 +36,7 @@ import urllib.request
 from airtable import SCHEMA, TABLE_CRITERIA, field_spec
 
 META_ROOT = "https://api.airtable.com/v0/meta"
+BASE_NAME = "House Finder"
 TIMEOUT = 30
 
 
@@ -51,7 +59,7 @@ def create_base(token, workspace_id):
     first = TABLE_CRITERIA
     payload = {
         "workspaceId": workspace_id,
-        "name": "House Finder",
+        "name": BASE_NAME,
         "tables": [{
             "name": first,
             "fields": [field_spec(n, k) for n, k in SCHEMA[first]],
@@ -65,6 +73,40 @@ def create_base(token, workspace_id):
     return base["id"], first
 
 
+def find_base(token):
+    """Look the base up by name so nobody has to dig an id out of a URL.
+
+    The token can already see every base it's been granted, so asking the
+    human to transcribe an app... id is busywork. Only an exact BASE_NAME
+    match is used automatically -- guessing at a base and then writing tables
+    into the wrong one would be much worse than stopping.
+    """
+    bases = call("GET", f"{META_ROOT}/bases", token=token).get("bases", [])
+    if not bases:
+        raise SystemExit(
+            "This token can't see any bases.\n"
+            "Either create one in Airtable and grant the token access to it,\n"
+            "or set AIRTABLE_WORKSPACE_ID and this script will create it."
+        )
+    match = [b for b in bases if b["name"] == BASE_NAME]
+    if len(match) == 1:
+        print(f"Found base {match[0]['name']!r} -> {match[0]['id']}")
+        return match[0]["id"]
+
+    if len(match) > 1:
+        print(f"More than one base is called {BASE_NAME!r}. Pick one:")
+        listing = match
+    else:
+        print(f"No base called {BASE_NAME!r}. Bases this token can see:")
+        listing = bases
+    for b in listing:
+        print(f"  {b['id']}   {b['name']}")
+    raise SystemExit(
+        f"\nRe-run with the one you want:  AIRTABLE_BASE_ID=<id from above>\n"
+        f"(or rename a base to {BASE_NAME!r} and re-run)"
+    )
+
+
 def main():
     token = os.environ.get("AIRTABLE_TOKEN")
     base_id = os.environ.get("AIRTABLE_BASE_ID")
@@ -73,9 +115,10 @@ def main():
         raise SystemExit("Set AIRTABLE_TOKEN.")
     just_created = None
     if not base_id:
-        if not workspace_id:
-            raise SystemExit("Set AIRTABLE_BASE_ID, or AIRTABLE_WORKSPACE_ID to create a base.")
-        base_id, just_created = create_base(token, workspace_id)
+        if workspace_id:
+            base_id, just_created = create_base(token, workspace_id)
+        else:
+            base_id = find_base(token)
 
     tables_url = f"{META_ROOT}/bases/{base_id}/tables"
     existing = {t["name"]: t for t in call("GET", tables_url, token=token).get("tables", [])}
