@@ -39,20 +39,24 @@ right number precision and select options:
 ```sh
 cd scripts
 
-# create the base too (workspace id is the wsp… part of the Airtable URL)
-AIRTABLE_TOKEN=pat… AIRTABLE_WORKSPACE_ID=wsp… python bootstrap_base.py
+# make a blank base called "House Finder" in Airtable, grant the token on it,
+# then just:
+AIRTABLE_TOKEN=pat… python bootstrap_base.py
 
-# or fill in a base you already made
-AIRTABLE_TOKEN=pat… AIRTABLE_BASE_ID=app… python bootstrap_base.py
+# or let it create the base (wsp… is in the Airtable URL)
+AIRTABLE_TOKEN=pat… AIRTABLE_WORKSPACE_ID=wsp… python bootstrap_base.py
 ```
 
-It prints the base ID when it's done. Re-running is safe: it only adds fields
+You don't need to hunt down a base ID — it finds the base from the token and
+prints the ID when it's done. If it can't identify one it lists every base the
+token can see, with IDs, so you can re-run with `AIRTABLE_BASE_ID=app…`. Re-running is safe: it only adds fields
 that are missing and never renames, retypes, or deletes anything, so columns you
 add yourself survive.
 
 ### 3. Connect the app
 
-Open the site, paste the token and base ID. They're kept in `localStorage` on
+Open the site, paste the token, and hit **Find my base** to fill the ID in (or
+paste it yourself). They're kept in `localStorage` on
 that device and sent only to `api.airtable.com`. Nothing is committed to this
 repo and nothing is shared between devices — each phone/laptop connects once.
 
