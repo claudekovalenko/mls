@@ -61,7 +61,14 @@ def _odata_escape(value):
 
 def fetch_reso(criteria, base_url, api_key):
     filters = ["StandardStatus eq 'Active'"]
-    if criteria.get("City"):
+    zips = parse_list_field(criteria.get("Zip Codes"))
+    if zips:
+        # A zip list is how "in 30068 or within ~10 miles" is expressed --
+        # plain OData feeds don't do radius queries, but a ring of zips does
+        # the same job and is inspectable in the criteria row.
+        ors = " or ".join(f"PostalCode eq '{_odata_escape(z)}'" for z in zips)
+        filters.append(f"({ors})")
+    elif criteria.get("City"):
         filters.append(f"City eq '{_odata_escape(criteria['City'])}'")
     if criteria.get("State"):
         filters.append(f"StateOrProvince eq '{_odata_escape(criteria['State'])}'")
@@ -90,12 +97,16 @@ def fetch_reso(criteria, base_url, api_key):
     for r in records:
         media = r.get("Media") or []
         photo = media[0].get("MediaURL", "") if media and isinstance(media[0], dict) else ""
+        lot = _num(r.get("LotSizeSquareFeet"))
+        if lot is None and _num(r.get("LotSizeAcres")) is not None:
+            lot = round(_num(r.get("LotSizeAcres")) * 43560)
         out.append({
             "address": r.get("UnparsedAddress") or "",
             "price": _num(r.get("ListPrice")),
             "beds": _num(r.get("BedroomsTotal")),
             "baths": _num(r.get("BathroomsTotalInteger")),
             "sqft": _num(r.get("LivingArea")),
+            "lotSqft": lot,
             "propertyType": r.get("PropertySubType") or r.get("PropertyType") or "",
             "url": r.get("ListingURL") or "",
             "photoUrl": photo,
@@ -107,35 +118,42 @@ def fetch_reso(criteria, base_url, api_key):
 # ------------------------------------------------------------------ RentCast
 
 def fetch_rentcast(criteria, api_key):
-    params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
-    if criteria.get("City"):
-        params["city"] = criteria["City"]
-    if criteria.get("State"):
-        params["state"] = criteria["State"]
-    if criteria.get("Min Price") is not None:
-        params["minPrice"] = int(criteria["Min Price"])
-    if criteria.get("Max Price") is not None:
-        params["maxPrice"] = int(criteria["Max Price"])
-    if criteria.get("Min Beds") is not None:
-        params["bedrooms"] = int(criteria["Min Beds"])
-
-    url = "https://api.rentcast.io/v1/listings/sale?" + urllib.parse.urlencode(params)
-    payload = _get_json(url, {"X-Api-Key": api_key, "Accept": "application/json"})
-    records = payload if isinstance(payload, list) else payload.get("listings", [])
-
+    # RentCast takes one zip per request, so a zip ring costs one call each.
+    # That's fine at the cadence this runs, but it's why the quota matters.
+    zips = parse_list_field(criteria.get("Zip Codes")) or [None]
     out = []
-    for r in records:
-        out.append({
-            "address": r.get("formattedAddress") or r.get("addressLine1") or "",
-            "price": _num(r.get("price")),
-            "beds": _num(r.get("bedrooms")),
-            "baths": _num(r.get("bathrooms")),
-            "sqft": _num(r.get("squareFootage")),
-            "propertyType": r.get("propertyType") or "",
-            "url": "",
-            "photoUrl": "",
-            "description": r.get("description") or "",
-        })
+    for zip_code in zips:
+        params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
+        if zip_code:
+            params["zipCode"] = zip_code
+        elif criteria.get("City"):
+            params["city"] = criteria["City"]
+        if criteria.get("State"):
+            params["state"] = criteria["State"]
+        if criteria.get("Min Price") is not None:
+            params["minPrice"] = int(criteria["Min Price"])
+        if criteria.get("Max Price") is not None:
+            params["maxPrice"] = int(criteria["Max Price"])
+        if criteria.get("Min Beds") is not None:
+            params["bedrooms"] = int(criteria["Min Beds"])
+
+        url = "https://api.rentcast.io/v1/listings/sale?" + urllib.parse.urlencode(params)
+        payload = _get_json(url, {"X-Api-Key": api_key, "Accept": "application/json"})
+        records = payload if isinstance(payload, list) else payload.get("listings", [])
+
+        for r in records:
+            out.append({
+                "address": r.get("formattedAddress") or r.get("addressLine1") or "",
+                "price": _num(r.get("price")),
+                "beds": _num(r.get("bedrooms")),
+                "baths": _num(r.get("bathrooms")),
+                "sqft": _num(r.get("squareFootage")),
+                "lotSqft": _num(r.get("lotSize")),
+                "propertyType": r.get("propertyType") or "",
+                "url": "",
+                "photoUrl": "",
+                "description": r.get("description") or "",
+            })
     return out
 
 
@@ -156,17 +174,65 @@ def fetch_listings(criteria):
 
 # ------------------------------------------------------------------ pipeline
 
+# The thesis this whole search runs on: value a normal buyer overlooks.
+# Each signal is a hint the listing is mispriced or mismarketed -- ugly,
+# dated, badly listed, or hiding expandable space.
+SIGNAL_RULES = [
+    ("Basement", ("basement",)),
+    ("ADU potential", ("adu", "in-law", "in law", "guest house", "guesthouse",
+                       "carriage house", "kitchenette", "separate entrance",
+                       "second kitchen", "detached garage")),
+    ("FSBO", ("fsbo", "for sale by owner")),
+    ("Fixer", ("fixer", "as-is", "as is", "tlc", "needs work", "handyman",
+               "investor special", "cash only", "estate sale", "sold as-is",
+               "bring your vision", "dated", "original condition")),
+]
+OVERSIZED_LOT_SQFT = 15000  # ~0.34 acre; room for an ADU
+
+
+def value_signals(listing):
+    hay = (listing.get("description") or "").lower()
+    signals = [name for name, needles in SIGNAL_RULES
+               if any(n in hay for n in needles)]
+    if not listing.get("sqft"):
+        # Missing sqft is an opportunity, not a defect: comps undervalue what
+        # they can't measure, so these listings get flagged, never filtered.
+        signals.append("No sqft listed")
+    if (listing.get("lotSqft") or 0) >= OVERSIZED_LOT_SQFT:
+        signals.append("Oversized lot")
+    return signals
+
+
 def passes_criteria(listing, criteria):
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
         return False
-    if criteria.get("Min Sqft") is not None and (listing.get("sqft") or 0) < criteria["Min Sqft"]:
+    # Sqft floors and $/sqft caps only apply when sqft is actually listed;
+    # a missing figure passes both, deliberately (see value_signals).
+    sqft = listing.get("sqft")
+    if criteria.get("Min Sqft") is not None and sqft and sqft < criteria["Min Sqft"]:
         return False
+    max_ppsf = criteria.get("Max Price Per Sqft")
+    if max_ppsf is not None and sqft and listing.get("price"):
+        if listing["price"] / sqft > max_ppsf:
+            return False
     keywords = [k.lower() for k in parse_list_field(criteria.get("Keywords"))]
     if keywords:
         haystack = f"{listing.get('description', '')} {listing.get('address', '')}".lower()
         if not any(k in haystack for k in keywords):
             return False
+    # Must Haves: every comma-separated entry is required; "/" inside an entry
+    # lists alternatives ("adu/oversized lot" = either satisfies it). Matched
+    # against detected signals first, raw description as fallback.
+    must = parse_list_field(criteria.get("Must Haves"))
+    if must:
+        signals = [s.lower() for s in listing.get("_signals", [])]
+        hay = (listing.get("description") or "").lower()
+        for requirement in must:
+            alts = [a.strip().lower() for a in requirement.split("/") if a.strip()]
+            met = any(a in s for a in alts for s in signals) or any(a in hay for a in alts)
+            if not met:
+                return False
     return True
 
 
@@ -189,6 +255,10 @@ def build_house_fields(listing, criteria, verdict):
         "Beds": listing.get("beds"),
         "Baths": listing.get("baths"),
         "Sqft": listing.get("sqft"),
+        "Lot Sqft": listing.get("lotSqft"),
+        "Price Per Sqft": round(listing["price"] / listing["sqft"])
+            if listing.get("price") and listing.get("sqft") else None,
+        "Value Signals": ", ".join(listing.get("_signals", [])),
         "Rehab Cost": listing.get("_rehab"),
         "ARV": listing.get("_arv"),
         "Rent Estimate": listing.get("_rent"),
@@ -225,6 +295,7 @@ def run_search(at, criteria_record, existing_keys):
 
     new_rows = []
     for listing in listings:
+        listing["_signals"] = value_signals(listing)
         if not passes_criteria(listing, fields):
             continue
         key = (listing.get("address") or listing.get("url") or "").strip().lower()
@@ -237,11 +308,23 @@ def run_search(at, criteria_record, existing_keys):
         listing["_arv"] = listing.get("price")
         listing["_rent"] = None
 
+        # All-in cap (price + rehab): how "300k + 50k reno, 350k max" is
+        # enforced. Only bites when both numbers exist.
+        cap = fields.get("Max All In")
+        if cap and listing.get("price") and listing["_rehab"] \
+                and listing["price"] + listing["_rehab"] > cap:
+            continue
+
         verdict = deals.qualify(
             listing.get("price"), listing["_rehab"], listing["_arv"], listing["_rent"], targets
         )
-        # Only surface things worth a look; everything else would just be noise.
-        if not verdict["qualified"] and verdict["bestRank"] < 1:
+        # Surface it if the math says so -- or if it's the kind of listing the
+        # whole search exists to catch: two or more value signals means ugly/
+        # dated/mismarketed/expandable, where the placeholder math (ARV = list
+        # price) is exactly what you'd expect to be wrong. Everything else is
+        # noise and stays out.
+        if not verdict["qualified"] and verdict["bestRank"] < 1 \
+                and len(listing["_signals"]) < 2:
             continue
 
         new_rows.append(build_house_fields(listing, fields, verdict))

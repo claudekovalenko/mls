@@ -164,6 +164,14 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   text-transform: uppercase; letter-spacing: .05em;
 }
 
+.signals { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.signal {
+  background: var(--accent-soft); color: var(--accent-dark);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 999px; padding: 2px 9px;
+  font-size: .66rem; font-weight: 800; letter-spacing: .03em;
+}
+
 .card-verdicts { margin-top: 12px; font-size: .78rem; color: var(--sub); }
 .tier {
   display: inline-block; border-radius: 999px; padding: 2px 9px;

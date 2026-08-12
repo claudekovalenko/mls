@@ -81,6 +81,14 @@ Repo → Settings → Secrets and variables → Actions:
 
 Then run **Actions → Search Listings → Run workflow** to test it.
 
+### 5. Email digest (optional)
+
+`send_digest.py` mails the active criteria plus anything new, daily at 8am ET.
+Quiet by default when nothing turned up; run **Actions → Email Digest** with
+*force* checked to send a kickoff email announcing the criteria. Secrets:
+`SMTP_USER` (Gmail address), `SMTP_PASS` (a Gmail **App Password**, not the
+account password), `EMAIL_TO` (comma-separated recipients).
+
 ## Where listings come from
 
 The worker has two adapters:
@@ -138,6 +146,23 @@ the numbers you see while editing match what the worker wrote.
 A house shows **QUALIFIED** when it also clears the per-search targets on its
 `Search Criteria` row, so a strict search and a loose one can run side by side.
 
+**Value signals** are the other way in. The searches hunt overlooked value —
+ugly, dated, mismarketed, expandable — so the worker tags every listing whose
+remarks or numbers show: `Basement`, `ADU potential`, `FSBO`, `Fixer`,
+`No sqft listed`, `Oversized lot` (15k+ sqft). Two or more signals earns a spot
+in Matches even when the placeholder math says PASS, because placeholder math
+is exactly what's wrong about a mispriced house. Missing sqft deliberately
+passes both the `Min Sqft` floor and the `Max Price Per Sqft` cap.
+
+Criteria rows can also set `Zip Codes` (a ring of zips is how "within 10 miles"
+is expressed), `Must Haves` (comma = AND, `/` = alternatives, e.g.
+`basement, adu/oversized lot`), and `Max All In` (price + estimated rehab cap).
+
+One honest limitation: **FSBO / off-market houses never appear in MLS or
+RentCast feeds.** The FSBO signal catches agent-listed homes whose remarks
+mention it, but true off-market finds have to be added to the Houses table by
+hand.
+
 **Rehab cost and ARV cannot be known from a listing feed.** The worker seeds
 rehab from your search's `Rehab Cost Per Sqft` and uses list price as an ARV
 placeholder. Both are meant to be overwritten — open a house in the app, type
@@ -156,7 +181,8 @@ scripts/
   airtable.py    REST client + SCHEMA (source of truth)
   bootstrap_base.py  builds the base/tables from SCHEMA
   deals.py       flip/BRRRR math and qualification
-  search_worker.py   the scheduled search
+  search_worker.py   the scheduled search + value signals
+  send_digest.py     daily email digest
   migrate_to_airtable.py
   probe_sources.py   the scraping-feasibility probe
 .github/workflows/search.yml
