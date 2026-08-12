@@ -36,6 +36,12 @@ Don't create the forty-odd fields by hand — `bootstrap_base.py` builds both
 tables from `SCHEMA` in [`scripts/airtable.py`](scripts/airtable.py), with the
 right number precision and select options:
 
+**From a phone**, where there's no shell: add `AIRTABLE_TOKEN` and
+`AIRTABLE_BASE_ID` as repo secrets (step 4), then run
+**Actions → Set Up Airtable Base → Run workflow**.
+
+**From a terminal:**
+
 ```sh
 cd scripts
 

@@ -1,0 +1,31 @@
+# Runs bootstrap_base.py from GitHub so the base can be built from a phone,
+# where there's no shell to run it in.
+name: Set Up Airtable Base
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_id:
+        description: "Base ID (app…). Leave blank to find it by name, or to create the base if a workspace ID is given."
+        required: false
+      workspace_id:
+        description: "Workspace ID (wsp…). Only needed if the base doesn't exist yet."
+        required: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build tables
+        working-directory: scripts
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          # Inputs win over the stored secret so a one-off base can be targeted
+          # without editing repo settings.
+          AIRTABLE_BASE_ID: ${{ inputs.base_id || secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_WORKSPACE_ID: ${{ inputs.workspace_id }}
+        run: python bootstrap_base.py

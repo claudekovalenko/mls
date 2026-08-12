@@ -115,7 +115,21 @@ async function airtable(method, table, { body, query } = {}) {
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
-    throw new Error(detail?.error?.message || detail?.error?.type || `Airtable ${res.status}`);
+    const type = detail?.error?.type || "";
+    // Airtable deliberately conflates "no permission" with "no such table" in
+    // one 403, and its wording sends people off checking their token when the
+    // real answer is almost always that the base is still empty. Say both.
+    if (res.status === 403 && type === "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND") {
+      throw new Error(
+        `Couldn't read the "${table}" table. Either the base doesn't have it yet ` +
+        `— run the "Set Up Airtable Base" action to build it — or the token isn't granted on this base.`
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(`Base ${store.baseId} has no "${table}" table yet. Run the "Set Up Airtable Base" action to build it.`);
+    }
+    if (res.status === 401) throw new Error("Airtable rejected the token. Check it was copied whole.");
+    throw new Error(detail?.error?.message || type || `Airtable ${res.status}`);
   }
   return res.json();
 }
