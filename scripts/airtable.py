@@ -71,6 +71,39 @@ SCHEMA = {
 }
 
 
+# Choices for the singleSelect columns. Airtable will not accept a value that
+# isn't an existing choice unless typecast is on, so these have to match the
+# strings deals.py and app.js actually produce.
+SELECT_OPTIONS = {
+    "Strategy": ["Flip", "BRRRR", "Either"],
+    "Status": ["New", "Interested", "Touring", "Toured", "Offer",
+               "Under Contract", "Purchased", "Rejected"],
+    "Flip Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],
+    "BRRRR Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],
+}
+
+# Decimal places per number field. Dollars are whole; ratios and bath counts
+# are not, and rounding them to integers in Airtable would quietly destroy the
+# distinction between a 7.9% and an 8.4% cash-on-cash.
+NUMBER_PRECISION = {
+    "Baths": 1, "Min Baths": 1,
+    "Cash on Cash": 1, "One Percent": 2,
+    "Target Cash on Cash": 1, "Target One Percent": 2,
+}
+
+
+def field_spec(name, kind):
+    """SCHEMA entry -> the payload shape Airtable's Meta API expects."""
+    spec = {"name": name, "type": kind}
+    if kind == "number":
+        spec["options"] = {"precision": NUMBER_PRECISION.get(name, 0)}
+    elif kind == "singleSelect":
+        spec["options"] = {"choices": [{"name": c} for c in SELECT_OPTIONS.get(name, [])]}
+    elif kind == "date":
+        spec["options"] = {"dateFormat": {"name": "iso"}}
+    return spec
+
+
 class AirtableError(RuntimeError):
     pass
 

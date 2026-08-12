@@ -23,23 +23,32 @@ directly from your browser; there is no backend of ours in the middle.
 
 ## Setup
 
-### 1. Create the Airtable base
+### 1. Get a token
 
-Create a new base with two tables, `Search Criteria` and `Houses`. The exact
-field list lives in `SCHEMA` in [`scripts/airtable.py`](scripts/airtable.py) —
-that dict is the single source of truth, so build the tables from it rather than
-from a copy here.
+airtable.com/create/tokens → scopes `data.records:read`, `data.records:write`,
+`schema.bases:read`, `schema.bases:write`. Grant it on your whole workspace if
+you want the next step to create the base for you, or on one existing base
+otherwise.
 
-Two fields need their select options filled in:
+### 2. Build the base
 
-- `Houses → Status`: New, Interested, Touring, Toured, Offer, Under Contract, Purchased, Rejected
-- `Houses → Flip Verdict` / `BRRRR Verdict`: STRONG, GOOD, MARGINAL, PASS, NO DATA
+Don't create the forty-odd fields by hand — `bootstrap_base.py` builds both
+tables from `SCHEMA` in [`scripts/airtable.py`](scripts/airtable.py), with the
+right number precision and select options:
 
-### 2. Get a token
+```sh
+cd scripts
 
-airtable.com/create/tokens → scopes `data.records:read` and
-`data.records:write`, granted on this base. Copy the token (`pat…`) and the base
-ID (the `app…` part of the base URL).
+# create the base too (workspace id is the wsp… part of the Airtable URL)
+AIRTABLE_TOKEN=pat… AIRTABLE_WORKSPACE_ID=wsp… python bootstrap_base.py
+
+# or fill in a base you already made
+AIRTABLE_TOKEN=pat… AIRTABLE_BASE_ID=app… python bootstrap_base.py
+```
+
+It prints the base ID when it's done. Re-running is safe: it only adds fields
+that are missing and never renames, retypes, or deletes anything, so columns you
+add yourself survive.
 
 ### 3. Connect the app
 
@@ -135,6 +144,7 @@ docs/            the PWA (GitHub Pages)
   manifest.json
 scripts/
   airtable.py    REST client + SCHEMA (source of truth)
+  bootstrap_base.py  builds the base/tables from SCHEMA
   deals.py       flip/BRRRR math and qualification
   search_worker.py   the scheduled search
   migrate_to_airtable.py
