@@ -1,0 +1,43 @@
+# One-off: the three seeded searches credited the criteria to Rick; they're
+# Ryan's. Renames Name + Notes in the Search Criteria table, idempotently.
+# Delete this workflow after it has run.
+name: Fix Search Names
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rick -> Ryan
+        working-directory: scripts
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+        run: |
+          python - <<'EOF'
+          from airtable import Airtable, TABLE_CRITERIA
+
+          at = Airtable()
+          updates = []
+          for rec in at.list_records(TABLE_CRITERIA):
+              fields = rec.get("fields", {})
+              changed = {}
+              for key in ("Name", "Notes"):
+                  value = fields.get(key)
+                  if value and "Rick" in value:
+                      changed[key] = value.replace("Rick's", "Ryan's").replace("Rick", "Ryan")
+              if changed:
+                  updates.append({"id": rec["id"], "fields": changed})
+                  print(f"renaming: {fields.get('Name')}")
+          if updates:
+              at.update_records(TABLE_CRITERIA, updates)
+              print(f"Updated {len(updates)} row(s).")
+          else:
+              print("Nothing mentioned Rick -- already clean.")
+          EOF
