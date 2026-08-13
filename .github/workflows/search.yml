@@ -1,9 +1,23 @@
 name: Search Listings
 
+# ONCE A DAY. This schedule is the spend rate: RentCast bills per request and
+# takes one zip code per request, so a full pass over the current Active
+# criteria costs ~19 requests (~$3.80). At the previous every-6-hours cadence
+# that was ~76 requests/day, which drains a $100 balance in under a week.
+# Do not raise the frequency without re-checking scripts/rentcast_budget.py.
 on:
   schedule:
-    - cron: "0 */6 * * *"   # 4x/day; raise the frequency once a real feed is wired up
+    - cron: "0 11 * * *"   # daily, ~7am ET -- ahead of the 12:00 UTC digest
   workflow_dispatch: {}
+
+# One run at a time. Concurrent runs would each spend against the budget and
+# race on the counter commit, so the recorded spend would understate reality.
+concurrency:
+  group: search-listings
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   search:
@@ -23,3 +37,15 @@ jobs:
           LISTINGS_API_KEY: ${{ secrets.LISTINGS_API_KEY }}
           RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
         run: python search_worker.py
+      - name: Commit RentCast spend counter
+        # The runner is ephemeral, so an uncommitted counter means the next run
+        # starts from zero and the ceiling never binds. This must run even if
+        # the search step failed -- the calls were still billed.
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add rentcast_budget.json
+          git diff --cached --quiet || git commit -m "RentCast spend counter"
+          git pull --rebase --autostash origin ${{ github.ref_name }}
+          git push
