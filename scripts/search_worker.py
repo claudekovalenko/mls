@@ -347,12 +347,24 @@ def main():
     try:
         at = Airtable()
     except Exception as exc:
-        print(f"Airtable not configured: {exc}")
-        return 0
+        # Fail loudly. This used to return 0, which painted the workflow green
+        # while it did nothing at all -- three scheduled runs "succeeded"
+        # without ever reaching a listing source, and the only way to notice
+        # was to open the logs. An unconfigured worker is a broken worker.
+        print(f"::error::Airtable not configured: {exc}")
+        print("::error::Set the AIRTABLE_TOKEN and AIRTABLE_BASE_ID repository secrets.")
+        return 1
+
+    source = os.environ.get("LISTINGS_API_TYPE", "").strip().lower()
+    if source not in ("reso", "rentcast"):
+        print(f"::error::LISTINGS_API_TYPE is {source or '(unset)'!r}; no listing source configured.")
+        print("::error::Set the LISTINGS_API_TYPE repository *variable* to 'rentcast' "
+              "(Settings -> Secrets and variables -> Actions -> Variables tab).")
+        return 1
 
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
     if not criteria_rows:
-        print("No Active rows in Search Criteria -- nothing to search.")
+        print("::warning::No Active rows in Search Criteria -- nothing to search.")
         return 0
 
     budget = rentcast_budget.load()
