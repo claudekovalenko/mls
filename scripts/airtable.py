@@ -117,13 +117,22 @@ class AirtableError(RuntimeError):
     pass
 
 
+# The base this project uses. A base ID is not a secret -- it identifies a base
+# but grants nothing without a token -- so it lives here as a default rather
+# than as one more thing to configure by hand before anything works. The
+# AIRTABLE_BASE_ID environment variable still wins when set, which is what makes
+# a second base (a test copy, a fork) possible without editing code.
+DEFAULT_BASE_ID = "appQzhYbA9NV3RWZe"
+
+
 class Airtable:
     def __init__(self, token=None, base_id=None):
         self.token = token or os.environ.get("AIRTABLE_TOKEN")
-        self.base_id = base_id or os.environ.get("AIRTABLE_BASE_ID")
-        if not self.token or not self.base_id:
+        self.base_id = base_id or os.environ.get("AIRTABLE_BASE_ID") or DEFAULT_BASE_ID
+        if not self.token:
             raise AirtableError(
-                "AIRTABLE_TOKEN and AIRTABLE_BASE_ID must both be set."
+                "AIRTABLE_TOKEN must be set (an Airtable Personal Access Token "
+                "with data.records:read and data.records:write on this base)."
             )
 
     def _request(self, method, path, payload=None, query=None):
