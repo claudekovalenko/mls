@@ -3,6 +3,14 @@ name: Email Digest
 on:
   schedule:
     - cron: "0 12 * * *"   # daily, 8am ET; only sends when something's new
+  # Also run straight after a search finishes. The scheduled pair (search 11:00,
+  # digest 12:00) works on its own, but only on the schedule -- a manual search
+  # run produced no email until the next day, which made the whole pipeline
+  # impossible to test in one go. Now one "Run workflow" on Search Listings
+  # produces the search AND the digest.
+  workflow_run:
+    workflows: ["Search Listings"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       force:
