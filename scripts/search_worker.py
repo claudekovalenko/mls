@@ -166,8 +166,31 @@ def fetch_rentcast(criteria, api_key, budget):
     return out
 
 
+def resolve_source():
+    """Which listing source to use, inferred rather than declared.
+
+    LISTINGS_API_TYPE still wins when set, so an explicit choice is always
+    possible -- including forcing "reso" while a RentCast key happens to also be
+    present. But requiring it meant a repo could hold a perfectly good RentCast
+    key and still search nothing, which is exactly what happened here: the key
+    was configured, the variable was not, and three scheduled runs did nothing.
+    A credential that is present is a credential that is meant to be used.
+
+    RESO wins the tie when both are configured: it's real MLS data, and the
+    RentCast key is a stopgap.
+    """
+    declared = os.environ.get("LISTINGS_API_TYPE", "").strip().lower()
+    if declared in ("reso", "rentcast"):
+        return declared
+    if os.environ.get("LISTINGS_API_URL"):
+        return "reso"
+    if os.environ.get("RENTCAST_API_KEY"):
+        return "rentcast"
+    return None
+
+
 def fetch_listings(criteria, budget):
-    source = os.environ.get("LISTINGS_API_TYPE", "").strip().lower()
+    source = resolve_source()
     if source == "reso":
         base_url = os.environ.get("LISTINGS_API_URL")
         if not base_url:
@@ -352,15 +375,15 @@ def main():
         # without ever reaching a listing source, and the only way to notice
         # was to open the logs. An unconfigured worker is a broken worker.
         print(f"::error::Airtable not configured: {exc}")
-        print("::error::Set the AIRTABLE_TOKEN and AIRTABLE_BASE_ID repository secrets.")
+        print("::error::Set the AIRTABLE_TOKEN repository secret.")
         return 1
 
-    source = os.environ.get("LISTINGS_API_TYPE", "").strip().lower()
-    if source not in ("reso", "rentcast"):
-        print(f"::error::LISTINGS_API_TYPE is {source or '(unset)'!r}; no listing source configured.")
-        print("::error::Set the LISTINGS_API_TYPE repository *variable* to 'rentcast' "
-              "(Settings -> Secrets and variables -> Actions -> Variables tab).")
+    source = resolve_source()
+    if not source:
+        print("::error::No listing source available: neither RENTCAST_API_KEY nor "
+              "LISTINGS_API_URL is set, so there is nothing to search.")
         return 1
+    print(f"Listing source: {source}")
 
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
     if not criteria_rows:
