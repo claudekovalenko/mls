@@ -116,8 +116,16 @@ def main():
     password = os.environ.get("SMTP_PASS")
     to = [a.strip() for a in os.environ.get("EMAIL_TO", "").split(",") if a.strip()]
     if not (user and password and to):
-        print("Email not configured (SMTP_USER / SMTP_PASS / EMAIL_TO) -- skipping digest.")
-        return 0
+        # Fail loudly, for the same reason the search worker does: returning 0
+        # here paints the workflow green while no email is ever sent, and the
+        # absence of an email looks identical to "nothing new today".
+        missing = [name for name, value in
+                   (("SMTP_USER", user), ("SMTP_PASS", password), ("EMAIL_TO", to))
+                   if not value]
+        print(f"::error::Email not configured; missing: {', '.join(missing)}")
+        print("::error::Set these as repository secrets. For Gmail, SMTP_PASS must be "
+              "an App Password (myaccount.google.com/apppasswords), not the account password.")
+        return 1
 
     at = Airtable()
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
