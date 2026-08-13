@@ -33,6 +33,7 @@ from datetime import date
 
 from airtable import Airtable, TABLE_CRITERIA, TABLE_HOUSES, parse_list_field
 import deals
+import rentcast_budget
 
 TIMEOUT = 30
 MAX_PER_SEARCH = 50
@@ -117,12 +118,17 @@ def fetch_reso(criteria, base_url, api_key):
 
 # ------------------------------------------------------------------ RentCast
 
-def fetch_rentcast(criteria, api_key):
-    # RentCast takes one zip per request, so a zip ring costs one call each.
-    # That's fine at the cadence this runs, but it's why the quota matters.
+def fetch_rentcast(criteria, api_key, budget):
+    # RentCast takes one zip per request, so a zip ring costs one call each --
+    # the 16-zip "30068 + 10 mi" row is 16 billed requests every single run.
+    # Every one of them goes through the budget gate before it is issued.
     zips = parse_list_field(criteria.get("Zip Codes")) or [None]
     out = []
     for zip_code in zips:
+        if not budget.can_spend():
+            print(f"    budget gate: stopping after {len(out)} listing(s); "
+                  f"remaining zips deferred to the next run")
+            break
         params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
         if zip_code:
             params["zipCode"] = zip_code
@@ -138,6 +144,9 @@ def fetch_rentcast(criteria, api_key):
             params["bedrooms"] = int(criteria["Min Beds"])
 
         url = "https://api.rentcast.io/v1/listings/sale?" + urllib.parse.urlencode(params)
+        # Counted before the request: a request that errors after reaching
+        # RentCast is still billed, so counting on success would overspend.
+        budget.spend(note=f"{criteria.get('Name', '?')} / {zip_code or criteria.get('City', '?')}")
         payload = _get_json(url, {"X-Api-Key": api_key, "Accept": "application/json"})
         records = payload if isinstance(payload, list) else payload.get("listings", [])
 
@@ -157,7 +166,7 @@ def fetch_rentcast(criteria, api_key):
     return out
 
 
-def fetch_listings(criteria):
+def fetch_listings(criteria, budget):
     source = os.environ.get("LISTINGS_API_TYPE", "").strip().lower()
     if source == "reso":
         base_url = os.environ.get("LISTINGS_API_URL")
@@ -168,7 +177,7 @@ def fetch_listings(criteria):
         api_key = os.environ.get("RENTCAST_API_KEY")
         if not api_key:
             raise RuntimeError("LISTINGS_API_TYPE=rentcast but RENTCAST_API_KEY is unset")
-        return fetch_rentcast(criteria, api_key)
+        return fetch_rentcast(criteria, api_key, budget)
     return None  # nothing configured
 
 
@@ -277,11 +286,11 @@ def build_house_fields(listing, criteria, verdict):
     }
 
 
-def run_search(at, criteria_record, existing_keys):
+def run_search(at, criteria_record, existing_keys, budget):
     fields = criteria_record["fields"]
     name = fields.get("Name") or fields.get("Market") or "(unnamed)"
 
-    listings = fetch_listings(fields)
+    listings = fetch_listings(fields, budget)
     if listings is None:
         print(f"  {name}: no listing source configured, skipping")
         return []
@@ -346,6 +355,9 @@ def main():
         print("No Active rows in Search Criteria -- nothing to search.")
         return 0
 
+    budget = rentcast_budget.load()
+    print(budget.summary())
+
     houses = at.list_records(TABLE_HOUSES)
     existing_keys = set()
     for rec in houses:
@@ -355,13 +367,26 @@ def main():
                 existing_keys.add(str(candidate).strip().lower())
 
     all_new = []
-    for record in criteria_rows:
-        try:
-            all_new.extend(run_search(at, record, existing_keys))
-        except Exception as exc:
-            # One bad search must not sink the rest of the run.
-            name = record.get("fields", {}).get("Name", "(unnamed)")
-            print(f"  {name}: FAILED {exc}")
+    try:
+        for record in criteria_rows:
+            try:
+                all_new.extend(run_search(at, record, existing_keys, budget))
+            except rentcast_budget.BudgetExhausted:
+                # Propagate: this is not a per-search failure, it means every
+                # remaining search would be refused too. Stop cleanly and keep
+                # whatever was already found.
+                raise
+            except Exception as exc:
+                # One bad search must not sink the rest of the run.
+                name = record.get("fields", {}).get("Name", "(unnamed)")
+                print(f"  {name}: FAILED {exc}")
+    except rentcast_budget.BudgetExhausted as exc:
+        print(f"  STOPPING: {exc}")
+    finally:
+        # Always persist, including on the exhausted path -- an uncommitted
+        # counter after real spend is exactly how a balance gets drained twice.
+        rentcast_budget.save(budget)
+        print(budget.summary())
 
     if all_new:
         at.create_records(TABLE_HOUSES, all_new)
