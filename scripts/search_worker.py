@@ -375,7 +375,7 @@ def main():
         # without ever reaching a listing source, and the only way to notice
         # was to open the logs. An unconfigured worker is a broken worker.
         print(f"::error::Airtable not configured: {exc}")
-        print("::error::Set the AIRTABLE_TOKEN and AIRTABLE_BASE_ID repository secrets.")
+        print("::error::Set the AIRTABLE_TOKEN repository secret.")
         return 1
 
     source = resolve_source()
