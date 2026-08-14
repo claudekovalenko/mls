@@ -113,6 +113,16 @@ NUMBER_PRECISION = {
 }
 
 
+# Airtable rejects a checkbox field created without options ("Active.options
+# is missing", HTTP 422), so every checkbox needs an icon and colour even
+# though neither carries meaning. Qualified is the one worth spotting in a
+# grid at a glance, so it gets the star.
+CHECKBOX_STYLE = {
+    "Qualified": {"icon": "star", "color": "yellowBright"},
+}
+CHECKBOX_DEFAULT = {"icon": "check", "color": "greenBright"}
+
+
 def field_spec(name, kind):
     """SCHEMA entry -> the payload shape Airtable's Meta API expects."""
     spec = {"name": name, "type": kind}
@@ -122,6 +132,8 @@ def field_spec(name, kind):
         spec["options"] = {"choices": [{"name": c} for c in SELECT_OPTIONS.get(name, [])]}
     elif kind == "date":
         spec["options"] = {"dateFormat": {"name": "iso"}}
+    elif kind == "checkbox":
+        spec["options"] = CHECKBOX_STYLE.get(name, CHECKBOX_DEFAULT)
     return spec
 
 
