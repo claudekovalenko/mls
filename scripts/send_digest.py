@@ -34,33 +34,90 @@ def _money(v):
     return f"${v:,.0f}" if isinstance(v, (int, float)) else "—"
 
 
+def _price_range(f):
+    """A max-only search reads as "up to $500,000", not "—–$500,000"."""
+    lo, hi = f.get("Min Price"), f.get("Max Price")
+    if lo and hi:
+        return f"{_money(lo)}–{_money(hi)}"
+    if hi:
+        return f"up to {_money(hi)}"
+    if lo:
+        return f"{_money(lo)}+"
+    return "any price"
+
+
 def criteria_block(rows):
+    """Every constraint on the row, not just the numeric ones.
+
+    The recipient is checking that what we're hunting matches what they
+    asked for, so a field they specified and can't find here reads as
+    "you dropped it" -- Keywords and the rehab allowance were doing exactly
+    that. Notes carries the qualitative half of the brief (the ADU layout,
+    the finish-the-basement plan) that no structured field can hold.
+    """
     items = []
     for rec in rows:
         f = rec.get("fields", {})
         bits = []
         if f.get("Zip Codes"):
-            bits.append(f"zips {f['Zip Codes']}")
+            zips = [z.strip() for z in str(f["Zip Codes"]).split(",") if z.strip()]
+            bits.append(f"{len(zips)} zips: {', '.join(zips)}")
         elif f.get("City"):
             bits.append(f.get("City"))
-        price = f"{_money(f.get('Min Price'))}–{_money(f.get('Max Price'))}"
-        bits.append(price)
+        bits.append(_price_range(f))
         if f.get("Max Price Per Sqft"):
-            bits.append(f"≤${f['Max Price Per Sqft']:.0f}/sqft")
+            bits.append(f"≤${f['Max Price Per Sqft']:.0f}/sqft (or sqft not listed)")
         if f.get("Max All In"):
-            bits.append(f"≤{_money(f['Max All In'])} all-in")
+            bits.append(f"≤{_money(f['Max All In'])} all-in (purchase + rehab)")
+        if f.get("Rehab Cost Per Sqft"):
+            bits.append(f"rehab budgeted at ${f['Rehab Cost Per Sqft']:.0f}/sqft")
+        if f.get("Min Beds"):
+            bits.append(f"{f['Min Beds']:g}+ bd")
+        if f.get("Min Baths"):
+            bits.append(f"{f['Min Baths']:g}+ ba")
+        if f.get("Min Sqft"):
+            bits.append(f"{f['Min Sqft']:,.0f}+ sqft")
         if f.get("Must Haves"):
             bits.append(f"must have: {f['Must Haves']}")
+        if f.get("Keywords"):
+            bits.append(f"listing must read like: {f['Keywords']}")
         if f.get("Target Total Sqft"):
-            bits.append(f"goal {f['Target Total Sqft']:.0f}+ sqft after reno")
+            bits.append(f"goal {f['Target Total Sqft']:,.0f}+ sqft after reno")
         if f.get("Min Baths After Reno"):
             bits.append(f"{f['Min Baths After Reno']:g}+ baths after reno")
+        if f.get("Target Flip Profit"):
+            bits.append(f"target {_money(f['Target Flip Profit'])}+ flip profit")
+        if f.get("Target Cash on Cash"):
+            bits.append(f"{f['Target Cash on Cash']:g}%+ cash-on-cash")
+
+        note = f.get("Notes")
+        note_html = (f"<div style='color:#555;font-size:13px;margin:4px 0 0'>"
+                     f"{html.escape(note)}</div>") if note else ""
         items.append(
-            f"<li><strong>{html.escape(f.get('Name') or 'Search')}</strong>"
-            f" ({html.escape(f.get('Strategy') or 'Either')}) — "
-            f"{html.escape(' · '.join(str(b) for b in bits))}</li>"
+            f"<li style='margin-bottom:10px'><strong>{html.escape(f.get('Name') or 'Search')}</strong>"
+            f" ({html.escape(f.get('Strategy') or 'Either')})<br>"
+            f"<span style='font-size:13px'>{html.escape(' · '.join(str(b) for b in bits))}</span>"
+            f"{note_html}</li>"
         )
-    return "<ul>" + "".join(items) + "</ul>"
+    return "<ul style='padding-left:18px'>" + "".join(items) + "</ul>"
+
+
+# Restated in the email because the whole thesis is "value a normal buyer
+# misses" -- a recipient seeing only price bands would think this is an
+# ordinary MLS filter. Mirrors SIGNAL_RULES in search_worker.py.
+SIGNALS_HTML = """
+      <h3>What we flag as overlooked value</h3>
+      <p style="font-size:13px;margin-top:4px">Every listing is tagged with any of these that apply, and
+      two or more will surface a house even when the headline numbers look ordinary:</p>
+      <ul style="font-size:13px;padding-left:18px">
+        <li><strong>Fixer</strong> — as-is, TLC, needs work, investor special, estate sale, dated, original condition</li>
+        <li><strong>Basement</strong> — especially unfinished, where usable sq. ft. can be added</li>
+        <li><strong>ADU potential</strong> — in-law, guest house, kitchenette, separate entrance, detached garage</li>
+        <li><strong>FSBO</strong> — for sale by owner</li>
+        <li><strong>No sqft listed</strong> — missing square footage is an opportunity, not a disqualifier; these
+        deliberately pass the $/sqft cap</li>
+        <li><strong>Oversized lot</strong> — 15,000+ sq. ft., room to build</li>
+      </ul>"""
 
 
 def house_rows(houses):
@@ -103,10 +160,18 @@ def build_email(criteria_rows, new_houses):
       {houses_html}
       <h3>What we're looking for</h3>
       {criteria_block(criteria_rows)}
+      {SIGNALS_HTML}
+      <h3>Known gaps</h3>
+      <ul style="font-size:13px;padding-left:18px">
+        <li><strong>FSBO / off-market</strong> can't be searched automatically — those listings never
+        reach an MLS or data feed. Anything spotted in the wild gets added to the app by hand.</li>
+        <li><strong>Resale value (ARV) and true rehab cost</strong> aren't knowable from a listing, so
+        every new find starts with a placeholder and the profit figure means nothing until a human
+        types real numbers in. That's the one judgement the system can't make for you.</li>
+      </ul>
       <p><a href="{app_url}">Open the app</a> — tap any house to put in real rehab/ARV numbers
       and the verdicts recompute live.</p>
-      <p style="color:#888"><small>Flip/BRRRR verdicts on new finds use placeholder rehab and ARV
-      until someone enters real numbers. ⭐ = cleared its search's targets.</small></p>
+      <p style="color:#888"><small>⭐ = cleared its search's targets.</small></p>
     </div>"""
     return subject, body
 
