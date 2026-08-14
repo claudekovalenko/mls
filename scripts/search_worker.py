@@ -235,7 +235,20 @@ def value_signals(listing):
     return signals
 
 
+def looks_like_land(listing):
+    """Vacant lots masquerade as two-signal houses: no sqft (signal) plus a
+    big lot (signal) is exactly what raw land looks like, and the first real
+    run filled Matches with $84k dirt. A land listing has no bedrooms, no
+    bathrooms, and no living area -- a fixer house always has at least one of
+    those on the listing, however dated it is."""
+    if "land" in (listing.get("propertyType") or "").lower():
+        return True
+    return not (listing.get("beds") or listing.get("baths") or listing.get("sqft"))
+
+
 def passes_criteria(listing, criteria):
+    if looks_like_land(listing):
+        return False
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
         return False
