@@ -9,16 +9,19 @@ By default it stays silent when there's nothing new -- a daily "no houses"
 email trains people to ignore the ones that matter. Set FORCE_SEND=1 to send
 anyway (used for the kickoff email that announces the criteria).
 
-SMTP config, via repo secrets:
+Recipients live in the Airtable "Recipients" table (Email + Active), not in
+config, so the list can be changed from a phone without touching repo
+settings -- adding a partner, an agent, or a lender for one deal is a normal
+thing to do and shouldn't require editing a GitHub secret.
+
+Credentials still have to be secrets, and only these two:
   SMTP_USER   the sending address (for Gmail: the account, with an App
               Password -- normal passwords won't work over SMTP)
   SMTP_PASS   the app password
-  EMAIL_TO    comma-separated recipients
   SMTP_HOST   default smtp.gmail.com
   SMTP_PORT   default 465 (SSL)
-
-Unset config exits cleanly: the digest is an add-on, not something that
-should fail the pipeline.
+  EMAIL_TO    optional override, comma-separated; wins over the table when
+              set, for a one-off send or a local test
 """
 import html
 import os
@@ -27,7 +30,7 @@ import sys
 from datetime import date, timedelta
 from email.mime.text import MIMEText
 
-from airtable import Airtable, TABLE_CRITERIA, TABLE_HOUSES
+from airtable import Airtable, TABLE_CRITERIA, TABLE_HOUSES, TABLE_RECIPIENTS
 
 
 def _money(v):
@@ -176,23 +179,61 @@ def build_email(criteria_rows, new_houses):
     return subject, body
 
 
+def _looks_like_email(value):
+    """Cheap sanity check. A typo'd row shouldn't abort the whole send, but it
+    also shouldn't be handed to the SMTP server as a recipient."""
+    value = (value or "").strip()
+    return "@" in value and "." in value.split("@")[-1] and " " not in value
+
+
+def resolve_recipients(at):
+    """Recipients come from Airtable, so they can be changed from a phone.
+
+    EMAIL_TO still works and wins when set -- useful for a one-off send to
+    someone who shouldn't join the standing list, and for running this
+    locally without touching the shared table.
+    """
+    override = [a.strip() for a in os.environ.get("EMAIL_TO", "").split(",") if a.strip()]
+    if override:
+        print(f"Recipients: {len(override)} from EMAIL_TO override")
+        return override
+
+    try:
+        rows = at.list_records(TABLE_RECIPIENTS, formula="{Active}")
+    except Exception as exc:
+        # A missing table is the expected first-run state, not a crash.
+        print(f"::warning::Could not read the {TABLE_RECIPIENTS} table ({exc}).")
+        return []
+
+    good, bad = [], []
+    for rec in rows:
+        email = (rec.get("fields", {}).get("Email") or "").strip()
+        (good if _looks_like_email(email) else bad).append(email or "(blank)")
+    for entry in bad:
+        print(f"::warning::Skipping {entry!r} in {TABLE_RECIPIENTS} -- not a valid address.")
+    print(f"Recipients: {len(good)} active from Airtable")
+    return good
+
+
 def main():
     user = os.environ.get("SMTP_USER")
     password = os.environ.get("SMTP_PASS")
-    to = [a.strip() for a in os.environ.get("EMAIL_TO", "").split(",") if a.strip()]
-    if not (user and password and to):
+    if not (user and password):
         # Fail loudly, for the same reason the search worker does: returning 0
         # here paints the workflow green while no email is ever sent, and the
         # absence of an email looks identical to "nothing new today".
-        missing = [name for name, value in
-                   (("SMTP_USER", user), ("SMTP_PASS", password), ("EMAIL_TO", to))
-                   if not value]
+        missing = [n for n, v in (("SMTP_USER", user), ("SMTP_PASS", password)) if not v]
         print(f"::error::Email not configured; missing: {', '.join(missing)}")
         print("::error::Set these as repository secrets. For Gmail, SMTP_PASS must be "
               "an App Password (myaccount.google.com/apppasswords), not the account password.")
         return 1
 
     at = Airtable()
+    to = resolve_recipients(at)
+    if not to:
+        print(f"::error::No recipients. Add a row to the {TABLE_RECIPIENTS} table in "
+              "Airtable with an Email and Active checked, or set EMAIL_TO for a one-off.")
+        return 1
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
 
     days = int(os.environ.get("DIGEST_DAYS", "1"))
