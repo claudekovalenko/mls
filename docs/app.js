@@ -499,6 +499,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("setup-find").addEventListener("click", findBases);
 
+  // The token lives only in this browser, and the person may have nowhere
+  // else to retrieve it from -- Airtable shows a token once at creation and
+  // never again. These buttons make this device the way to get it into the
+  // repo's GitHub secrets without creating a new token.
+  const copyOut = async (label, value) => {
+    if (!value) { setStatus(`No ${label} saved on this device.`, false); return; }
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus(`${label} copied — paste it into the GitHub secret.`);
+    } catch {
+      // Clipboard API can be blocked (http, permissions); prompt() still
+      // gives a selectable string on every mobile browser.
+      window.prompt(`Copy this ${label}:`, value);
+    }
+  };
+  $("copy-token").addEventListener("click", () => copyOut("token", store.token));
+  $("copy-base").addEventListener("click", () => copyOut("base ID", store.baseId));
+  $("disconnect").addEventListener("click", () => {
+    if (!window.confirm("Disconnect this device? The saved token is removed from this browser — make sure it's saved somewhere (like the GitHub secret) first.")) return;
+    store.token = "";
+    store.baseId = "";
+    showSetup(true);
+  });
+
   $("nav-matches").addEventListener("click", () => setScreen("matches"));
   $("nav-criteria").addEventListener("click", () => setScreen("criteria"));
   $("new-criteria").addEventListener("click", () => openCriteria(null));

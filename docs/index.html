@@ -84,6 +84,20 @@
     <div id="criteria-empty" class="empty" style="display:none;">
       No searches yet — add one to start.
     </div>
+
+    <div class="card" id="connection-card">
+      <h2>Connection</h2>
+      <p class="sub">
+        This device is connected to Airtable. The same token also needs to live in the
+        repo's GitHub secrets for the background search and email to run — copy it here,
+        then paste it at github.com → Settings → Secrets → Actions → <code>AIRTABLE_TOKEN</code>.
+      </p>
+      <div class="card-actions">
+        <button class="secondary" id="copy-token" type="button">Copy token</button>
+        <button class="secondary" id="copy-base" type="button">Copy base ID</button>
+        <button class="secondary" id="disconnect" type="button">Disconnect</button>
+      </div>
+    </div>
   </div>
 
   <nav class="bottom-nav">
