@@ -21,6 +21,7 @@ TIMEOUT = 30
 # Table names, matched by name so the base can be created by hand or by API.
 TABLE_CRITERIA = "Search Criteria"
 TABLE_HOUSES = "Houses"
+TABLE_RECIPIENTS = "Recipients"
 
 # The schema, kept here so setup docs and code can't drift apart.
 SCHEMA = {
@@ -76,6 +77,17 @@ SCHEMA = {
         ("Source", "singleLineText"),
         ("Notes", "multilineText"),
         ("Date Added", "date"),
+    ],
+    # Who gets the digest. This lives in Airtable rather than an EMAIL_TO
+    # repo secret because the recipient list is the one piece of config that
+    # genuinely changes -- adding a partner, an agent, a lender for one deal --
+    # and editing a GitHub secret from a phone to do it is the wrong shape.
+    # Credentials (SMTP_USER/SMTP_PASS) stay secrets; addresses are not secrets.
+    TABLE_RECIPIENTS: [
+        ("Email", "singleLineText"),
+        ("Name", "singleLineText"),
+        ("Active", "checkbox"),
+        ("Notes", "multilineText"),
     ],
 }
 
