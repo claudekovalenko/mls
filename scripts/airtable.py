@@ -159,10 +159,14 @@ class Airtable:
                 "with data.records:read and data.records:write on this base)."
             )
 
-    def _request(self, method, path, payload=None, query=None):
+    def _request(self, method, path, payload=None, query=None, raw_query=None):
         url = f"{API_ROOT}/{self.base_id}/{urllib.parse.quote(path)}"
         if query:
             url += "?" + urllib.parse.urlencode(query, doseq=True)
+        elif raw_query:
+            # Airtable's delete endpoint wants repeated records[] params, which
+            # urlencode's doseq cannot express with a single key.
+            url += "?" + raw_query
         data = json.dumps(payload).encode() if payload is not None else None
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self.token}")
@@ -208,6 +212,18 @@ class Airtable:
             payload = self._request("PATCH", table, {"records": batch, "typecast": True})
             updated.extend(payload.get("records", []))
         return updated
+
+
+    def delete_records(self, table, record_ids):
+        """Airtable caps deletes at 10 ids per request, so batch."""
+        deleted = []
+        for i in range(0, len(record_ids), 10):
+            batch = record_ids[i:i + 10]
+            query = [("records[]", rid) for rid in batch]
+            url_query = urllib.parse.urlencode(query)
+            payload = self._request("DELETE", table, query=None, raw_query=url_query)
+            deleted.extend(payload.get("records", []))
+        return deleted
 
 
 def parse_list_field(value):
