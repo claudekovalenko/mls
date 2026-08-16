@@ -7,8 +7,16 @@ name: Search Listings
 # Do not raise the frequency without re-checking scripts/rentcast_budget.py.
 on:
   schedule:
-    - cron: "0 11 * * *"   # daily, ~7am ET -- ahead of the 12:00 UTC digest
-  workflow_dispatch: {}
+    # Weekly, Monday ~7am ET. A full pass over the current criteria costs about
+    # 9 requests; the free allowance is 50 a month, so weekly fits with room to
+    # spare while daily would need ~270 and would eat prepaid credit.
+    - cron: "0 11 * * 1"
+  workflow_dispatch:
+    inputs:
+      allow_paid:
+        description: "Spend prepaid credit if the free monthly allowance is used up (costs money)"
+        type: boolean
+        default: false
 
 # One run at a time. Concurrent runs would each spend against the budget and
 # race on the counter commit, so the recorded spend would understate reality.
@@ -36,6 +44,9 @@ jobs:
           LISTINGS_API_URL: ${{ secrets.LISTINGS_API_URL }}
           LISTINGS_API_KEY: ${{ secrets.LISTINGS_API_KEY }}
           RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
+          # Never set on the schedule. Spending prepaid credit is a decision
+          # the owner makes per run, not something a cron job does at 7am.
+          ALLOW_PAID_CREDIT: ${{ inputs.allow_paid && '1' || '0' }}
         run: python search_worker.py
       - name: Commit RentCast spend counter
         # The runner is ephemeral, so an uncommitted counter means the next run
