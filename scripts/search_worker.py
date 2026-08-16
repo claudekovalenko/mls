@@ -26,6 +26,7 @@ rather than failing the workflow.
 """
 import json
 import os
+import statistics
 import sys
 import urllib.parse
 import urllib.request
@@ -220,6 +221,8 @@ SIGNAL_RULES = [
                "bring your vision", "dated", "original condition")),
 ]
 OVERSIZED_LOT_SQFT = 15000  # ~0.34 acre; room for an ADU
+BELOW_MARKET_PCT = 0.15     # this much under the area median $/sqft counts
+MIN_CATEGORIES = 2          # surface a house that falls into at least this many
 
 
 def value_signals(listing):
@@ -247,38 +250,76 @@ def looks_like_land(listing):
 
 
 def passes_criteria(listing, criteria):
+    """Hard exclusions only: things that are not the kind of property we buy.
+
+    Everything else the brief asks for -- price per sqft, basement, ADU room,
+    fixer language -- is scored by categories() rather than filtered here.
+    Requiring all of them at once produced zero results across four runs and
+    450 listings, because this feed carries no listing remarks and so can
+    never evidence the word-based ones. A house that provably falls into some
+    of the categories is worth surfacing; demanding every one guarantees an
+    empty inbox.
+
+    Price is already bounded upstream -- the API is given Max Price.
+    """
     if looks_like_land(listing):
         return False
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
         return False
-    # Sqft floors and $/sqft caps only apply when sqft is actually listed;
-    # a missing figure passes both, deliberately (see value_signals).
     sqft = listing.get("sqft")
     if criteria.get("Min Sqft") is not None and sqft and sqft < criteria["Min Sqft"]:
         return False
-    max_ppsf = criteria.get("Max Price Per Sqft")
-    if max_ppsf is not None and sqft and listing.get("price"):
-        if listing["price"] / sqft > max_ppsf:
-            return False
-    keywords = [k.lower() for k in parse_list_field(criteria.get("Keywords"))]
-    if keywords:
-        haystack = f"{listing.get('description', '')} {listing.get('address', '')}".lower()
-        if not any(k in haystack for k in keywords):
-            return False
-    # Must Haves: every comma-separated entry is required; "/" inside an entry
-    # lists alternatives ("adu/oversized lot" = either satisfies it). Matched
-    # against detected signals first, raw description as fallback.
-    must = parse_list_field(criteria.get("Must Haves"))
-    if must:
-        signals = [s.lower() for s in listing.get("_signals", [])]
-        hay = (listing.get("description") or "").lower()
-        for requirement in must:
-            alts = [a.strip().lower() for a in requirement.split("/") if a.strip()]
-            met = any(a in s for a in alts for s in signals) or any(a in hay for a in alts)
-            if not met:
-                return False
     return True
+
+
+def median_price_per_sqft(listings):
+    """Median $/sqft of what this search is looking at right now.
+
+    The comparison has to be against current comparable inventory, not a
+    fixed number, or "cheap" means something different in 30067 than 30060.
+    """
+    ratios = [l["price"] / l["sqft"] for l in listings
+              if l.get("price") and l.get("sqft")]
+    return statistics.median(ratios) if ratios else None
+
+
+def categories(listing, criteria, median_ppsf=None):
+    """Which of the brief's categories this listing provably falls into.
+
+    Deliberately excludes the price cap: the API already enforces it, so every
+    listing would score it and the count would stop discriminating. Only
+    things that distinguish one listing from another are counted.
+    """
+    hits = []
+    price, sqft, lot = listing.get("price"), listing.get("sqft"), listing.get("lotSqft")
+
+    if price and sqft:
+        ppsf = price / sqft
+        cap = criteria.get("Max Price Per Sqft")
+        if cap and ppsf <= cap:
+            hits.append(f"under ${cap:.0f}/sqft")
+        if median_ppsf and ppsf <= median_ppsf * (1 - BELOW_MARKET_PCT):
+            hits.append(f"{(1 - ppsf / median_ppsf) * 100:.0f}% under area $/sqft")
+    elif not sqft:
+        hits.append("no sqft listed")
+
+    if lot and lot >= OVERSIZED_LOT_SQFT:
+        # Acres, and no thousands separator anywhere in a category name:
+        # these are stored comma-separated, so a comma inside one splits it
+        # into two and corrupts both the count and the chips downstream.
+        hits.append(f"oversized lot ({lot / 43560:.2f} acre)")
+
+    all_in_cap = criteria.get("Max All In")
+    rehab = estimate_rehab(listing, criteria)
+    if all_in_cap and price and rehab and price + rehab <= all_in_cap:
+        hits.append(f"${(price + rehab) / 1000:.0f}k all-in")
+
+    # Word-based categories. Silent on a feed without remarks -- that absence
+    # is a fact about the data source, not about the house.
+    hits += [s.lower() for s in value_signals(listing)
+             if s not in ("No sqft listed", "Oversized lot")]
+    return hits
 
 
 def estimate_rehab(listing, criteria):
@@ -338,11 +379,17 @@ def run_search(at, criteria_record, existing_keys, budget):
         "onePercent": (fields["Target One Percent"] / 100) if fields.get("Target One Percent") is not None else None,
     }
 
+    # The comparison baseline has to come from this search's own current
+    # inventory, so it is computed once over everything that survived the
+    # hard exclusions rather than per listing.
+    eligible = [l for l in listings if passes_criteria(l, fields)]
+    median_ppsf = median_price_per_sqft(eligible)
+    if median_ppsf:
+        print(f"  {name}: {len(eligible)} eligible, median ${median_ppsf:,.0f}/sqft")
+
     new_rows = []
-    for listing in listings:
-        listing["_signals"] = value_signals(listing)
-        if not passes_criteria(listing, fields):
-            continue
+    for listing in eligible:
+        listing["_signals"] = categories(listing, fields, median_ppsf)
         key = (listing.get("address") or listing.get("url") or "").strip().lower()
         if not key or key in existing_keys:
             continue
@@ -353,29 +400,22 @@ def run_search(at, criteria_record, existing_keys, budget):
         listing["_arv"] = listing.get("price")
         listing["_rent"] = None
 
-        # All-in cap (price + rehab): how "300k + 50k reno, 350k max" is
-        # enforced. Only bites when both numbers exist.
-        cap = fields.get("Max All In")
-        if cap and listing.get("price") and listing["_rehab"] \
-                and listing["price"] + listing["_rehab"] > cap:
-            continue
-
         verdict = deals.qualify(
             listing.get("price"), listing["_rehab"], listing["_arv"], listing["_rent"], targets
         )
-        # Surface it if the math says so -- or if it's the kind of listing the
-        # whole search exists to catch: two or more value signals means ugly/
-        # dated/mismarketed/expandable, where the placeholder math (ARV = list
-        # price) is exactly what you'd expect to be wrong. Everything else is
-        # noise and stays out.
-        if not verdict["qualified"] and verdict["bestRank"] < 1 \
-                and len(listing["_signals"]) < 2:
+        # Surface it if it falls into enough of the brief's categories, or if
+        # the math says so on its own. The categories carry the weight here:
+        # ARV is a placeholder equal to list price, so the math cannot yet be
+        # right about a mispriced house -- which is exactly the house we want.
+        if len(listing["_signals"]) < MIN_CATEGORIES \
+                and not verdict["qualified"] and verdict["bestRank"] < 1:
             continue
 
         new_rows.append(build_house_fields(listing, fields, verdict))
         existing_keys.add(key)
 
-    print(f"  {name}: {len(new_rows)} new qualifying")
+    new_rows.sort(key=lambda r: -len(str(r["Value Signals"]).split(", ")))
+    print(f"  {name}: {len(new_rows)} new in {MIN_CATEGORIES}+ categories")
     return new_rows
 
 
