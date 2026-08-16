@@ -4,6 +4,11 @@ name: Listing Report
 on:
   workflow_dispatch: {}
 
+# The counter commit needs write access; without this the runner's token is
+# read-only and the push 403s, losing the record of calls already billed.
+permissions:
+  contents: write
+
 jobs:
   report:
     runs-on: ubuntu-latest
