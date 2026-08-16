@@ -28,9 +28,11 @@ import os
 import smtplib
 import sys
 from datetime import date, timedelta
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from airtable import Airtable, TABLE_CRITERIA, TABLE_HOUSES, TABLE_RECIPIENTS
+from search_worker import zillow_url
 
 
 def _money(v):
@@ -124,20 +126,15 @@ SIGNALS_HTML = """
 
 
 def house_rows(houses):
-    def sort_key(rec):
-        # Category count leads, because it is the part the data can actually
-        # evidence. Flip profit is computed off a placeholder ARV until a
-        # human types a real one, so sorting by it first would rank the list
-        # by a number nobody has checked yet.
-        f = rec.get("fields", {})
-        cats = len([c for c in str(f.get("Value Signals") or "").split(",") if c.strip()])
-        return (not f.get("Qualified"), -cats, -(f.get("Flip Profit") or -10**9))
     rows = []
-    for rec in sorted(houses, key=sort_key):
+    for rec in sorted(houses, key=_house_sort_key):
         f = rec.get("fields", {})
         addr = html.escape(f.get("Address") or "?")
-        if f.get("Listing URL"):
-            addr = f'<a href="{html.escape(f["Listing URL"])}">{addr}</a>'
+        # Falls back to a constructed Zillow search link, so the houses
+        # already stored without one are still tappable.
+        link = f.get("Listing URL") or zillow_url(f.get("Address"))
+        if link:
+            addr = f'<a href="{html.escape(link)}">{addr}</a>'
         badge = " ⭐" if f.get("Qualified") else ""
         ppsf = f" · ${f['Price Per Sqft']:.0f}/sqft" if f.get("Price Per Sqft") else ""
         cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
@@ -161,6 +158,48 @@ def house_rows(houses):
             f"BRRRR: {html.escape(f.get('BRRRR Verdict') or '—')}</small></td></tr>"
         )
     return "".join(rows)
+
+
+def text_summary(new_houses):
+    """Plain text, shaped to be pasted into a text message.
+
+    One house per short block, no table, no markdown -- iMessage renders
+    neither, and a wrapped table is unreadable on a phone. The Zillow link
+    goes on its own line so it stays tappable instead of being swallowed by
+    surrounding punctuation.
+    """
+    lines = []
+    for rec in sorted(new_houses, key=_house_sort_key):
+        f = rec.get("fields", {})
+        cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
+        bits = [_money(f.get("Price"))]
+        if f.get("Beds") or f.get("Baths"):
+            bits.append(f"{f.get('Beds') or '?':g}bd/{f.get('Baths') or '?':g}ba"
+                        if isinstance(f.get("Beds"), (int, float)) else "")
+        if f.get("Sqft"):
+            bits.append(f"{f['Sqft']:,.0f} sqft")
+        else:
+            bits.append("sqft not listed")
+        if f.get("Price Per Sqft"):
+            bits.append(f"${f['Price Per Sqft']:.0f}/sqft")
+        star = " *" if f.get("Qualified") else ""
+        lines.append(f"{f.get('Address') or '?'}{star}")
+        lines.append("  " + " · ".join(b for b in bits if b))
+        if cats:
+            lines.append(f"  Why: {', '.join(cats)}")
+        lines.append("  " + (f.get("Listing URL") or zillow_url(f.get("Address"))))
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _house_sort_key(rec):
+    # Category count leads, because it is the part the data can actually
+    # evidence. Flip profit is computed off a placeholder ARV until a human
+    # types a real one, so sorting by it first would rank the list by a
+    # number nobody has checked yet.
+    f = rec.get("fields", {})
+    cats = len([c for c in str(f.get("Value Signals") or "").split(",") if c.strip()])
+    return (not f.get("Qualified"), -cats, -(f.get("Flip Profit") or -10**9))
 
 
 def build_email(criteria_rows, new_houses):
@@ -268,7 +307,15 @@ def main():
         return 0
 
     subject, body = build_email(criteria_rows, new_houses)
-    msg = MIMEText(body, "html")
+    # Both parts, HTML preferred. The text half is what survives being
+    # forwarded into a text message, and multipart/alternative is also what
+    # keeps a plain-HTML blast out of spam filters.
+    msg = MIMEMultipart("alternative")
+    text = text_summary(new_houses) if new_houses else \
+        "No new houses yet -- the searches are running. " \
+        "https://claudekovalenko.github.io/mls/"
+    msg.attach(MIMEText(text, "plain", "utf-8"))
+    msg.attach(MIMEText(body, "html", "utf-8"))
     msg["Subject"] = subject
     msg["From"] = os.environ.get("EMAIL_FROM", user)
     msg["To"] = ", ".join(to)

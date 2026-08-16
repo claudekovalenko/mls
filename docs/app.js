@@ -170,16 +170,27 @@ function houseVerdict(f) {
   return qualify(f.Price ?? null, f["Rehab Cost"] ?? null, f.ARV ?? null, f["Rent Estimate"] ?? null);
 }
 
-function renderMatches() {
-  const wrap = $("matches-list");
+// Single source of truth for "what the Matches screen is showing", so the
+// copy button can never disagree with what's on screen.
+function visibleMatches() {
   const marketFilter = $("filter-market").value;
   const onlyQualified = $("filter-qualified").checked;
+  const catCount = f => String(f["Value Signals"] || "").split(",").filter(s => s.trim()).length;
 
   let rows = houses.map(r => ({ id: r.id, f: r.fields || {}, v: houseVerdict(r.fields || {}) }));
   if (marketFilter) rows = rows.filter(r => (r.f.Market || "") === marketFilter);
   if (onlyQualified) rows = rows.filter(r => r.f.Qualified || r.v.bestRank >= 2);
+  // Category count leads: flip profit runs off a placeholder ARV until someone
+  // types a real one, so ranking by it would sort by an unchecked number.
   rows.sort((a, b) => (b.v.bestRank - a.v.bestRank)
+    || (catCount(b.f) - catCount(a.f))
     || ((b.v.metrics.flipProfit ?? -Infinity) - (a.v.metrics.flipProfit ?? -Infinity)));
+  return rows;
+}
+
+function renderMatches() {
+  const wrap = $("matches-list");
+  const rows = visibleMatches();
 
   $("matches-empty").style.display = rows.length ? "none" : "block";
 
@@ -208,6 +219,35 @@ function renderMatches() {
 
   wrap.querySelectorAll("[data-house-id]").forEach(el =>
     el.addEventListener("click", () => openHouse(el.dataset.houseId)));
+}
+
+// A Zillow search deep-link built from the address. Nothing is fetched --
+// this is the same as typing the address into Zillow's search box, and it is
+// how you get to the photos and remarks the listing feed doesn't carry.
+function zillowUrl(address) {
+  if (!address) return "";
+  const slug = String(address).replace(/,/g, " ").trim().split(/\s+/).join("-");
+  return `https://www.zillow.com/homes/${encodeURIComponent(slug)}_rb/`;
+}
+
+function listingLink(f) {
+  return f["Listing URL"] || zillowUrl(f.Address);
+}
+
+// One house as plain text, shaped for pasting into a message. No markdown --
+// iMessage renders none of it, and the link needs its own line to stay tappable.
+function houseAsText(f) {
+  const cats = String(f["Value Signals"] || "").split(",").map(s => s.trim()).filter(Boolean);
+  const bits = [money(f.Price)];
+  if (f.Beds || f.Baths) bits.push(`${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba`);
+  bits.push(f.Sqft ? `${Number(f.Sqft).toLocaleString()} sqft` : "sqft not listed");
+  if (f["Price Per Sqft"]) bits.push(`$${Number(f["Price Per Sqft"]).toLocaleString()}/sqft`);
+  return [
+    `${f.Address || "?"}${f.Qualified ? " *" : ""}`,
+    "  " + bits.join(" · "),
+    cats.length ? `  Why: ${cats.join(", ")}` : "",
+    "  " + listingLink(f),
+  ].filter(Boolean).join("\n");
 }
 
 // Value signals are why a house is here at all -- basement, ADU potential,
@@ -373,7 +413,7 @@ function openHouse(id) {
       <strong>BRRRR — ${v.brrrrTier}</strong>
       <ul>${v.brrrrReasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </div>
-    ${f["Listing URL"] ? `<p><a href="${esc(f["Listing URL"])}" target="_blank" rel="noopener">View listing →</a></p>` : ""}`;
+    ${listingLink(f) ? `<p><a href="${esc(listingLink(f))}" target="_blank" rel="noopener">Open on Zillow →</a></p>` : ""}`;
   ["Price", "Rehab Cost", "ARV", "Rent Estimate"].forEach(k => {
     $("h-" + k.replace(/ /g, "-")).value = f[k] ?? "";
   });
@@ -532,6 +572,17 @@ document.addEventListener("DOMContentLoaded", () => {
   $("house-cancel").addEventListener("click", () => $("house-dialog").close());
   ["h-Price", "h-Rehab-Cost", "h-ARV", "h-Rent-Estimate"].forEach(id =>
     $(id).addEventListener("input", recomputeHouseDialog));
+  // Copies exactly what's on screen -- whatever the filters are showing --
+  // as plain text, so it can go straight into a message.
+  $("copy-matches").addEventListener("click", async () => {
+    const text = visibleMatches().map(r => houseAsText(r.f)).join("\n\n");
+    if (!text) { setStatus("Nothing to copy.", false); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`Copied ${visibleMatches().length} house(s) — paste into a message.`);
+    } catch { window.prompt("Copy this:", text); }
+  });
+
   $("filter-market").addEventListener("change", renderMatches);
   $("filter-qualified").addEventListener("change", renderMatches);
 

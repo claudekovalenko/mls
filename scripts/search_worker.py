@@ -238,6 +238,21 @@ def value_signals(listing):
     return signals
 
 
+def zillow_url(address):
+    """A Zillow search deep-link for an address.
+
+    Constructing a URL is not scraping -- nothing is fetched or parsed. It is
+    the same thing as typing the address into Zillow's search box, which is
+    the fastest way to see photos and remarks that this feed does not carry.
+    It lands on Zillow's results for that address rather than a guaranteed
+    listing page, because the listing id is not knowable from here.
+    """
+    if not address:
+        return ""
+    slug = "-".join(str(address).replace(",", " ").split())
+    return f"https://www.zillow.com/homes/{urllib.parse.quote(slug)}_rb/"
+
+
 def looks_like_land(listing):
     """Vacant lots masquerade as two-signal houses: no sqft (signal) plus a
     big lot (signal) is exactly what raw land looks like, and the first real
@@ -355,7 +370,7 @@ def build_house_fields(listing, criteria, verdict):
         "BRRRR Verdict": verdict["brrrrVerdict"],
         "Best Strategy": verdict["bestStrategy"] or "",
         "Qualified": verdict["qualified"],
-        "Listing URL": listing.get("url") or "",
+        "Listing URL": listing.get("url") or zillow_url(listing.get("address")),
         "Photo URL": listing.get("photoUrl") or "",
         "Source": os.environ.get("LISTINGS_API_TYPE", "search"),
         "Notes": " · ".join(verdict["flipReasons"][:2]),
