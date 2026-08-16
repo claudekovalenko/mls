@@ -2,7 +2,12 @@
 name: Listing Report
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      allow_paid:
+        description: "Spend prepaid credit if the free monthly allowance is used up (costs money)"
+        type: boolean
+        default: false
 
 # The counter commit needs write access; without this the runner's token is
 # read-only and the push 403s, losing the record of calls already billed.
@@ -23,6 +28,7 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
+          ALLOW_PAID_CREDIT: ${{ inputs.allow_paid && '1' || '0' }}
         run: python report.py
       - name: Commit RentCast spend counter
         run: |

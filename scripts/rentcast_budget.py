@@ -1,60 +1,98 @@
 #!/usr/bin/env python3
-"""Lifetime spend guard for the RentCast API.
+"""Spend guard for the RentCast API: free monthly allowance first, paid never.
 
-RentCast bills per API request against a prepaid credit balance, so the limit
-that matters is a *lifetime* call count, not a monthly one -- once the credit is
-gone it's gone, and there is no endpoint that reports the remaining balance.
-This module is the single gate every RentCast request passes through, and
-rentcast_budget.json is the committed counter. The count has to live in the repo
-because GitHub Actions runners are ephemeral and would otherwise start from zero
-on every run.
+RentCast gives a fixed number of free requests each month that refill on the
+1st, on top of any prepaid credit sitting in the account. Those are completely
+different kinds of budget and the earlier version only understood the second
+one, so a daily run quietly ate paid credit while free calls went unused and
+expired.
 
-Why this exists: RentCast's listings endpoint takes ONE ZIP CODE PER REQUEST, so
-a single Search Criteria row with a 16-zip ring costs 16 calls every time the
-worker runs. Multiplied across active criteria rows and a 4x/day schedule that
-is ~76 calls/day -- about $15/day, which exhausts a $100 balance in under a
-week. Nothing in the search worker previously counted those calls.
+The rule now: the free monthly allowance is the budget. Prepaid credit is a
+reserve that is never touched unless someone explicitly opts in for a single
+run, because spending real money is the owner's decision, not a default.
 
-Two layers:
+  FREE_CALLS_PER_MONTH  refills on the 1st; the only budget normally used
+  PAID_CALL_CEILING     prepaid reserve, requires ALLOW_PAID_CREDIT=1
+  PER_RUN_LIMIT         blast radius of one misconfigured run
 
-1. LIFETIME_CALL_LIMIT -- an absolute ceiling. No request is issued past it.
-2. PER_RUN_LIMIT -- a per-invocation cap. The ceiling alone would let one
-   misconfigured run (a criteria row with a huge zip ring, or many rows
-   activated at once) spend a large fraction of the balance before anyone
-   noticed. This bounds the blast radius of a single run.
+Why the counter lives in the repo: Actions runners are ephemeral, so anything
+held in memory or on disk restarts at zero every run and the ceiling would
+never bind. rentcast_budget.json is committed by the workflow after each run.
+
+Cadence matters more than any cap. A full pass over the current criteria costs
+about 9 requests, so a weekly schedule fits inside the free allowance with room
+to spare while a daily one needs roughly 270 a month and cannot.
 """
 import json
+import os
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUDGET_PATH = ROOT / "rentcast_budget.json"
 
-# $100 of prepaid credit at $0.20 per request.
-LIFETIME_CALL_LIMIT = 500
+# Refills on the 1st. This is the budget in normal operation.
+FREE_CALLS_PER_MONTH = 50
 
-# Most calls any single worker run may make. With the current criteria (19 zip
-# queries per full pass) this lets one run cover everything with headroom, while
-# still stopping a runaway configuration from draining the balance in one go.
+# Prepaid credit, in requests ($100 at $0.20). Off by default -- reaching it
+# means spending money, which requires ALLOW_PAID_CREDIT=1 on that run.
+PAID_CALL_CEILING = 500
+
+# Most calls any single run may make, free or paid. Bounds one bad config.
 PER_RUN_LIMIT = 25
+
+COST_PER_CALL = 0.20
 
 
 class BudgetExhausted(Exception):
-    """Raised when a request would exceed the lifetime ceiling."""
+    """Raised when a request would exceed the allowance in force."""
+
+
+def _this_month():
+    return date.today().strftime("%Y-%m")
 
 
 class Budget:
-    """Tracks spend for one worker run and persists the lifetime total."""
+    """Tracks one run's spend and persists monthly + lifetime counters."""
 
-    def __init__(self, state):
+    def __init__(self, state, allow_paid=None):
         self.state = state
         self.spent_this_run = 0
+        # Read at construction so a test or a caller can pass it explicitly
+        # rather than reaching through the environment.
+        self.allow_paid = (os.environ.get("ALLOW_PAID_CREDIT") == "1"
+                           if allow_paid is None else allow_paid)
+        self._roll_month()
+
+    def _roll_month(self):
+        """Reset the monthly counter when the calendar month changes.
+
+        Done on load rather than on a schedule: there is no process running on
+        the 1st to notice, so the first run of a new month performs the reset.
+        """
+        if self.state.get("month") != _this_month():
+            self.state["month"] = _this_month()
+            self.state["monthlyCalls"] = 0
 
     @property
     def total(self):
         return self.state.get("totalCalls", 0)
 
+    @property
+    def monthly(self):
+        return self.state.get("monthlyCalls", 0)
+
+    def free_remaining(self):
+        return max(0, FREE_CALLS_PER_MONTH - self.monthly)
+
+    def paid_remaining(self):
+        return max(0, PAID_CALL_CEILING - self.total)
+
     def remaining(self):
-        return max(0, LIFETIME_CALL_LIMIT - self.total)
+        """What this run may actually spend, under the allowance in force."""
+        if self.free_remaining() > 0:
+            return self.free_remaining()
+        return self.paid_remaining() if self.allow_paid else 0
 
     def can_spend(self):
         return self.remaining() > 0 and self.spent_this_run < PER_RUN_LIMIT
@@ -65,51 +103,71 @@ class Budget:
         A request that fails after reaching RentCast is still billed, so
         counting only successful responses would undercount and overspend.
         """
+        if self.free_remaining() <= 0 and not self.allow_paid:
+            raise BudgetExhausted(
+                f"Free allowance used up ({self.monthly}/{FREE_CALLS_PER_MONTH} "
+                f"this month). It refills on the 1st. No paid credit was spent. "
+                f"To use prepaid credit for one run, set ALLOW_PAID_CREDIT=1 "
+                f"— that spends real money."
+            )
         if self.remaining() <= 0:
             raise BudgetExhausted(
-                f"RentCast lifetime budget exhausted ({self.total}/{LIFETIME_CALL_LIMIT} calls). "
-                f"No further requests will be made. Raise LIFETIME_CALL_LIMIT in "
-                f"{Path(__file__).name} only after topping up the account balance."
+                f"Prepaid credit exhausted ({self.total}/{PAID_CALL_CEILING} calls). "
+                f"Raise PAID_CALL_CEILING only after topping the account up."
             )
         if self.spent_this_run >= PER_RUN_LIMIT:
             raise BudgetExhausted(
-                f"Per-run RentCast cap reached ({PER_RUN_LIMIT} calls this run). "
-                f"Remaining work is deferred to the next scheduled run. "
-                f"Narrow the zip rings in Search Criteria if this happens every time."
+                f"Per-run cap reached ({PER_RUN_LIMIT} calls). Remaining work is "
+                f"deferred to the next run. Narrow the zip rings in Search "
+                f"Criteria if this happens every time."
             )
         self.state["totalCalls"] = self.total + 1
+        self.state["monthlyCalls"] = self.monthly + 1
         self.spent_this_run += 1
         if note:
+            kind = "free" if self.monthly <= FREE_CALLS_PER_MONTH else "PAID"
             print(f"    [budget] call {self.spent_this_run} this run, "
-                  f"{self.total}/{LIFETIME_CALL_LIMIT} lifetime -- {note}")
+                  f"{self.monthly}/{FREE_CALLS_PER_MONTH} free this month ({kind}) "
+                  f"-- {note}")
         return True
 
     def summary(self):
-        return (f"RentCast: {self.spent_this_run} call(s) this run, "
-                f"{self.total}/{LIFETIME_CALL_LIMIT} lifetime "
-                f"(~${self.total * 0.20:.2f} of $100.00 spent, "
-                f"{self.remaining()} calls left)")
+        paid_used = max(0, self.total - self.monthly)
+        line = (f"RentCast: {self.spent_this_run} call(s) this run · "
+                f"{self.monthly}/{FREE_CALLS_PER_MONTH} free used this month "
+                f"({self.free_remaining()} left, refills on the 1st)")
+        if paid_used or self.allow_paid:
+            line += (f" · prepaid reserve {self.paid_remaining()} calls "
+                     f"(~${self.paid_remaining() * COST_PER_CALL:.2f}) "
+                     f"{'UNLOCKED' if self.allow_paid else 'locked'}")
+        return line
 
 
-def load():
-    """Read the persisted counter.
+def load(allow_paid=None):
+    """Read the persisted counters.
 
-    A missing file starts at zero, but an unreadable or malformed one is treated
-    as FULLY SPENT. Failing open would silently unlock the entire balance, which
-    is the one failure mode this module exists to prevent.
+    A missing file starts fresh, but an unreadable or malformed one is treated
+    as FULLY SPENT. Failing open would silently unlock the whole allowance,
+    which is the one failure mode this module exists to prevent.
     """
     if not BUDGET_PATH.exists():
-        return Budget({"totalCalls": 0, "limit": LIFETIME_CALL_LIMIT})
+        return Budget({"month": _this_month(), "monthlyCalls": 0, "totalCalls": 0},
+                      allow_paid=allow_paid)
     try:
         state = json.loads(BUDGET_PATH.read_text())
     except (json.JSONDecodeError, OSError) as exc:
-        print(f"  WARNING: {BUDGET_PATH.name} unreadable ({exc}); treating budget as exhausted")
-        return Budget({"totalCalls": LIFETIME_CALL_LIMIT, "limit": LIFETIME_CALL_LIMIT})
+        print(f"  WARNING: {BUDGET_PATH.name} unreadable ({exc}); treating as exhausted")
+        state = None
     if not isinstance(state, dict) or not isinstance(state.get("totalCalls"), int):
-        print(f"  WARNING: {BUDGET_PATH.name} malformed; treating budget as exhausted")
-        return Budget({"totalCalls": LIFETIME_CALL_LIMIT, "limit": LIFETIME_CALL_LIMIT})
-    state["limit"] = LIFETIME_CALL_LIMIT
-    return Budget(state)
+        if state is not None:
+            print(f"  WARNING: {BUDGET_PATH.name} malformed; treating as exhausted")
+        return Budget({"month": _this_month(), "monthlyCalls": FREE_CALLS_PER_MONTH,
+                       "totalCalls": PAID_CALL_CEILING}, allow_paid=allow_paid)
+    # An older file has no monthly counter. Assume this month's free calls are
+    # untouched rather than spent -- the alternative blocks a legitimate run,
+    # and the per-run cap still bounds any mistake.
+    state.setdefault("monthlyCalls", 0)
+    return Budget(state, allow_paid=allow_paid)
 
 
 def save(budget):
