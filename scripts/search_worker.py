@@ -253,6 +253,22 @@ def zillow_url(address):
     return f"https://www.zillow.com/homes/{urllib.parse.quote(slug)}_rb/"
 
 
+# Condos, townhouse units and apartments are cheap per square foot because of
+# what they are, not because they are mispriced -- they flooded the first real
+# results and none of them is a flip or an ADU play. Excluded unless a search
+# explicitly asks for them by Property Type.
+ATTACHED_TYPES = ("condo", "townhouse", "apartment", "co-op", "coop", "multi")
+UNIT_MARKERS = (" apt ", " unit ", " #", " ste ")
+
+
+def looks_attached(listing):
+    kind = (listing.get("propertyType") or "").lower()
+    if any(t in kind for t in ATTACHED_TYPES):
+        return True
+    addr = f" {(listing.get('address') or '').lower()} "
+    return any(m in addr for m in UNIT_MARKERS)
+
+
 def looks_like_land(listing):
     """Vacant lots masquerade as two-signal houses: no sqft (signal) plus a
     big lot (signal) is exactly what raw land looks like, and the first real
@@ -281,6 +297,9 @@ def passes_criteria(listing, criteria):
         return False
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
+        return False
+    # Only excluded when the row didn't ask for attached housing by name.
+    if not types and looks_attached(listing):
         return False
     sqft = listing.get("sqft")
     if criteria.get("Min Sqft") is not None and sqft and sqft < criteria["Min Sqft"]:
@@ -409,10 +428,14 @@ def run_search(at, criteria_record, existing_keys, budget):
         if not key or key in existing_keys:
             continue
 
-        # ARV proxy: no source projects after-repair value, so start from the
-        # list price and let a human correct it. Flagged via Notes downstream.
+        # ARV is left unknown rather than proxied by the list price. Setting
+        # ARV = price makes flip profit negative by construction -- price minus
+        # price minus rehab minus selling costs -- so every house was written
+        # with a PASS verdict that says nothing about the house and everything
+        # about the placeholder. Unknown reads as NO DATA, which is true, and
+        # keeps PASS meaning "a human entered real numbers and it failed".
         listing["_rehab"] = estimate_rehab(listing, fields)
-        listing["_arv"] = listing.get("price")
+        listing["_arv"] = None
         listing["_rent"] = None
 
         verdict = deals.qualify(
@@ -424,6 +447,11 @@ def run_search(at, criteria_record, existing_keys, budget):
         # right about a mispriced house -- which is exactly the house we want.
         if len(listing["_signals"]) < MIN_CATEGORIES \
                 and not verdict["qualified"] and verdict["bestRank"] < 1:
+            continue
+        # A real PASS -- one computed from numbers a human actually entered --
+        # means the deal was examined and failed. Those do not belong in the
+        # app. NO DATA is not a PASS; it just means nobody has costed it yet.
+        if verdict["flipVerdict"] == "PASS" and verdict["brrrrVerdict"] == "PASS":
             continue
 
         new_rows.append(build_house_fields(listing, fields, verdict))
