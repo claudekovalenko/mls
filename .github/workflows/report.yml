@@ -1,0 +1,29 @@
+# On-demand scoring report. Prints to the run log; writes nothing to Airtable.
+name: Listing Report
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Score listings
+        working-directory: scripts
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
+        run: python report.py
+      - name: Commit RentCast spend counter
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add rentcast_budget.json
+          git diff --cached --quiet || git commit -m "RentCast spend counter"
+          git pull --rebase --autostash origin main
+          git push
