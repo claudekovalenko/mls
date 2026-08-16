@@ -125,8 +125,13 @@ SIGNALS_HTML = """
 
 def house_rows(houses):
     def sort_key(rec):
+        # Category count leads, because it is the part the data can actually
+        # evidence. Flip profit is computed off a placeholder ARV until a
+        # human types a real one, so sorting by it first would rank the list
+        # by a number nobody has checked yet.
         f = rec.get("fields", {})
-        return (not f.get("Qualified"), -(f.get("Flip Profit") or -10**9))
+        cats = len([c for c in str(f.get("Value Signals") or "").split(",") if c.strip()])
+        return (not f.get("Qualified"), -cats, -(f.get("Flip Profit") or -10**9))
     rows = []
     for rec in sorted(houses, key=sort_key):
         f = rec.get("fields", {})
@@ -135,13 +140,25 @@ def house_rows(houses):
             addr = f'<a href="{html.escape(f["Listing URL"])}">{addr}</a>'
         badge = " ⭐" if f.get("Qualified") else ""
         ppsf = f" · ${f['Price Per Sqft']:.0f}/sqft" if f.get("Price Per Sqft") else ""
-        signals = html.escape(f.get("Value Signals") or "")
+        cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
+        chips = "".join(
+            f"<span style='background:#e0f2f0;color:#0b5d56;border-radius:10px;"
+            f"padding:1px 7px;margin-right:4px;font-size:11px;white-space:nowrap'>"
+            f"{html.escape(c)}</span>" for c in cats)
+        beds = f"{f['Beds']:g}bd" if f.get("Beds") else "?bd"
+        baths = f"{f['Baths']:g}ba" if f.get("Baths") else "?ba"
+        sqft = f" · {f['Sqft']:,.0f} sqft" if f.get("Sqft") else " · no sqft listed"
+        count_label = "category" if len(cats) == 1 else "categories"
         rows.append(
-            f"<tr><td style='padding:6px 10px'>{addr}{badge}<br>"
-            f"<small>{html.escape(f.get('Market') or '')} · {_money(f.get('Price'))}{ppsf}"
-            f"{(' · <b>' + signals + '</b>') if signals else ''}</small></td>"
-            f"<td style='padding:6px 10px'>Flip: {html.escape(f.get('Flip Verdict') or '—')}<br>"
-            f"BRRRR: {html.escape(f.get('BRRRR Verdict') or '—')}</td></tr>"
+            f"<tr style='border-bottom:1px solid #eee'>"
+            f"<td style='padding:8px 10px'>{addr}{badge}<br>"
+            f"<small>{html.escape(f.get('Market') or '')} · {_money(f.get('Price'))} · "
+            f"{beds}/{baths}{sqft}{ppsf}</small>"
+            + (f"<div style='margin-top:4px'>{chips}</div>" if chips else "")
+            + f"</td><td style='padding:8px 10px;white-space:nowrap'>"
+            f"<b>{len(cats)}</b> {count_label}<br>"
+            f"<small>Flip: {html.escape(f.get('Flip Verdict') or '—')} · "
+            f"BRRRR: {html.escape(f.get('BRRRR Verdict') or '—')}</small></td></tr>"
         )
     return "".join(rows)
 
@@ -152,6 +169,9 @@ def build_email(criteria_rows, new_houses):
         subject = f"House Finder: {len(new_houses)} new match{'es' if len(new_houses) != 1 else ''}"
         houses_html = (
             f"<h3>New in the last run</h3>"
+            f"<p style='font-size:13px;margin:4px 0 8px'>Ranked by how many of the "
+            f"criteria below each one provably falls into. They don't need to hit "
+            f"all of them &mdash; each chip is one the data actually evidences.</p>"
             f"<table style='border-collapse:collapse'>{house_rows(new_houses)}</table>"
         )
     else:
