@@ -324,9 +324,19 @@ def passes_criteria(listing, criteria):
     of the categories is worth surfacing; demanding every one guarantees an
     empty inbox.
 
-    Price is already bounded upstream -- the API is given Max Price.
+    Price is the exception, and it is not a category. The brief caps a flip at
+    $500k and a BRRRR at $300k, and a house above the cap is not a worse deal,
+    it is not a deal -- no amount of being cheap per square foot makes it one.
+    Treating it as just another signal put a $1,575,000 house on the sheet
+    because it was 17% under the area median. Max Price was being handed to the
+    API and then trusted, which is why nothing caught it here.
     """
     if looks_like_land(listing):
+        return False
+    price = listing.get("price")
+    if criteria.get("Max Price") is not None and price and price > criteria["Max Price"]:
+        return False
+    if criteria.get("Min Price") is not None and price and price < criteria["Min Price"]:
         return False
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:

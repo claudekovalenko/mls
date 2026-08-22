@@ -31,6 +31,12 @@ from search_worker import is_single_family, looks_attached
 PROTECTED_STATUSES = {"Interested", "Touring", "Toured", "Offer",
                       "Under Contract", "Purchased", "Rejected"}
 
+# The highest ceiling anywhere in the brief: a flip is capped at $500k and both
+# BRRRR variants well below that. A house above this fits no strategy we have,
+# however cheap it is per square foot -- which is exactly how a $1,575,000
+# house ended up on the sheet for being 17% under the area median.
+BRIEF_MAX_PRICE = 500_000
+
 
 def reason_to_drop(f):
     """Why this row would not be written today, or None to keep it."""
@@ -51,6 +57,10 @@ def reason_to_drop(f):
             return f"not single family ({listing['propertyType']})"
     elif looks_attached(listing):
         return "attached housing (condo/townhouse/unit)"
+
+    price = f.get("Price")
+    if price and price > BRIEF_MAX_PRICE:
+        return f"${price / 1000:.0f}k is over the ${BRIEF_MAX_PRICE / 1000:.0f}k brief ceiling"
 
     if f.get("Flip Verdict") == "PASS" and f.get("BRRRR Verdict") == "PASS":
         return "both verdicts PASS"
