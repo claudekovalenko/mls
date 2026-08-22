@@ -74,6 +74,7 @@ SCHEMA = {
         ("Qualified", "checkbox"),    # cleared every target on its criteria row
         ("Listing URL", "url"),
         ("Photo URL", "url"),
+        ("Property Type", "singleLineText"),  # as the feed reported it; searches are single family only
         ("Source", "singleLineText"),
         ("Notes", "multilineText"),
         ("Date Added", "date"),

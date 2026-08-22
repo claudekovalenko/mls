@@ -26,7 +26,7 @@ import os
 import sys
 
 from airtable import Airtable, TABLE_HOUSES
-from search_worker import looks_attached
+from search_worker import is_single_family, looks_attached
 
 PROTECTED_STATUSES = {"Interested", "Touring", "Toured", "Offer",
                       "Under Contract", "Purchased", "Rejected"}
@@ -40,9 +40,18 @@ def reason_to_drop(f):
         return None  # hand-added or migrated; not ours to delete
 
     listing = {"address": f.get("Address") or "",
-               "propertyType": f.get("Source") or ""}
-    if looks_attached(listing):
+               "propertyType": f.get("Property Type") or ""}
+
+    # Rows written before Property Type existed carry no type at all, and the
+    # whitelist would delete every one of them on no evidence. For those the
+    # address is the only signal there is, so they get the old blacklist; rows
+    # that do record a type are held to the single-family rule.
+    if listing["propertyType"]:
+        if not is_single_family(listing):
+            return f"not single family ({listing['propertyType']})"
+    elif looks_attached(listing):
         return "attached housing (condo/townhouse/unit)"
+
     if f.get("Flip Verdict") == "PASS" and f.get("BRRRR Verdict") == "PASS":
         return "both verdicts PASS"
     return None

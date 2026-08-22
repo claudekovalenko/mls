@@ -260,6 +260,11 @@ def zillow_url(address):
 ATTACHED_TYPES = ("condo", "townhouse", "apartment", "co-op", "coop", "multi")
 UNIT_MARKERS = (" apt ", " unit ", " #", " ste ")
 
+# What counts as single family, across both feeds. RentCast says "Single Family";
+# RESO's PropertySubType says "Single Family Residence" or "Single Family
+# Detached", so this matches on the phrase rather than the whole string.
+SINGLE_FAMILY_TYPES = ("single family", "singlefamily", "detached")
+
 
 def looks_attached(listing):
     kind = (listing.get("propertyType") or "").lower()
@@ -267,6 +272,34 @@ def looks_attached(listing):
         return True
     addr = f" {(listing.get('address') or '').lower()} "
     return any(m in addr for m in UNIT_MARKERS)
+
+
+def is_single_family(listing):
+    """True only for a detached single-family house.
+
+    This is a whitelist, not the absence of the attached blacklist, and the
+    difference is the point: manufactured homes, duplexes and anything with a
+    property type nobody anticipated all slipped through "not a condo". Every
+    strategy in the brief -- flip, house plus ADU, basement conversion -- needs
+    a detached house on its own lot, so the feed has to say so affirmatively.
+
+    A listing with no property type at all is rejected. That is the opposite of
+    how missing square footage is treated, deliberately: missing sqft is the
+    opportunity the brief goes hunting for, while a missing property type is
+    just an unidentified building, and there is no upside in guessing.
+
+    The address still gets a look, because a feed will happily label a stacked
+    unit "Single Family" when the address carries an apartment number.
+    """
+    kind = (listing.get("propertyType") or "").strip().lower()
+    if not kind:
+        return False
+    if any(t in kind for t in ATTACHED_TYPES):
+        return False
+    if not any(t in kind for t in SINGLE_FAMILY_TYPES):
+        return False
+    addr = f" {(listing.get('address') or '').lower()} "
+    return not any(m in addr for m in UNIT_MARKERS)
 
 
 def looks_like_land(listing):
@@ -298,8 +331,10 @@ def passes_criteria(listing, criteria):
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
         return False
-    # Only excluded when the row didn't ask for attached housing by name.
-    if not types and looks_attached(listing):
+    # Single family only unless a criteria row names its own Property Types --
+    # that column is an explicit override, and a row that asks for a duplex by
+    # name should get one.
+    if not types and not is_single_family(listing):
         return False
     sqft = listing.get("sqft")
     if criteria.get("Min Sqft") is not None and sqft and sqft < criteria["Min Sqft"]:
@@ -391,6 +426,7 @@ def build_house_fields(listing, criteria, verdict):
         "Qualified": verdict["qualified"],
         "Listing URL": listing.get("url") or zillow_url(listing.get("address")),
         "Photo URL": listing.get("photoUrl") or "",
+        "Property Type": listing.get("propertyType") or "",
         "Source": os.environ.get("LISTINGS_API_TYPE", "search"),
         "Notes": " · ".join(verdict["flipReasons"][:2]),
         "Date Added": date.today().isoformat(),
