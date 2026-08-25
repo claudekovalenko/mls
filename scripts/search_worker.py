@@ -163,8 +163,42 @@ def fetch_rentcast(criteria, api_key, budget):
                 "url": "",
                 "photoUrl": "",
                 "description": r.get("description") or "",
+                # The brief's qualitative half -- dated, poorly marketed,
+                # motivated seller, FSBO -- has no listing remarks to read in
+                # this feed, but these four fields stand in for all of it and
+                # were being thrown away.
+                "yearBuilt": _num(r.get("yearBuilt")),
+                "daysOnMarket": _num(r.get("daysOnMarket")),
+                "priceCut": _price_cut(r.get("history")),
+                "hasAgent": bool(r.get("listingAgent") or r.get("listingOffice")),
             })
+    # "No agent" only means FSBO if this feed names agents for anyone. If the
+    # response carries none at all, the field is simply unpopulated and every
+    # house would otherwise be flagged FSBO.
+    agents_seen = any(item["hasAgent"] for item in out)
+    for item in out:
+        item["_agentsSeen"] = agents_seen
     return out
+
+
+def _price_cut(history):
+    """How far below its first asking price a listing has been marked down.
+
+    RentCast keys history by date, each entry carrying that day's price. A
+    seller who has cut twice is telling you more about their motivation than
+    any adjective in a listing description would.
+    """
+    if not isinstance(history, dict):
+        return None
+    # Keyed by ISO date, so sorting the keys puts them in chronological order.
+    # Relying on dict order would read whatever order the JSON happened to
+    # arrive in and could report a cut as a rise.
+    prices = [_num(history[k].get("price")) for k in sorted(history)
+              if isinstance(history[k], dict) and _num(history[k].get("price"))]
+    if len(prices) < 2:
+        return None
+    first, last = prices[0], prices[-1]
+    return round((first - last) / first, 3) if first and last < first else None
 
 
 def resolve_source():
@@ -220,7 +254,21 @@ SIGNAL_RULES = [
                "investor special", "cash only", "estate sale", "sold as-is",
                "bring your vision", "dated", "original condition")),
 ]
-OVERSIZED_LOT_SQFT = 15000  # ~0.34 acre; room for an ADU
+OVERSIZED_LOT_SQFT = 15000
+
+# A house built this long ago and never renovated is the "dated, original
+# condition" the brief is hunting. 1985 is where Atlanta's postwar and
+# early-suburban stock sits, before the 90s build-out reset finishes.
+DATED_BUILD_YEAR = 1985
+
+# Cobb County's median time to contract runs about three weeks. At two months
+# a listing is being passed over, which is where the brief's "poorly marketed"
+# houses live.
+STALE_DAYS_ON_MARKET = 60
+
+# Below this a cut is a rounding adjustment; at or above it the seller is
+# telling you something.
+MEANINGFUL_PRICE_CUT = 0.03  # ~0.34 acre; room for an ADU
 BELOW_MARKET_PCT = 0.15     # this much under the area median $/sqft counts
 MIN_CATEGORIES = 2          # surface a house that falls into at least this many
 
@@ -394,6 +442,29 @@ def categories(listing, criteria, median_ppsf=None):
     if all_in_cap and price and rehab and price + rehab <= all_in_cap:
         hits.append(f"${(price + rehab) / 1000:.0f}k all-in")
 
+    # The brief's qualitative half, evidenced without listing remarks. A house
+    # is not "ugly" or "poorly marketed" in any field, but age, time on market
+    # and a seller's own price cuts are the observable shadow of all three, and
+    # they are the difference between a list of cheap houses and a list of
+    # houses with a reason to be cheap.
+    year = listing.get("yearBuilt")
+    if year and year <= DATED_BUILD_YEAR:
+        hits.append(f"built {year:.0f}")
+
+    dom = listing.get("daysOnMarket")
+    if dom and dom >= STALE_DAYS_ON_MARKET:
+        hits.append(f"{dom:.0f} days on market")
+
+    cut = listing.get("priceCut")
+    if cut and cut >= MEANINGFUL_PRICE_CUT:
+        hits.append(f"price cut {cut * 100:.0f}%")
+
+    # No agent and no office on a listing is the closest this feed comes to
+    # naming an FSBO. Only counted when the feed populates agents at all, so a
+    # response that carries none for anyone doesn't mark every house FSBO.
+    if listing.get("hasAgent") is False and listing.get("_agentsSeen"):
+        hits.append("possible FSBO")
+
     # Word-based categories. Silent on a feed without remarks -- that absence
     # is a fact about the data source, not about the house.
     hits += [s.lower() for s in value_signals(listing)
@@ -437,6 +508,9 @@ def build_house_fields(listing, criteria, verdict):
         "Listing URL": listing.get("url") or zillow_url(listing.get("address")),
         "Photo URL": listing.get("photoUrl") or "",
         "Property Type": listing.get("propertyType") or "",
+        "Year Built": listing.get("yearBuilt"),
+        "Days on Market": listing.get("daysOnMarket"),
+        "Price Cut": round(listing["priceCut"] * 100, 1) if listing.get("priceCut") else None,
         "Source": os.environ.get("LISTINGS_API_TYPE", "search"),
         "Notes": " · ".join(verdict["flipReasons"][:2]),
         "Date Added": date.today().isoformat(),

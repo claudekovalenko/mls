@@ -75,6 +75,11 @@ SCHEMA = {
         ("Listing URL", "url"),
         ("Photo URL", "url"),
         ("Property Type", "singleLineText"),  # as the feed reported it; searches are single family only
+        # The observable shadow of "dated, poorly marketed, motivated seller",
+        # which no feed states outright but all three of these imply.
+        ("Year Built", "number"),
+        ("Days on Market", "number"),
+        ("Price Cut", "number"),              # percent off the first asking price
         ("Source", "singleLineText"),
         ("Notes", "multilineText"),
         ("Date Added", "date"),
@@ -109,7 +114,7 @@ SELECT_OPTIONS = {
 # distinction between a 7.9% and an 8.4% cash-on-cash.
 NUMBER_PRECISION = {
     "Baths": 1, "Min Baths": 1, "Min Baths After Reno": 1,
-    "Cash on Cash": 1, "One Percent": 2,
+    "Cash on Cash": 1, "One Percent": 2, "Price Cut": 1,
     "Target Cash on Cash": 1, "Target One Percent": 2,
 }
 
