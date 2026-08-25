@@ -120,17 +120,70 @@ def criteria_block(rows):
 # Email HTML is not web HTML: Gmail strips <style> blocks and Outlook renders
 # through Word, ignoring flexbox, grid and most positioning. So everything here
 # is tables with inline styles, one 600px column, and no external assets.
+# The palette and type mirror the deal-sheet artifact: warm-grey ground, teal
+# accent, ochre for the discount signal, and a serif for addresses and prices.
+# Georgia stands in for Fraunces because web fonts don't survive email clients.
 BRAND = "#0f766e"
-INK = "#12211f"
+INK = "#16211f"
 MUTED = "#5c6b69"
-LINE = "#e3eaea"
-SOFT = "#e8f4f2"
+LINE = "#e0e6e3"
+SOFT = "#e4f1ee"
+GROUND = "#f4f6f4"
+SIGNAL = "#a2500c"       # the discount/motivation hue, same as the deal sheet
+SIGNAL_SOFT = "#f5e6d5"
+TRACK = "#e8ece9"
+SERIF = "Georgia,'Times New Roman',serif"
+SANS = ("-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,"
+        "Helvetica,Arial,sans-serif")
 
 
-def _chip(text):
-    return (f'<span style="display:inline-block;background:{SOFT};color:#0b5d56;'
+def _chip(text, warm=False):
+    bg, fg = (SIGNAL_SOFT, SIGNAL) if warm else (SOFT, "#0b5d56")
+    return (f'<span style="display:inline-block;background:{bg};color:{fg};'
             f'border-radius:12px;padding:3px 9px;margin:0 4px 4px 0;font-size:12px;'
             f'font-weight:600;line-height:1.4;white-space:nowrap;">{html.escape(text)}</span>')
+
+
+# Chips describing the seller's situation rather than the house get the warm
+# hue, so motivation reads differently from geometry at a glance.
+WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
+
+
+def _discount_pct(cats):
+    """The 'N% under area $/sqft' figure, if the scorer wrote one."""
+    for c in cats:
+        if "% under area" in c:
+            try:
+                return int(c.split("%")[0].strip())
+            except ValueError:
+                return None
+    return None
+
+
+def _discount_bar(pct):
+    """The deal sheet's discount bar, rebuilt as two table cells.
+
+    Outlook can't draw a styled div, but it can colour two <td>s whose widths
+    split at the percentage. Doubled so a strong 40% discount reads as a
+    mostly-full bar rather than a mostly-empty one.
+    """
+    fill = max(2, min(96, pct * 2))
+    return f"""
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="margin:9px 0 2px;">
+          <tr>
+            <td style="padding:0 0 4px;font-size:11px;font-weight:700;color:{SIGNAL};
+                       letter-spacing:0.4px;">UNDER AREA MEDIAN</td>
+            <td align="right" style="padding:0 0 4px;font-size:11px;font-weight:700;
+                       color:{SIGNAL};">{pct}%</td>
+          </tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td width="{fill}%" bgcolor="{SIGNAL}" style="font-size:0;line-height:5px;height:5px;">&nbsp;</td>
+            <td bgcolor="{TRACK}" style="font-size:0;line-height:5px;height:5px;">&nbsp;</td>
+          </tr>
+        </table>"""
 
 
 def _house_card(f):
@@ -141,33 +194,45 @@ def _house_card(f):
 
     stats = []
     if f.get("Beds") or f.get("Baths"):
-        stats.append(f"{f.get('Beds') or '?'}bd / {f.get('Baths') or '?'}ba")
+        stats.append(f"{f.get('Beds') or '?'} bd / {f.get('Baths') or '?'} ba")
     stats.append(f"{f['Sqft']:,.0f} sqft" if f.get("Sqft") else "sqft not listed")
     if f.get("Price Per Sqft"):
         stats.append(f"${f['Price Per Sqft']:,.0f}/sqft")
+    if f.get("Year Built"):
+        stats.append(f"built {f['Year Built']:.0f}")
+    if f.get("Days on Market"):
+        stats.append(f"{f['Days on Market']:.0f} days on market")
 
     star = ('<span style="background:#fef3c7;color:#92400e;border-radius:10px;'
             'padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;">'
             'MEETS TARGETS</span>') if f.get("Qualified") else ""
 
+    pct = _discount_pct(cats)
+    bar = _discount_bar(pct) if pct else ""
+    chips = "".join(
+        _chip(c, warm=any(m in c.lower() for m in WARM_MARKERS)) for c in cats)
+
     # A bordered table cell, not a CSS button: Outlook drops padding on <a>.
     button = (
         f'<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
-        f'<tr><td style="background:{BRAND};border-radius:6px;">'
-        f'<a href="{html.escape(link)}" style="display:inline-block;padding:9px 16px;'
-        f'color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;">'
-        f'View on Zillow &rarr;</a></td></tr></table>') if link else ""
+        f'<tr><td style="border:1px solid {BRAND};border-radius:6px;">'
+        f'<a href="{html.escape(link)}" style="display:inline-block;padding:9px 18px;'
+        f'color:{BRAND};font-size:13px;font-weight:700;text-decoration:none;'
+        f'letter-spacing:0.3px;">View on Zillow &rarr;</a></td></tr></table>') if link else ""
 
     return f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-           style="margin:0 0 12px;border:1px solid {LINE};border-radius:10px;background:#ffffff;">
-      <tr><td style="padding:16px 18px;">
-        <div style="font-size:16px;font-weight:700;color:{INK};line-height:1.35;">{addr}{star}</div>
-        <div style="margin:8px 0 2px;">
-          <span style="font-size:22px;font-weight:800;color:{BRAND};">{_money(f.get('Price'))}</span>
-          <span style="font-size:13px;color:{MUTED};padding-left:8px;">{html.escape(' · '.join(stats))}</span>
+           style="margin:0 0 14px;border:1px solid {LINE};background:#ffffff;">
+      <tr><td style="padding:18px 20px;">
+        <div style="font-family:{SERIF};font-size:18px;font-weight:700;color:{INK};
+                    line-height:1.3;">{addr}{star}</div>
+        <div style="margin:7px 0 2px;">
+          <span style="font-family:{SERIF};font-size:26px;font-weight:700;
+                       color:{INK};">{_money(f.get('Price'))}</span>
         </div>
-        <div style="margin:10px 0 12px;">{''.join(_chip(c) for c in cats)}</div>
+        <div style="font-size:13px;color:{MUTED};line-height:1.5;">{html.escape(' · '.join(stats))}</div>
+        {bar}
+        <div style="margin:11px 0 13px;">{chips}</div>
         {button}
       </td></tr>
     </table>"""
@@ -190,7 +255,11 @@ SIGNALS_HTML = f"""
         <tr><td style="padding:2px 0;"><b style="color:{INK};">oversized lot</b> &mdash; room to build an ADU</td></tr>
         <tr><td style="padding:2px 0;"><b style="color:{INK};">no sqft listed</b> &mdash; missing data other buyers skip past</td></tr>
         <tr><td style="padding:2px 0;"><b style="color:{INK};">$Xk all-in</b> &mdash; purchase plus budgeted rehab clears the cap</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">fixer / unfinished basement / ADU potential / FSBO</b> &mdash; ugly, dated or poorly marketed, read from the listing remarks when the feed carries them</td></tr>
+        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">built 19XX</b> &mdash; dated, original-condition stock (1985 or earlier)</td></tr>
+        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">N days on market</b> &mdash; being passed over; the area's typical time to contract is ~3 weeks</td></tr>
+        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">price cut N%</b> &mdash; the seller's own statement about motivation</td></tr>
+        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">possible FSBO</b> &mdash; no listing agent or office on the record</td></tr>
+        <tr><td style="padding:2px 0;"><b style="color:{INK};">fixer / unfinished basement / ADU potential</b> &mdash; read from the listing remarks when the feed carries them</td></tr>
       </table>"""
 
 
@@ -254,20 +323,20 @@ def build_email(criteria_rows, new_houses):
         content = ""
 
     return subject, f"""<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f4f7f7;">
+<html><body style="margin:0;padding:0;background:{GROUND};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="background:#f4f7f7;padding:20px 10px;">
+       style="background:{GROUND};padding:24px 10px;">
  <tr><td align="center">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
-         style="width:100%;max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;
-                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+         style="width:100%;max-width:600px;background:#ffffff;
+                font-family:{SANS};">
 
-    <tr><td style="background:{BRAND};padding:22px 24px;">
-      <div style="color:#a7e5dc;font-size:11px;font-weight:700;letter-spacing:1.2px;
-                  text-transform:uppercase;">House Finder &middot; {today}</div>
-      <div style="color:#ffffff;font-size:26px;font-weight:800;margin-top:5px;
-                  line-height:1.2;">{headline}</div>
-      <div style="color:#cdeee8;font-size:13px;margin-top:7px;line-height:1.5;">{sub}</div>
+    <tr><td style="padding:26px 24px 20px;border-bottom:2px solid {INK};">
+      <div style="color:{BRAND};font-size:11px;font-weight:700;letter-spacing:1.6px;
+                  text-transform:uppercase;">House Finder &middot; Deal Sheet &middot; {today}</div>
+      <div style="font-family:{SERIF};color:{INK};font-size:30px;font-weight:700;
+                  margin-top:8px;line-height:1.1;">{headline}</div>
+      <div style="color:{MUTED};font-size:13px;margin-top:9px;line-height:1.55;">{sub}</div>
     </td></tr>
 
     <tr><td style="padding:20px 18px 4px;">
@@ -303,9 +372,9 @@ def build_email(criteria_rows, new_houses):
       <div style="height:22px;"></div>
     </td></tr>
 
-    <tr><td style="background:#f4f7f7;padding:14px 24px;font-size:11px;color:{MUTED};
-                   line-height:1.5;text-align:center;">
-      Sent by House Finder &middot; searches run daily &middot;
+    <tr><td style="background:{GROUND};border-top:1px solid {LINE};padding:14px 24px;
+                   font-size:11px;color:{MUTED};line-height:1.5;text-align:center;">
+      Sent by House Finder &middot; searches run weekly &middot;
       change recipients or criteria in Airtable
     </td></tr>
   </table>

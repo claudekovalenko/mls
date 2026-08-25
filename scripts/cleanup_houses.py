@@ -26,10 +26,16 @@ import os
 import sys
 
 from airtable import Airtable, TABLE_HOUSES
-from search_worker import looks_attached
+from search_worker import is_single_family, looks_attached
 
 PROTECTED_STATUSES = {"Interested", "Touring", "Toured", "Offer",
                       "Under Contract", "Purchased", "Rejected"}
+
+# The highest ceiling anywhere in the brief: a flip is capped at $500k and both
+# BRRRR variants well below that. A house above this fits no strategy we have,
+# however cheap it is per square foot -- which is exactly how a $1,575,000
+# house ended up on the sheet for being 17% under the area median.
+BRIEF_MAX_PRICE = 500_000
 
 
 def reason_to_drop(f):
@@ -40,9 +46,22 @@ def reason_to_drop(f):
         return None  # hand-added or migrated; not ours to delete
 
     listing = {"address": f.get("Address") or "",
-               "propertyType": f.get("Source") or ""}
-    if looks_attached(listing):
+               "propertyType": f.get("Property Type") or ""}
+
+    # Rows written before Property Type existed carry no type at all, and the
+    # whitelist would delete every one of them on no evidence. For those the
+    # address is the only signal there is, so they get the old blacklist; rows
+    # that do record a type are held to the single-family rule.
+    if listing["propertyType"]:
+        if not is_single_family(listing):
+            return f"not single family ({listing['propertyType']})"
+    elif looks_attached(listing):
         return "attached housing (condo/townhouse/unit)"
+
+    price = f.get("Price")
+    if price and price > BRIEF_MAX_PRICE:
+        return f"${price / 1000:.0f}k is over the ${BRIEF_MAX_PRICE / 1000:.0f}k brief ceiling"
+
     if f.get("Flip Verdict") == "PASS" and f.get("BRRRR Verdict") == "PASS":
         return "both verdicts PASS"
     return None
