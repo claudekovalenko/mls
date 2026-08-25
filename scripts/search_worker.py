@@ -386,13 +386,15 @@ def passes_criteria(listing, criteria):
         return False
     if criteria.get("Min Price") is not None and price and price < criteria["Min Price"]:
         return False
+    # Single family, always. Property Types can narrow the search further but
+    # can no longer widen it: treating that column as an override let the
+    # Atlanta row -- which names condo types -- put four Atlanta condos into
+    # the table on the very run that was meant to end them. A column set months
+    # ago should not be able to quietly readmit the thing we just excluded.
+    if not is_single_family(listing):
+        return False
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
-        return False
-    # Single family only unless a criteria row names its own Property Types --
-    # that column is an explicit override, and a row that asks for a duplex by
-    # name should get one.
-    if not types and not is_single_family(listing):
         return False
     sqft = listing.get("sqft")
     if criteria.get("Min Sqft") is not None and sqft and sqft < criteria["Min Sqft"]:
