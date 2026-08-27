@@ -27,6 +27,7 @@ import html
 import os
 import smtplib
 import sys
+import urllib.parse
 from datetime import date, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -148,6 +149,148 @@ def _chip(text, warm=False):
 # hue, so motivation reads differently from geometry at a glance.
 WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 
+# Verdict colours for the per-strategy fit rows.
+GOOD_FIT = "#166534"
+GOOD_FIT_SOFT = "#dcf2e3"
+
+
+OVERSIZED_LOT_SQFT = 15000   # mirrors search_worker; a lot with ADU room
+DATED_BUILD_YEAR = 1985
+
+
+def assess_fit(f, crit):
+    """How this house measures against ONE criteria row.
+
+    Returns (name, strategy, checks) where checks is a list of
+    (label, status) and status is True (met), False (missed), or None
+    (cannot be known from the data -- a basement, say). Unknowns are shown
+    as unknowns rather than silently passed or failed, because "we can't
+    see the basement from here" is honest and "no basement" is a lie.
+    """
+    cats = str(f.get("Value Signals") or "").lower()
+    price, sqft, lot = f.get("Price"), f.get("Sqft"), f.get("Lot Sqft")
+    ppsf, baths = f.get("Price Per Sqft"), f.get("Baths")
+    year = f.get("Year Built")
+    checks = []
+
+    cap = crit.get("Max Price")
+    if cap and price:
+        checks.append((f"price {_money(price)} vs {_money(cap)} cap", price <= cap))
+
+    ppsf_cap = crit.get("Max Price Per Sqft")
+    if ppsf_cap:
+        if not sqft:
+            checks.append(("sqft unlisted (counts as under cap)", True))
+        elif ppsf:
+            checks.append((f"${ppsf:.0f}/sqft vs ${ppsf_cap:.0f} cap", ppsf <= ppsf_cap))
+
+    musts = str(crit.get("Must Haves") or "").lower()
+    if "basement" in musts:
+        checks.append(("basement", True if "basement" in cats else None))
+    if "adu" in musts or "lot" in musts or "acre" in musts:
+        if lot:
+            checks.append((f"lot room for ADU ({lot / 43560:.2f} acre)",
+                           lot >= OVERSIZED_LOT_SQFT))
+        else:
+            checks.append(("lot room for ADU", None))
+
+    target_sqft = crit.get("Target Total Sqft")
+    if target_sqft and sqft:
+        checks.append((f"{sqft:,.0f} sqft vs {target_sqft:,.0f}+ goal",
+                       sqft >= target_sqft))
+
+    target_baths = crit.get("Min Baths After Reno")
+    if target_baths and baths is not None:
+        # A house already at the target needs no bath added; short of it is
+        # a reno line item, not a rejection -- but it is worth seeing.
+        checks.append((f"{baths:g} baths now vs {target_baths:g}+ after reno",
+                       baths >= target_baths))
+
+    if crit.get("Strategy") == "Flip":
+        fixer = (year and year <= DATED_BUILD_YEAR) or "days on market" in cats \
+            or "price cut" in cats or "fixer" in cats
+        checks.append(("fixer evidence (age / sitting / price cut)",
+                       True if fixer else None))
+
+    return crit.get("Name") or "Search", crit.get("Strategy") or "Either", checks
+
+
+def fit_summary(f, criteria_rows):
+    """All three assessments plus which one this house fits best.
+
+    Best = highest share of KNOWN checks met, ties broken by more checks
+    met, so a clean 3-of-3 beats a 4-of-6.
+    """
+    fits = []
+    for rec in criteria_rows:
+        name, strategy, checks = assess_fit(f, rec.get("fields", {}))
+        known = [s for _, s in checks if s is not None]
+        met = sum(1 for s in known if s)
+        score = (met / len(known)) if known else 0
+        fits.append({"name": name, "strategy": strategy, "checks": checks,
+                     "met": met, "known": len(known), "score": score})
+    best = max(fits, key=lambda x: (x["score"], x["met"])) if fits else None
+    return fits, best
+
+
+def _fit_rows_html(fits, best):
+    """The per-strategy scorecard on a card: one row per search, met/known,
+    and each miss or unknown named -- the point is knowing what to check on
+    the walkthrough, not just a number."""
+    rows = []
+    for fit in fits:
+        is_best = best is not None and fit["name"] == best["name"]
+        badge = (f'<span style="background:{GOOD_FIT_SOFT};color:{GOOD_FIT};'
+                 f'border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700;'
+                 f'margin-left:6px;">BEST FIT</span>') if is_best and fit["score"] > 0 else ""
+        # Short name: "Flip", "BRRRR A", "BRRRR B" read faster than full row names.
+        short = fit["name"].split("—")[0].strip()
+        misses = [lab for lab, s in fit["checks"] if s is False]
+        unknowns = [lab for lab, s in fit["checks"] if s is None]
+        detail = ""
+        if misses:
+            detail += f'<span style="color:{SIGNAL};">misses: {html.escape("; ".join(misses))}</span>'
+        if unknowns:
+            if detail:
+                detail += " &middot; "
+            detail += f'<span style="color:{MUTED};">to verify: {html.escape("; ".join(unknowns))}</span>'
+        if not detail:
+            detail = f'<span style="color:{GOOD_FIT};">meets everything we can measure</span>'
+        pct_color = GOOD_FIT if fit["score"] >= 0.75 else (SIGNAL if fit["score"] >= 0.4 else MUTED)
+        rows.append(
+            f'<tr><td style="padding:3px 0;font-size:12px;line-height:1.5;'
+            f'border-top:1px solid {LINE};">'
+            f'<b style="color:{INK};">{html.escape(short)}</b>'
+            f'<span style="color:{pct_color};font-weight:700;padding-left:6px;">'
+            f'{fit["met"]}/{fit["known"]}</span>{badge}'
+            f'<br><span style="font-size:11px;">{detail}</span></td></tr>')
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'border="0" style="margin:4px 0 12px;">'
+            f'<tr><td style="padding:0 0 4px;font-size:10px;font-weight:700;'
+            f'letter-spacing:0.8px;color:{MUTED};">FIT BY STRATEGY</td></tr>'
+            + "".join(rows) + "</table>")
+
+
+def _street_view(address):
+    """A curb photo via Google Street View, when a key is configured.
+
+    The listing feed carries no photos and the listing sites block fetching
+    theirs, so the street-facing shot is the honest option: it shows the
+    house as it actually looks from the road -- which for a fixer hunt is
+    half the point. Without GOOGLE_MAPS_KEY this renders nothing and the
+    card is unchanged.
+    """
+    key = os.environ.get("GOOGLE_MAPS_KEY")
+    if not key or not address:
+        return ""
+    q = urllib.parse.quote(str(address))
+    url = (f"https://maps.googleapis.com/maps/api/streetview"
+           f"?size=560x240&location={q}&fov=75&key={key}")
+    return (f'<img src="{html.escape(url)}" width="560" alt="Street view of '
+            f'{html.escape(str(address))}" style="display:block;width:100%;'
+            f'max-width:560px;height:auto;border:1px solid {LINE};'
+            f'margin:0 0 12px;">')
+
 
 def _discount_pct(cats):
     """The 'N% under area $/sqft' figure, if the scorer wrote one."""
@@ -186,7 +329,7 @@ def _discount_bar(pct):
         </table>"""
 
 
-def _house_card(f):
+def _house_card(f, criteria_rows=()):
     """One house, as a self-contained table so it survives every client."""
     cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
     link = f.get("Listing URL") or zillow_url(f.get("Address"))
@@ -212,6 +355,17 @@ def _house_card(f):
     chips = "".join(
         _chip(c, warm=any(m in c.lower() for m in WARM_MARKERS)) for c in cats)
 
+    photo = _street_view(f.get("Address"))
+    fits, best = fit_summary(f, criteria_rows)
+    fit_html = _fit_rows_html(fits, best) if fits else ""
+    best_badge = ""
+    if best and best["score"] > 0:
+        short = html.escape(best["name"].split("—")[0].strip())
+        best_badge = (f'<span style="background:{GOOD_FIT_SOFT};color:{GOOD_FIT};'
+                      f'border-radius:10px;padding:2px 9px;font-size:11px;'
+                      f'font-weight:700;margin-left:8px;vertical-align:middle;">'
+                      f'{short} · {best["met"]}/{best["known"]}</span>')
+
     # A bordered table cell, not a CSS button: Outlook drops padding on <a>.
     button = (
         f'<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
@@ -224,22 +378,24 @@ def _house_card(f):
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
            style="margin:0 0 14px;border:1px solid {LINE};background:#ffffff;">
       <tr><td style="padding:18px 20px;">
+        {photo}
         <div style="font-family:{SERIF};font-size:18px;font-weight:700;color:{INK};
                     line-height:1.3;">{addr}{star}</div>
         <div style="margin:7px 0 2px;">
           <span style="font-family:{SERIF};font-size:26px;font-weight:700;
-                       color:{INK};">{_money(f.get('Price'))}</span>
+                       color:{INK};">{_money(f.get('Price'))}</span>{best_badge}
         </div>
         <div style="font-size:13px;color:{MUTED};line-height:1.5;">{html.escape(' · '.join(stats))}</div>
         {bar}
-        <div style="margin:11px 0 13px;">{chips}</div>
+        <div style="margin:11px 0 10px;">{chips}</div>
+        {fit_html}
         {button}
       </td></tr>
     </table>"""
 
 
-def house_rows(houses):
-    return "".join(_house_card(rec.get("fields", {}))
+def house_rows(houses, criteria_rows=()):
+    return "".join(_house_card(rec.get("fields", {}), criteria_rows)
                    for rec in sorted(houses, key=_house_sort_key))
 
 
@@ -263,7 +419,7 @@ SIGNALS_HTML = f"""
       </table>"""
 
 
-def text_summary(new_houses):
+def text_summary(new_houses, criteria_rows=()):
     """Plain text, shaped to be pasted into a text message.
 
     One house per short block, no table, no markdown -- iMessage renders
@@ -287,6 +443,11 @@ def text_summary(new_houses):
             bits.append(f"${f['Price Per Sqft']:.0f}/sqft")
         star = " *" if f.get("Qualified") else ""
         lines.append(f"{f.get('Address') or '?'}{star}")
+        if criteria_rows:
+            fits, best = fit_summary(f, criteria_rows)
+            if best and best["score"] > 0:
+                short = best["name"].split("—")[0].strip()
+                lines.append(f"  Best fit: {short} ({best['met']}/{best['known']} checks)")
         lines.append("  " + " · ".join(b for b in bits if b))
         if cats:
             lines.append(f"  Why: {', '.join(cats)}")
@@ -315,7 +476,7 @@ def build_email(criteria_rows, new_houses):
         headline = f"{n} new match{'es' if n != 1 else ''}"
         sub = ("Ranked by how many of your criteria each one provably falls into. "
                "Tap through for photos and the full listing.")
-        content = house_rows(new_houses)
+        content = house_rows(new_houses, criteria_rows)
     else:
         subject = "House Finder: search criteria are live"
         headline = "No new matches today"
@@ -461,7 +622,7 @@ def main():
     # forwarded into a text message, and multipart/alternative is also what
     # keeps a plain-HTML blast out of spam filters.
     msg = MIMEMultipart("alternative")
-    text = text_summary(new_houses) if new_houses else \
+    text = text_summary(new_houses, criteria_rows) if new_houses else \
         "No new houses yet -- the searches are running. " \
         "https://claudekovalenko.github.io/mls/"
     msg.attach(MIMEText(text, "plain", "utf-8"))
