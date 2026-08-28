@@ -13,6 +13,10 @@ on:
         description: 'JSON, e.g. {"Zip Codes": "30068, 30062", "Active": true}'
         type: string
         required: true
+      create:
+        description: "Create the row if no exact match exists"
+        type: boolean
+        default: false
 
 jobs:
   set:
@@ -29,4 +33,5 @@ jobs:
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           CRITERIA_NAME: ${{ inputs.name }}
           FIELDS: ${{ inputs.fields }}
+          CREATE: ${{ inputs.create && '1' || '0' }}
         run: python set_criteria.py
