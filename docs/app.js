@@ -417,6 +417,19 @@ function cardStats(f, v) {
   return tiles.length ? `<div class="card-stats">${tiles.slice(0, 3).join("")}</div>` : "";
 }
 
+// Where a house came from, in words a person recognises. Zillow is the hub --
+// every house gets a Zillow link whatever found it -- so this answers the
+// other half: which net caught this one. A hand-added house says so, because
+// that is the one whose numbers nobody has verified against a feed.
+const SOURCE_LABELS = {
+  rentcast: "RentCast", reso: "MLS / IDX", search: "Search",
+};
+function sourceBadge(f) {
+  const raw = String(f.Source || "").trim();
+  const label = raw ? (SOURCE_LABELS[raw] || raw) : "Added by hand";
+  return `<span class="src">found via ${esc(label)}</span>`;
+}
+
 function houseCard({ id, f, v }) {
   const photo = f["Photo URL"]
     ? `<img class="card-photo" src="${esc(f["Photo URL"])}" alt="" loading="lazy">`
@@ -438,6 +451,7 @@ function houseCard({ id, f, v }) {
           ${f["Days on Market"] ? ` · ${f["Days on Market"]} days on market` : ""}
           ${f["Price Cut"] ? ` · cut ${f["Price Cut"]}%` : ""}
           ${f.Status ? ` · ${esc(f.Status)}` : ""}
+          ${sourceBadge(f)}
         </div>
         ${signalChips(f["Value Signals"])}
         ${fitBlock(f)}

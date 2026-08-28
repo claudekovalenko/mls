@@ -35,11 +35,16 @@ BUDGET_PATH = ROOT / "rentcast_budget.json"
 FREE_CALLS_PER_MONTH = 50
 
 # Absolute ceiling on calls in a calendar month, free and paid combined.
-# The owner approved a Mon/Wed/Fri cadence knowing it runs past the free
-# allowance (~117 calls/month, so ~$13-14 of prepaid credit); this cap is
-# that approval written down. Nothing -- not a misconfigured criteria row,
-# not a re-run storm -- can spend past it without editing this line.
-MONTHLY_CALL_CAP = 120
+# Set to the free allowance itself: the owner asked for searches to stay
+# free, so the cap and the free tier are now the same number and a scheduled
+# run can never reach paid credit. Prepaid credit still exists and is still
+# spendable, but only by a human dispatching a run with allow_paid ticked.
+#
+# The cadence has to match: a full pass costs ~9 calls, so 50 free a month
+# funds about five runs -- weekly, with margin. Three a week needs ~117 and
+# cannot be free. Raising this without also raising the cadence would just
+# produce silence for the back half of every month.
+MONTHLY_CALL_CAP = FREE_CALLS_PER_MONTH
 
 # Prepaid credit, in requests ($100 at $0.20). Off by default -- reaching it
 # means spending money, which requires ALLOW_PAID_CREDIT=1 on that run.
