@@ -13,7 +13,7 @@ Notes stay in Airtable -- only the scored fields are printed.
 import json
 import sys
 
-from airtable import Airtable, TABLE_HOUSES
+from db import connect, TABLE_HOUSES
 
 FIELDS = ("Address", "Status", "Price", "Beds", "Baths", "Sqft", "Lot Sqft",
           "Price Per Sqft", "Value Signals", "Flip Verdict", "BRRRR Verdict",
@@ -22,7 +22,7 @@ FIELDS = ("Address", "Status", "Price", "Beds", "Baths", "Sqft", "Lot Sqft",
 
 
 def main():
-    at = Airtable()
+    at = connect()
     rows = []
     for rec in at.list_records(TABLE_HOUSES):
         f = rec.get("fields", {})

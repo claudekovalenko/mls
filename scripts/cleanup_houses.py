@@ -25,7 +25,7 @@ DRY_RUN=1 lists what would go without deleting anything.
 import os
 import sys
 
-from airtable import Airtable, TABLE_HOUSES
+from db import connect, TABLE_HOUSES
 from search_worker import is_single_family, looks_attached
 
 PROTECTED_STATUSES = {"Interested", "Touring", "Toured", "Offer",
@@ -103,7 +103,7 @@ def reason_to_drop(f):
 
 def main():
     dry_run = os.environ.get("DRY_RUN") == "1"
-    at = Airtable()
+    at = connect()
     records = at.list_records(TABLE_HOUSES)
     print(f"{len(records)} house(s) in the table.")
 

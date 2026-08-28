@@ -18,7 +18,7 @@ worker, and capped tighter -- this is meant to be run on demand.
 import os
 import sys
 
-from airtable import Airtable, TABLE_CRITERIA
+from db import connect, TABLE_CRITERIA
 import rentcast_budget
 import search_worker
 
@@ -78,7 +78,7 @@ def main():
     rentcast_budget.PER_RUN_LIMIT = budget_cap
     print(budget.summary())
 
-    at = Airtable()
+    at = connect()
     rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
     if not rows:
         print("::warning::No Active rows in Search Criteria.")
