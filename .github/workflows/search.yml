@@ -7,10 +7,13 @@ name: Search Listings
 # Do not raise the frequency without re-checking scripts/rentcast_budget.py.
 on:
   schedule:
-    # Weekly, Monday ~7am ET. A full pass over the current criteria costs about
-    # 9 requests; the free allowance is 50 a month, so weekly fits with room to
-    # spare while daily would need ~270 and would eat prepaid credit.
-    - cron: "0 11 * * 1"
+    # Mon/Wed/Fri ~7am Atlanta, an hour before the 8am digest so each search's
+    # results land in that morning's email. ~9 requests per pass, ~117 a month:
+    # the free 50 cover the first runs, then ~$13-14/month of prepaid credit --
+    # a cadence and cost the owner approved on 2026-08-28. MONTHLY_CALL_CAP in
+    # scripts/rentcast_budget.py hard-stops the month at 120 calls no matter
+    # what, so this schedule cannot outspend that approval.
+    - cron: "0 11 * * 1,3,5"
   workflow_dispatch:
     inputs:
       allow_paid:
@@ -44,9 +47,11 @@ jobs:
           LISTINGS_API_URL: ${{ secrets.LISTINGS_API_URL }}
           LISTINGS_API_KEY: ${{ secrets.LISTINGS_API_KEY }}
           RENTCAST_API_KEY: ${{ secrets.RENTCAST_API_KEY }}
-          # Never set on the schedule. Spending prepaid credit is a decision
-          # the owner makes per run, not something a cron job does at 7am.
-          ALLOW_PAID_CREDIT: ${{ inputs.allow_paid && '1' || '0' }}
+          # On the schedule this is deliberately ON: the owner approved the
+          # Mon/Wed/Fri cadence knowing it runs ~$13-14/month past the free
+          # allowance. MONTHLY_CALL_CAP (120) in rentcast_budget.py is the
+          # hard ceiling that keeps that approval from ever being exceeded.
+          ALLOW_PAID_CREDIT: ${{ github.event_name == 'schedule' && '1' || (inputs.allow_paid && '1' || '0') }}
         run: python search_worker.py
       - name: Commit RentCast spend counter
         # The runner is ephemeral, so an uncommitted counter means the next run
