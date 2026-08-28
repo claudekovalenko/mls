@@ -126,6 +126,50 @@ Building something to get around that would be against those sites' terms, on a
 repo in your name, and would break constantly anyway. IDX is the path that
 actually works.
 
+## Upgrade paths, for when they're wanted
+
+Nothing here is set up, and none of it is needed for the pipeline to run. This
+is the shortlist as of August 2026 so the decision doesn't have to be researched
+again from scratch. Prices drift; check before buying.
+
+The gap all of these close is the same one: RentCast returns no listing
+remarks, so "ugly", "dated", "as-is", "unfinished basement" and FSBO can never
+be evidenced directly. The worker infers them from age, days on market and
+price cuts (see *How deals are scored*), which is a shadow of the real thing.
+
+**Free, and the fastest fix — Redfin / Zillow saved searches.** Both support
+keyword matching against listing remarks, which is exactly the text this feed
+lacks. A saved alert for Marietta under $500k matching `as-is`, `fixer`,
+`unfinished basement`, `estate sale`, `bring your vision` costs nothing and
+starts working immediately. It cannot be automated into this repo — that is the
+scraping problem above — so it lands in a human's inbox alongside the digest
+rather than in the Houses table. Anything worth keeping gets added by hand,
+which the app already supports and cleanup already protects.
+
+**~$99/month — PropStream.** The one that covers what neither this pipeline nor
+an MLS feed does: distress filters over county records — pre-foreclosure, tax
+lien, vacant, absentee owner, high equity. Those properties are usually not
+listed anywhere, so they are invisible to any MLS-derived source including IDX.
+Worth trialing against a single Marietta zip first; if the Cobb County distress
+data is thin, it isn't worth the money. No integration exists; export CSV and
+import, or wire an adapter alongside `fetch_rentcast`.
+
+**~$149/month — Privy.** Built for flippers specifically; surfaces what other
+investors in the market are buying and rehabbing. A different signal from
+everything else here, and the only one that is about competitors rather than
+properties.
+
+**MLS fees, typically $30-60/month — FMLS / GAMLS direct (RESO).** Still the
+best fit for *this* repo, because the adapter already exists and it is a
+two-secret change. Full remarks, basement fields, photos, price history. Needs
+a licensed Georgia agent to sponsor the feed, which is the whole obstacle.
+
+**Roughly $300+/month — ATTOM, CoreLogic, Datafiniti.** Descriptions included,
+no agent sponsorship needed. Priced for firms, not for one buyer's search.
+
+A reasonable order, if it's ever wanted: free keyword alerts first, then ask
+whether an agent can sponsor IDX, and only then pay for a platform.
+
 ## How deals are scored
 
 `scripts/deals.py` is the reference implementation; `docs/app.js` mirrors it so
