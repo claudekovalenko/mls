@@ -226,7 +226,10 @@ def fit_summary(f, criteria_rows):
         name, strategy, checks = assess_fit(f, rec.get("fields", {}))
         known = [s for _, s in checks if s is not None]
         met = sum(1 for s in known if s)
-        score = (met / len(known)) if known else 0
+        # A blown price cap zeroes the score: a strategy you cannot afford is
+        # not your best fit, however many other boxes the house ticks.
+        over_cap = any(lab.startswith("price ") and s is False for lab, s in checks)
+        score = 0 if over_cap else ((met / len(known)) if known else 0)
         fits.append({"name": name, "strategy": strategy, "checks": checks,
                      "met": met, "known": len(known), "score": score})
     best = max(fits, key=lambda x: (x["score"], x["met"])) if fits else None
