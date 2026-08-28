@@ -1,0 +1,44 @@
+# The multifamily digest. Same script as the house digest, scoped by
+# DIGEST_SEARCH to one criteria row, so the two emails never mix.
+name: Email Multifamily Digest
+
+on:
+  schedule:
+    - cron: "0 12 * * *"   # daily, 8am Atlanta; only sends when something's new
+  workflow_run:
+    workflows: ["Search Listings"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Send even with nothing new (announces the criteria)"
+        type: boolean
+        default: false
+      days:
+        description: "Include listings added in the last N days (default 1)"
+        type: string
+        default: "1"
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Send multifamily digest
+        working-directory: scripts
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+          FORCE_SEND: ${{ inputs.force && '1' || '0' }}
+          DIGEST_DAYS: ${{ inputs.days || '1' }}
+          # Matched against each house's "Found By" column, which records the
+          # criteria row that found it. Substring, case-insensitive.
+          DIGEST_SEARCH: Multifamily
+        run: python send_digest.py

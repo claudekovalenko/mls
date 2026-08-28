@@ -349,6 +349,8 @@ def _house_card(f, criteria_rows=()):
     stats.append(f"{f['Sqft']:,.0f} sqft" if f.get("Sqft") else "sqft not listed")
     if f.get("Price Per Sqft"):
         stats.append(f"${f['Price Per Sqft']:,.0f}/sqft")
+    if f.get("Units"):
+        stats.append(f"{f['Units']:.0f} units")
     if f.get("Year Built"):
         stats.append(f"built {f['Year Built']:.0f}")
     if f.get("Days on Market"):
@@ -606,6 +608,17 @@ def main():
               "an App Password (myaccount.google.com/apppasswords), not the account password.")
         return 1
 
+    # DIGEST_SEARCH scopes this send to one criteria row, matched against the
+    # Found By column. That is what keeps the multifamily email separate from
+    # the house email without a second table or a second script: same code,
+    # two workflows, each pointed at its own search. Unset means every search,
+    # which is the existing behaviour.
+    only = os.environ.get("DIGEST_SEARCH", "").strip().lower()
+    # The mirror of DIGEST_SEARCH. Without it the two digests overlap: the
+    # house email has no scope of its own, so it would happily list the
+    # multifamily complexes the other email exists to carry.
+    skip = os.environ.get("DIGEST_EXCLUDE", "").strip().lower()
+
     at = Airtable()
     to = resolve_recipients(at)
     if not to:
@@ -613,11 +626,25 @@ def main():
               "Airtable with an Email and Active checked, or set EMAIL_TO for a one-off.")
         return 1
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
+    if only:
+        # Show only the brief this email is about; a multifamily digest
+        # listing the three house searches would just be confusing.
+        scoped = [r for r in criteria_rows
+                  if only in (r.get("fields", {}).get("Name") or "").lower()]
+        criteria_rows = scoped or criteria_rows
+    elif skip:
+        criteria_rows = [r for r in criteria_rows
+                         if skip not in (r.get("fields", {}).get("Name") or "").lower()]
 
     days = int(os.environ.get("DIGEST_DAYS", "1"))
     cutoff = (date.today() - timedelta(days=days)).isoformat()
     def worth_sending(rec):
         f = rec.get("fields", {})
+        found_by = (f.get("Found By") or "").lower()
+        if only and only not in found_by:
+            return False
+        if skip and skip in found_by:
+            return False
         if (f.get("Date Added") or "") < cutoff:
             return False
         # A house someone costed and rejected stays out of the email. NO DATA

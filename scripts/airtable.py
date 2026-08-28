@@ -41,6 +41,13 @@ SCHEMA = {
         ("Keywords", "singleLineText"),        # comma-separated, any-match
         ("Must Haves", "singleLineText"),      # comma-separated, ALL required; "/" = alternatives
         ("Strategy", "singleSelect"),          # Flip / BRRRR / Either
+        # What kind of building this search is for. Single Family is the
+        # default and the rule for every house search; Multifamily turns that
+        # gate around rather than off, so a 20-unit complex is admitted and a
+        # detached house is not. Blank reads as Single Family, which keeps
+        # every existing row behaving exactly as it did.
+        ("Property Class", "singleSelect"),
+        ("Min Units", "number"),               # multifamily only
         ("Max Price Per Sqft", "number"),      # skip anything above; missing sqft passes
         ("Max All In", "number"),              # price + rehab cap
         ("Target Total Sqft", "number"),       # post-reno goal, informational
@@ -74,7 +81,12 @@ SCHEMA = {
         ("Qualified", "checkbox"),    # cleared every target on its criteria row
         ("Listing URL", "url"),
         ("Photo URL", "url"),
-        ("Property Type", "singleLineText"),  # as the feed reported it; searches are single family only
+        ("Property Type", "singleLineText"),  # as the feed reported it
+        ("Units", "number"),                  # multifamily: unit count
+        # Which criteria row found this house. Lets a digest be scoped to one
+        # search, which is how the multifamily email stays separate from the
+        # house email without a second table.
+        ("Found By", "singleLineText"),
         # The observable shadow of "dated, poorly marketed, motivated seller",
         # which no feed states outright but all three of these imply.
         ("Year Built", "number"),
@@ -103,6 +115,7 @@ SCHEMA = {
 # strings deals.py and app.js actually produce.
 SELECT_OPTIONS = {
     "Strategy": ["Flip", "BRRRR", "Either"],
+    "Property Class": ["Single Family", "Multifamily", "Any"],
     "Status": ["New", "Interested", "Touring", "Toured", "Offer",
                "Under Contract", "Purchased", "Rejected"],
     "Flip Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],

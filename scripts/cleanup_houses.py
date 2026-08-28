@@ -66,6 +66,16 @@ def reason_to_drop(f):
     if not (f.get("Value Signals") or "").strip():
         return None  # hand-added or migrated; not ours to delete
 
+    # The $500k ceiling and the detached-house rules are the house brief. A
+    # multifamily row is a different search with different economics -- a
+    # 20-unit complex is priced in millions and is *supposed* to be attached --
+    # so none of those rules may reach it. This has to be checked before the
+    # single-family rule, not after, or the complex is deleted for being
+    # exactly what it was bought to be. Identified by the search that found
+    # it, which is the only thing that records what was being hunted.
+    if "multifamily" in (f.get("Found By") or "").lower() or f.get("Units"):
+        return None
+
     listing = {"address": f.get("Address") or "",
                "propertyType": f.get("Property Type") or ""}
 
