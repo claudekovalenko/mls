@@ -14,6 +14,10 @@ Costs nothing: Airtable reads and one update, no listing API calls.
   FIELDS          JSON object of field -> value, e.g.
                   {"Zip Codes": "30068, 30062", "Max Price": 500000}
                   A null value clears the field.
+  CREATE          "1" to create the row when no match exists. Off by default,
+                  so a typo'd name fails loudly instead of quietly adding a
+                  second nearly-identical search that then costs API calls
+                  every run.
 """
 import json
 import os
@@ -72,7 +76,21 @@ def main():
 
     at = Airtable()
     records = at.list_records(TABLE_CRITERIA)
-    row = find_row(records, name)
+
+    if os.environ.get("CREATE") == "1":
+        existing = [r for r in records
+                    if (r.get("fields", {}).get("Name") or "").strip().lower()
+                    == name.strip().lower()]
+        if not existing:
+            # Name comes from CRITERIA_NAME so the row is findable by the same
+            # string that created it, and cannot disagree with FIELDS.
+            created = at.create_records(TABLE_CRITERIA, [{**fields, "Name": name}])
+            print(f"Created {name!r} with {len(fields) + 1} field(s).")
+            return 0 if created else 1
+        row = existing[0]
+        print(f"{name!r} already exists; updating it rather than adding a second.")
+    else:
+        row = find_row(records, name)
     before = row.get("fields", {})
 
     print(f"{before.get('Name')!r}:")
