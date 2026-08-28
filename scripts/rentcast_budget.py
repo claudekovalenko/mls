@@ -34,6 +34,13 @@ BUDGET_PATH = ROOT / "rentcast_budget.json"
 # Refills on the 1st. This is the budget in normal operation.
 FREE_CALLS_PER_MONTH = 50
 
+# Absolute ceiling on calls in a calendar month, free and paid combined.
+# The owner approved a Mon/Wed/Fri cadence knowing it runs past the free
+# allowance (~117 calls/month, so ~$13-14 of prepaid credit); this cap is
+# that approval written down. Nothing -- not a misconfigured criteria row,
+# not a re-run storm -- can spend past it without editing this line.
+MONTHLY_CALL_CAP = 120
+
 # Prepaid credit, in requests ($100 at $0.20). Off by default -- reaching it
 # means spending money, which requires ALLOW_PAID_CREDIT=1 on that run.
 PAID_CALL_CEILING = 500
@@ -88,11 +95,16 @@ class Budget:
     def paid_remaining(self):
         return max(0, PAID_CALL_CEILING - self.total)
 
+    def monthly_cap_remaining(self):
+        return max(0, MONTHLY_CALL_CAP - self.monthly)
+
     def remaining(self):
         """What this run may actually spend, under the allowance in force."""
         if self.free_remaining() > 0:
-            return self.free_remaining()
-        return self.paid_remaining() if self.allow_paid else 0
+            allowed = self.free_remaining()
+        else:
+            allowed = self.paid_remaining() if self.allow_paid else 0
+        return min(allowed, self.monthly_cap_remaining())
 
     def can_spend(self):
         return self.remaining() > 0 and self.spent_this_run < PER_RUN_LIMIT
@@ -103,6 +115,13 @@ class Budget:
         A request that fails after reaching RentCast is still billed, so
         counting only successful responses would undercount and overspend.
         """
+        if self.monthly_cap_remaining() <= 0:
+            raise BudgetExhausted(
+                f"Monthly cap reached ({self.monthly}/{MONTHLY_CALL_CAP} calls "
+                f"this month, free and paid combined). Resets on the 1st. "
+                f"Raise MONTHLY_CALL_CAP in rentcast_budget.py only with the "
+                f"owner's say-so -- it is their approved spend, written down."
+            )
         if self.free_remaining() <= 0 and not self.allow_paid:
             raise BudgetExhausted(
                 f"Free allowance used up ({self.monthly}/{FREE_CALLS_PER_MONTH} "
