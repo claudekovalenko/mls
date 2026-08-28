@@ -23,7 +23,8 @@ import json
 import os
 import sys
 
-from airtable import Airtable, TABLE_CRITERIA, SCHEMA
+from airtable import SCHEMA
+from db import connect, TABLE_CRITERIA
 
 
 def find_row(records, wanted):
@@ -74,7 +75,7 @@ def main():
         raise SystemExit("::error::FIELDS must be a non-empty JSON object.")
     check_fields(fields)
 
-    at = Airtable()
+    at = connect()
     records = at.list_records(TABLE_CRITERIA)
 
     if os.environ.get("CREATE") == "1":

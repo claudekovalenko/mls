@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 from datetime import date
 
-from airtable import Airtable, TABLE_CRITERIA, TABLE_HOUSES, parse_list_field
+from db import connect, TABLE_CRITERIA, TABLE_HOUSES, parse_list_field
 import deals
 import rentcast_budget
 
@@ -637,7 +637,7 @@ def run_search(at, criteria_record, existing_keys, budget):
 
 def main():
     try:
-        at = Airtable()
+        at = connect()
     except Exception as exc:
         # Fail loudly. This used to return 0, which painted the workflow green
         # while it did nothing at all -- three scheduled runs "succeeded"

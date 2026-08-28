@@ -32,7 +32,7 @@ from datetime import date, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from airtable import Airtable, TABLE_CRITERIA, TABLE_HOUSES, TABLE_RECIPIENTS
+from db import connect, TABLE_CRITERIA, TABLE_HOUSES, TABLE_RECIPIENTS
 from search_worker import zillow_url
 
 
@@ -619,7 +619,7 @@ def main():
     # multifamily complexes the other email exists to carry.
     skip = os.environ.get("DIGEST_EXCLUDE", "").strip().lower()
 
-    at = Airtable()
+    at = connect()
     to = resolve_recipients(at)
     if not to:
         print(f"::error::No recipients. Add a row to the {TABLE_RECIPIENTS} table in "
