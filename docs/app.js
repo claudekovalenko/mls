@@ -150,6 +150,10 @@ async function listAll(table) {
 // ---- state ----
 let criteria = [];
 let houses = [];
+// Which lane the Matches screen is showing. Remembered across reloads,
+// because whichever one you were working in is the one you want back.
+let currentLane = localStorage.getItem("lane") || DEFAULT_LANE;
+if (!LANES.some(l => l.id === currentLane)) currentLane = DEFAULT_LANE;
 let screen = "matches";
 
 const $ = id => document.getElementById(id);
@@ -207,6 +211,7 @@ function visibleMatches() {
   const catCount = f => String(f["Value Signals"] || "").split(",").filter(s => s.trim()).length;
 
   let rows = houses.map(r => ({ id: r.id, f: r.fields || {}, v: houseVerdict(r.fields || {}) }));
+  rows = rows.filter(r => laneOf(r.f) === currentLane);
   if (marketFilter) rows = rows.filter(r => (r.f.Market || "") === marketFilter);
   if (onlyQualified) rows = rows.filter(r => r.f.Qualified || r.v.bestRank >= 2);
 
@@ -238,7 +243,36 @@ function visibleMatches() {
   return rows;
 }
 
+// The lane switcher: a sliding indicator behind three labels, so which lane
+// you're in is legible without reading, and moving between them feels like
+// one control rather than three buttons.
+function renderLaneSwitch() {
+  const el = $("lane-switch");
+  if (!el) return;
+  const counts = laneCounts();
+  const index = LANES.findIndex(l => l.id === currentLane);
+  el.style.setProperty("--lane-index", index);
+  el.style.setProperty("--lane-count", LANES.length);
+  el.innerHTML =
+    `<div class="lane-thumb" aria-hidden="true"></div>` +
+    LANES.map(l => `
+      <button type="button" class="lane-btn${l.id === currentLane ? " on" : ""}"
+              data-lane="${esc(l.id)}" role="tab"
+              aria-selected="${l.id === currentLane}" title="${esc(l.hint)}">
+        <span class="lane-label">${esc(l.label)}</span>
+        <span class="lane-count">${counts[l.id]}</span>
+      </button>`).join("");
+  el.querySelectorAll("[data-lane]").forEach(b =>
+    b.addEventListener("click", () => {
+      currentLane = b.dataset.lane;
+      localStorage.setItem("lane", currentLane);
+      renderLaneSwitch();
+      renderMatches();
+    }));
+}
+
 function renderMatches() {
+  renderLaneSwitch();
   const wrap = $("matches-list");
   const rows = visibleMatches();
 
@@ -302,6 +336,49 @@ function houseAsText(f) {
     cats.length ? `  Why: ${cats.join(", ")}` : "",
     "  " + listingLink(f),
   ].filter(Boolean).join("\n");
+}
+
+// ---- property lanes ----
+// Three kinds of thing being hunted, each with its own economics: a detached
+// house to flip or convert, a complex bought whole, a single unit inside a
+// building somebody else owns. Mixing them in one list means every filter and
+// every sort has to mean three things at once, so they get their own lane.
+//
+// Derived from the house rather than stored, so the lanes are right for the
+// rows that predate any of this. Units and Property Type are the evidence;
+// Found By breaks a tie when the feed said nothing useful.
+const LANES = [
+  { id: "multifamily", label: "Multiplex", hint: "20+ unit complexes" },
+  { id: "house",       label: "Houses",    hint: "detached single family" },
+  { id: "condo",       label: "Condos",    hint: "condo and townhouse units" },
+];
+const DEFAULT_LANE = "house";
+
+function laneOf(f) {
+  const type = String(f["Property Type"] || "").toLowerCase();
+  const foundBy = String(f["Found By"] || "").toLowerCase();
+  const units = Number(f.Units) || 0;
+  if (units >= 5 || /multi|residential income|apartment|plex/.test(type)
+      || foundBy.includes("multifamily")) return "multifamily";
+  if (/condo|townhouse|co-?op/.test(type) || foundBy.includes("condo")) return "condo";
+  return "house";
+}
+
+function laneCounts() {
+  const counts = Object.fromEntries(LANES.map(l => [l.id, 0]));
+  houses.forEach(r => { counts[laneOf(r.fields || {})] += 1; });
+  return counts;
+}
+
+// The address as a Street View still. Needs a free Google Maps key; without
+// one this returns "" and the card renders exactly as it does today rather
+// than showing a broken image.
+function streetView(address, w = 640, h = 200) {
+  const key = localStorage.getItem("mapsKey");
+  if (!key || !address) return "";
+  const q = encodeURIComponent(String(address));
+  return `https://maps.googleapis.com/maps/api/streetview?size=${w}x${h}`
+       + `&location=${q}&fov=75&key=${encodeURIComponent(key)}`;
 }
 
 // ---- fit by strategy ----
@@ -426,13 +503,20 @@ const SOURCE_LABELS = {
 };
 function sourceBadge(f) {
   const raw = String(f.Source || "").trim();
-  const label = raw ? (SOURCE_LABELS[raw] || raw) : "Added by hand";
-  return `<span class="src">found via ${esc(label)}</span>`;
+  // No Source means no adapter wrote this row -- somebody typed it in, so
+  // nothing here has been checked against a feed. Worth saying plainly
+  // rather than as a bare label nobody can interpret.
+  if (!raw) return `<span class="src src-hand" title="Typed in by hand — no feed has verified these numbers">typed in by hand</span>`;
+  return `<span class="src">found via ${esc(SOURCE_LABELS[raw] || raw)}</span>`;
 }
 
 function houseCard({ id, f, v }) {
-  const photo = f["Photo URL"]
-    ? `<img class="card-photo" src="${esc(f["Photo URL"])}" alt="" loading="lazy">`
+  // The feed's own photo when it has one, a Street View still otherwise --
+  // for a fixer hunt the kerb shot is close to the point, since a tired roof
+  // and an overgrown yard are visible from the road.
+  const src = f["Photo URL"] || streetView(f.Address);
+  const photo = src
+    ? `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy">`
     : `<div class="card-photo card-photo-empty"></div>`;
   const tier = t => `<span class="tier tier-${t.replace(" ", "-")}">${t}</span>`;
   return `
@@ -736,6 +820,25 @@ document.addEventListener("DOMContentLoaded", () => {
       window.prompt(`Copy this ${label}:`, value);
     }
   };
+  // The Maps key lives in this browser only. It is not an Airtable token --
+  // it buys map images and nothing else -- so it does not belong in the repo
+  // secrets alongside credentials that can read the database.
+  const mapsInput = $("maps-key");
+  if (mapsInput) mapsInput.value = localStorage.getItem("mapsKey") || "";
+  $("save-maps-key")?.addEventListener("click", () => {
+    const key = (mapsInput.value || "").trim();
+    if (!key) return setStatus("Enter a key first.", false);
+    localStorage.setItem("mapsKey", key);
+    setStatus("Saved. Photos will appear on the Matches tab.");
+    renderMatches();
+  });
+  $("clear-maps-key")?.addEventListener("click", () => {
+    localStorage.removeItem("mapsKey");
+    mapsInput.value = "";
+    setStatus("Key removed; cards go back to no photo.");
+    renderMatches();
+  });
+
   $("copy-token").addEventListener("click", () => copyOut("token", store.token));
   $("copy-base").addEventListener("click", () => copyOut("base ID", store.baseId));
   $("disconnect").addEventListener("click", () => {
