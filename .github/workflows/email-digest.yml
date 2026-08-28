@@ -40,6 +40,9 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           FORCE_SEND: ${{ inputs.force && '1' || '0' }}
           DIGEST_DAYS: ${{ inputs.days || '1' }}
+          # The multifamily digest owns those listings; this email must not
+          # repeat them, or every complex arrives twice each morning.
+          DIGEST_EXCLUDE: Multifamily
           # Optional. When set, each card leads with a Street View curb photo.
           GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
         run: python send_digest.py

@@ -114,6 +114,7 @@ def fetch_reso(criteria, base_url, api_key):
             "photoUrl": photo,
             "description": r.get("PublicRemarks") or "",
             "source": "reso",
+            "units": _num(r.get("NumberOfUnitsTotal")),
         })
     return out
 
@@ -165,6 +166,7 @@ def fetch_rentcast(criteria, api_key, budget):
                 "photoUrl": "",
                 "description": r.get("description") or "",
                 "source": "rentcast",
+                "units": _num(r.get("unitCount")) or _num(r.get("units")),
                 # The brief's qualitative half -- dated, poorly marketed,
                 # motivated seller, FSBO -- has no listing remarks to read in
                 # this feed, but these four fields stand in for all of it and
@@ -352,6 +354,30 @@ def is_single_family(listing):
     return not any(m in addr for m in UNIT_MARKERS)
 
 
+# What a feed calls a building with many units. RentCast says "Multi-Family";
+# RESO's PropertySubType is usually "Residential Income" or "Apartment", and
+# larger stock often arrives as plain "Multi Family" with a space.
+MULTIFAMILY_TYPES = ("multi-family", "multi family", "multifamily",
+                     "residential income", "apartment", "duplex", "triplex",
+                     "fourplex", "quadruplex")
+
+
+def is_multifamily(listing):
+    """True for a building of several dwellings, false for a house.
+
+    The mirror of is_single_family: the feed has to say so affirmatively, and
+    an untyped listing is rejected rather than guessed at. A condo is NOT
+    multifamily for this purpose -- it is one unit inside a building somebody
+    else owns, which is the opposite of buying the building.
+    """
+    kind = (listing.get("propertyType") or "").strip().lower()
+    if not kind:
+        return False
+    if "condo" in kind or "townhouse" in kind or "co-op" in kind:
+        return False
+    return any(t in kind for t in MULTIFAMILY_TYPES)
+
+
 def looks_like_land(listing):
     """Vacant lots masquerade as two-signal houses: no sqft (signal) plus a
     big lot (signal) is exactly what raw land looks like, and the first real
@@ -388,13 +414,29 @@ def passes_criteria(listing, criteria):
         return False
     if criteria.get("Min Price") is not None and price and price < criteria["Min Price"]:
         return False
-    # Single family, always. Property Types can narrow the search further but
-    # can no longer widen it: treating that column as an override let the
-    # Atlanta row -- which names condo types -- put four Atlanta condos into
-    # the table on the very run that was meant to end them. A column set months
-    # ago should not be able to quietly readmit the thing we just excluded.
-    if not is_single_family(listing):
-        return False
+    # What kind of building this row is hunting. Blank means Single Family,
+    # so every row written before this column existed behaves unchanged.
+    #
+    # This is a gate turned around, not a gate removed. A Single Family search
+    # still admits only detached houses -- Property Types can narrow within
+    # that but never widen it, which is what stopped the Atlanta row's condo
+    # types readmitting four Atlanta condos. A Multifamily search inverts it:
+    # a 20-unit complex is admitted and a detached house is not.
+    klass = (criteria.get("Property Class") or "Single Family").strip().lower()
+    if klass.startswith("single"):
+        if not is_single_family(listing):
+            return False
+    elif klass.startswith("multi"):
+        if not is_multifamily(listing):
+            return False
+        units = listing.get("units")
+        floor = criteria.get("Min Units")
+        # No unit count is not "fewer than twenty". Most residential feeds
+        # simply do not carry one, and rejecting on its absence would empty
+        # the search; the digest flags it as a to-verify instead.
+        if floor and units and units < floor:
+            return False
+    # "Any" falls through: no class gate at all, land and attached alike.
     types = parse_list_field(criteria.get("Property Types"))
     if types and listing.get("propertyType") not in types:
         return False
@@ -512,6 +554,8 @@ def build_house_fields(listing, criteria, verdict):
         "Listing URL": listing.get("url") or zillow_url(listing.get("address")),
         "Photo URL": listing.get("photoUrl") or "",
         "Property Type": listing.get("propertyType") or "",
+        "Units": listing.get("units"),
+        "Found By": criteria.get("Name") or "",
         "Year Built": listing.get("yearBuilt"),
         "Days on Market": listing.get("daysOnMarket"),
         "Price Cut": round(listing["priceCut"] * 100, 1) if listing.get("priceCut") else None,
