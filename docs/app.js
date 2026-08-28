@@ -172,19 +172,69 @@ function houseVerdict(f) {
 
 // Single source of truth for "what the Matches screen is showing", so the
 // copy button can never disagree with what's on screen.
+// How far under the area median the scorer measured, parsed from the signal
+// it wrote ("38% under area $/sqft"). The one number the feed itself supports.
+function discountPct(f) {
+  const m = String(f["Value Signals"] || "").match(/(\d+)% under area/);
+  return m ? Number(m[1]) : 0;
+}
+
+// Every way the list can be ordered. Each strategy in Search Criteria gets
+// its own entry, sorted by that strategy's fit score -- so "sort by BRRRR A"
+// literally reorders the list by how well each house fits that plan.
+function sortOptions() {
+  const opts = [["best", "Sort: best overall"]];
+  criteria.filter(r => (r.fields || {}).Active).forEach(r => {
+    const name = (r.fields || {}).Name || "Search";
+    opts.push(["fit:" + name, "Fit: " + name.split("—")[0].trim()]);
+  });
+  opts.push(
+    ["discount", "Most under area $/sqft"],
+    ["dom", "Longest on market"],
+    ["cut", "Biggest price cut"],
+    ["price", "Price: low to high"],
+    ["ppsf", "$/sqft: low to high"],
+    ["lot", "Largest lot"],
+    ["rent", "Rental: cash-on-cash"],
+  );
+  return opts;
+}
+
 function visibleMatches() {
   const marketFilter = $("filter-market").value;
   const onlyQualified = $("filter-qualified").checked;
+  const sortBy = ($("sort-by") || {}).value || "best";
   const catCount = f => String(f["Value Signals"] || "").split(",").filter(s => s.trim()).length;
 
   let rows = houses.map(r => ({ id: r.id, f: r.fields || {}, v: houseVerdict(r.fields || {}) }));
   if (marketFilter) rows = rows.filter(r => (r.f.Market || "") === marketFilter);
   if (onlyQualified) rows = rows.filter(r => r.f.Qualified || r.v.bestRank >= 2);
-  // Category count leads: flip profit runs off a placeholder ARV until someone
-  // types a real one, so ranking by it would sort by an unchecked number.
-  rows.sort((a, b) => (b.v.bestRank - a.v.bestRank)
-    || (catCount(b.f) - catCount(a.f))
-    || ((b.v.metrics.flipProfit ?? -Infinity) - (a.v.metrics.flipProfit ?? -Infinity)));
+
+  const desc = get => (a, b) => (get(b.f) ?? -Infinity) - (get(a.f) ?? -Infinity);
+  const asc = get => (a, b) => (get(a.f) ?? Infinity) - (get(b.f) ?? Infinity);
+
+  if (sortBy.startsWith("fit:")) {
+    const name = sortBy.slice(4);
+    const score = f => {
+      const fit = fitSummary(f).fits.find(x => x.name === name);
+      return fit ? fit.score * 1000 + fit.met : -1;
+    };
+    rows.sort(desc(score));
+  } else if (sortBy === "discount") rows.sort(desc(discountPct));
+  else if (sortBy === "dom") rows.sort(desc(f => f["Days on Market"]));
+  else if (sortBy === "cut") rows.sort(desc(f => f["Price Cut"]));
+  else if (sortBy === "price") rows.sort(asc(f => f.Price));
+  else if (sortBy === "ppsf") rows.sort(asc(f => f["Price Per Sqft"]));
+  else if (sortBy === "lot") rows.sort(desc(f => f["Lot Sqft"]));
+  else if (sortBy === "rent")
+    rows.sort((a, b) => (b.v.metrics.cashOnCash ?? -Infinity) - (a.v.metrics.cashOnCash ?? -Infinity));
+  else {
+    // Best overall: category count leads, because flip profit runs off a
+    // placeholder ARV until someone types a real one.
+    rows.sort((a, b) => (b.v.bestRank - a.v.bestRank)
+      || (catCount(b.f) - catCount(a.f))
+      || ((b.v.metrics.flipProfit ?? -Infinity) - (a.v.metrics.flipProfit ?? -Infinity)));
+  }
   return rows;
 }
 
@@ -298,8 +348,11 @@ function fitSummary(f) {
     const checks = assessFit(f, c);
     const known = checks.filter(([, s]) => s !== null);
     const met = known.filter(([, s]) => s).length;
+    // A blown price cap zeroes the score: a strategy you cannot afford is
+    // not your best fit, however many other boxes the house ticks.
+    const overCap = checks.some(([l, s]) => l.startsWith("price ") && s === false);
     return { name: c.Name || "Search", checks, met, known: known.length,
-             score: known.length ? met / known.length : 0 };
+             score: overCap ? 0 : (known.length ? met / known.length : 0) };
   });
   const best = fits.length
     ? fits.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.met > a.met)) ? b : a)
@@ -337,6 +390,33 @@ function signalChips(raw) {
     `<span class="signal">${esc(s)}</span>`).join("")}</div>`;
 }
 
+// The three most informative numbers this house actually has. The old tiles
+// were always Flip profit / Cash-on-cash / 1% rule -- all of which need an
+// ARV and rent a human hasn't typed yet, so every card led with three dashes
+// while the evidence the feed does carry sat below. Financial tiles appear
+// the moment real numbers exist; until then the card leads with what's known.
+function cardStats(f, v) {
+  const tiles = [];
+  if (v.metrics.flipProfit != null)
+    tiles.push(`<div><span class="stat-num ${v.metrics.flipProfit > 0 ? "pos" : "neg"}">${money(v.metrics.flipProfit)}</span><span class="stat-lbl">Flip profit</span></div>`);
+  if (v.metrics.cashOnCash != null)
+    tiles.push(`<div><span class="stat-num">${pct(v.metrics.cashOnCash)}</span><span class="stat-lbl">Cash-on-cash</span></div>`);
+  if (v.metrics.onePercentRatio != null)
+    tiles.push(`<div><span class="stat-num">${pct(v.metrics.onePercentRatio)}</span><span class="stat-lbl">1% rule</span></div>`);
+  const disc = discountPct(f);
+  if (tiles.length < 3 && disc)
+    tiles.push(`<div><span class="stat-num pos">${disc}%</span><span class="stat-lbl">Under area $/sqft</span></div>`);
+  if (tiles.length < 3 && f["Days on Market"])
+    tiles.push(`<div><span class="stat-num">${f["Days on Market"]}</span><span class="stat-lbl">Days on market</span></div>`);
+  if (tiles.length < 3 && f["Price Cut"])
+    tiles.push(`<div><span class="stat-num pos">${f["Price Cut"]}%</span><span class="stat-lbl">Price cut</span></div>`);
+  if (tiles.length < 3 && f["Lot Sqft"])
+    tiles.push(`<div><span class="stat-num">${(f["Lot Sqft"] / 43560).toFixed(2)}</span><span class="stat-lbl">Acres</span></div>`);
+  if (tiles.length < 3 && f["Year Built"])
+    tiles.push(`<div><span class="stat-num">${f["Year Built"]}</span><span class="stat-lbl">Built</span></div>`);
+  return tiles.length ? `<div class="card-stats">${tiles.slice(0, 3).join("")}</div>` : "";
+}
+
 function houseCard({ id, f, v }) {
   const photo = f["Photo URL"]
     ? `<img class="card-photo" src="${esc(f["Photo URL"])}" alt="" loading="lazy">`
@@ -361,11 +441,7 @@ function houseCard({ id, f, v }) {
         </div>
         ${signalChips(f["Value Signals"])}
         ${fitBlock(f)}
-        <div class="card-stats">
-          <div><span class="stat-num ${(v.metrics.flipProfit ?? 0) > 0 ? "pos" : "neg"}">${money(v.metrics.flipProfit)}</span><span class="stat-lbl">Flip profit</span></div>
-          <div><span class="stat-num">${pct(v.metrics.cashOnCash)}</span><span class="stat-lbl">Cash-on-cash</span></div>
-          <div><span class="stat-num">${pct(v.metrics.onePercentRatio)}</span><span class="stat-lbl">1% rule</span></div>
-        </div>
+        ${cardStats(f, v)}
         <div class="card-verdicts">
           Flip ${tier(v.flipTier)} &nbsp; BRRRR ${tier(v.brrrrTier)}
           ${v.bestStrategy ? `<span class="best-strategy">→ better as ${v.bestStrategy}</span>` : ""}
@@ -548,6 +624,13 @@ async function refresh() {
     const markets = [...new Set(houses.map(r => r.fields?.Market).filter(Boolean))];
     $("filter-market").innerHTML = '<option value="">All markets</option>' +
       markets.map(m => `<option>${esc(m)}</option>`).join("");
+    // Rebuilt on every load so a strategy added in Airtable becomes a sort
+    // option on the next refresh. The current choice survives the rebuild.
+    const sortSel = $("sort-by");
+    const keep = sortSel.value;
+    sortSel.innerHTML = sortOptions().map(([v, label]) =>
+      `<option value="${esc(v)}">${esc(label)}</option>`).join("");
+    if ([...sortSel.options].some(o => o.value === keep)) sortSel.value = keep;
     renderCriteria();
     renderMatches();
     showSetup(false);
@@ -667,6 +750,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("filter-market").addEventListener("change", renderMatches);
   $("filter-qualified").addEventListener("change", renderMatches);
+  $("sort-by").addEventListener("change", renderMatches);
 
   setScreen("matches");
   refresh();
