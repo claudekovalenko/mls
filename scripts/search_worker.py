@@ -426,6 +426,11 @@ def passes_criteria(listing, criteria):
     if klass.startswith("single"):
         if not is_single_family(listing):
             return False
+    elif klass.startswith("condo"):
+        # The one class defined by what it is rather than what it is not: a
+        # condo or townhouse unit, which every other search here excludes.
+        if not looks_attached(listing) or is_multifamily(listing):
+            return False
     elif klass.startswith("multi"):
         if not is_multifamily(listing):
             return False

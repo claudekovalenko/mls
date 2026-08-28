@@ -252,3 +252,66 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   border-radius: 9px; background: #eef1ef; color: #5c6b69;
   font-size: 11px; font-weight: 600; white-space: nowrap;
 }
+
+/* ---- lane switch: three lanes, one sliding thumb ----
+   The thumb is what makes this read as one control rather than three
+   buttons -- it moves between positions instead of appearing and
+   disappearing, so the eye follows it and the transition says "same list,
+   different slice". Frosted so the ground shows through, which keeps it
+   feeling like a layer over the page rather than another box on it. */
+.lane-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--lane-count, 3), 1fr);
+  gap: 0;
+  margin: 0 0 14px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(127, 140, 136, 0.14);
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  border: 1px solid rgba(127, 140, 136, 0.18);
+  overflow: hidden;
+}
+
+.lane-thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--lane-count, 3));
+  transform: translateX(calc(var(--lane-index, 1) * 100%));
+  border-radius: 11px;
+  background: var(--surface, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.lane-btn {
+  position: relative;      /* above the thumb */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 4px 6px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--muted, #5c6b69);
+  transition: color 0.2s ease;
+}
+.lane-btn.on { color: var(--ink, #16211f); }
+.lane-btn:focus-visible { outline: 2px solid var(--accent, #0f766e); outline-offset: -2px; border-radius: 11px; }
+
+.lane-label { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+.lane-count { font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.75; }
+
+/* A row typed in by hand has been checked by nobody -- worth a different
+   colour from a row a feed wrote. */
+.src-hand { background: #f5e6d5; color: #a2500c; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lane-thumb { transition: none; }
+}

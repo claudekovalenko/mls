@@ -56,6 +56,9 @@
       within each market.
     </p>
 
+    <div id="lane-switch" class="lane-switch" role="tablist"
+         aria-label="Property type"></div>
+
     <div class="toolbar">
       <label>Market
         <select id="filter-market"><option value="">All markets</option></select>
@@ -98,6 +101,26 @@
         <button class="secondary" id="copy-token" type="button">Copy token</button>
         <button class="secondary" id="copy-base" type="button">Copy base ID</button>
         <button class="secondary" id="disconnect" type="button">Disconnect</button>
+      </div>
+    </div>
+
+    <div class="card" id="photos-card">
+      <h2>Photos</h2>
+      <p class="sub">
+        The listing feed carries no photos, and the listing sites block fetching theirs.
+        A Google Maps key puts a Street View shot of each address on its card — for a
+        fixer hunt the kerb view is close to the point, since a tired roof and an
+        overgrown yard show from the road. Free at this volume.
+        Get one at <code>console.cloud.google.com</code> → enable
+        <strong>Street View Static API</strong>.
+        Stored on this device only; it never leaves your browser.
+      </p>
+      <label class="field">Google Maps key
+        <input type="password" id="maps-key" placeholder="AIza…" autocomplete="off">
+      </label>
+      <div class="card-actions">
+        <button class="secondary" id="save-maps-key" type="button">Save key</button>
+        <button class="secondary" id="clear-maps-key" type="button">Remove</button>
       </div>
     </div>
   </div>

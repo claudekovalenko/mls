@@ -115,7 +115,7 @@ SCHEMA = {
 # strings deals.py and app.js actually produce.
 SELECT_OPTIONS = {
     "Strategy": ["Flip", "BRRRR", "Either"],
-    "Property Class": ["Single Family", "Multifamily", "Any"],
+    "Property Class": ["Single Family", "Multifamily", "Condo", "Any"],
     "Status": ["New", "Interested", "Touring", "Toured", "Offer",
                "Under Contract", "Purchased", "Rejected"],
     "Flip Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],
