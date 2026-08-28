@@ -113,6 +113,7 @@ def fetch_reso(criteria, base_url, api_key):
             "url": r.get("ListingURL") or "",
             "photoUrl": photo,
             "description": r.get("PublicRemarks") or "",
+            "source": "reso",
         })
     return out
 
@@ -163,6 +164,7 @@ def fetch_rentcast(criteria, api_key, budget):
                 "url": "",
                 "photoUrl": "",
                 "description": r.get("description") or "",
+                "source": "rentcast",
                 # The brief's qualitative half -- dated, poorly marketed,
                 # motivated seller, FSBO -- has no listing remarks to read in
                 # this feed, but these four fields stand in for all of it and
@@ -513,7 +515,12 @@ def build_house_fields(listing, criteria, verdict):
         "Year Built": listing.get("yearBuilt"),
         "Days on Market": listing.get("daysOnMarket"),
         "Price Cut": round(listing["priceCut"] * 100, 1) if listing.get("priceCut") else None,
-        "Source": os.environ.get("LISTINGS_API_TYPE", "search"),
+        # Where this house came from. Resolved rather than read from the env
+        # so it names the adapter that actually ran, and so a house added by
+        # hand or by a future source is distinguishable from a feed result.
+        # The digest and the app both show it, because "we found this on X"
+        # changes how much the rest of the row should be trusted.
+        "Source": listing.get("source") or resolve_source(),
         "Notes": " · ".join(verdict["flipReasons"][:2]),
         "Date Added": date.today().isoformat(),
     }

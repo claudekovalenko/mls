@@ -149,6 +149,11 @@ def _chip(text, warm=False):
 # hue, so motivation reads differently from geometry at a glance.
 WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 
+# Feed names in words a person recognises. An empty Source means nobody's
+# adapter wrote the row -- a human typed it in.
+SOURCE_LABELS = {"rentcast": "RentCast", "reso": "MLS / IDX", "search": "search",
+                 "": "added by hand"}
+
 # Verdict colours for the per-strategy fit rows.
 GOOD_FIT = "#166534"
 GOOD_FIT_SOFT = "#dcf2e3"
@@ -348,6 +353,11 @@ def _house_card(f, criteria_rows=()):
         stats.append(f"built {f['Year Built']:.0f}")
     if f.get("Days on Market"):
         stats.append(f"{f['Days on Market']:.0f} days on market")
+    # Which net caught this one. Zillow is the hub every house links to, so
+    # this is the other half of the provenance -- and a hand-added house says
+    # so, since that is the one whose numbers no feed has checked.
+    stats.append("found via " + SOURCE_LABELS.get(
+        str(f.get("Source") or "").strip(), (f.get("Source") or "added by hand")))
 
     star = ('<span style="background:#fef3c7;color:#92400e;border-radius:10px;'
             'padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;">'
