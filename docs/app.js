@@ -242,12 +242,90 @@ function houseAsText(f) {
   if (f.Beds || f.Baths) bits.push(`${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba`);
   bits.push(f.Sqft ? `${Number(f.Sqft).toLocaleString()} sqft` : "sqft not listed");
   if (f["Price Per Sqft"]) bits.push(`$${Number(f["Price Per Sqft"]).toLocaleString()}/sqft`);
+  const { best } = fitSummary(f);
+  const bestLine = best && best.score > 0
+    ? `  Best fit: ${best.name.split("—")[0].trim()} (${best.met}/${best.known} checks)` : "";
   return [
     `${f.Address || "?"}${f.Qualified ? " *" : ""}`,
     "  " + bits.join(" · "),
+    bestLine,
     cats.length ? `  Why: ${cats.join(", ")}` : "",
     "  " + listingLink(f),
   ].filter(Boolean).join("\n");
+}
+
+// ---- fit by strategy ----
+// The same engine the email uses (send_digest.assess_fit): each house is
+// measured against every Active criteria row, check by check. Unknowns are
+// honest -- a basement this feed can't see reads "verify", never pass/fail.
+const OVERSIZED_LOT_SQFT_FIT = 15000;
+const DATED_BUILD_YEAR_FIT = 1985;
+
+function assessFit(f, c) {
+  const cats = String(f["Value Signals"] || "").toLowerCase();
+  const checks = []; // [label, true|false|null]
+  const price = f.Price, sqft = f.Sqft, lot = f["Lot Sqft"];
+  const ppsf = f["Price Per Sqft"], baths = f.Baths, year = f["Year Built"];
+
+  if (c["Max Price"] && price != null)
+    checks.push([`price ${money(price)} vs ${money(c["Max Price"])} cap`, price <= c["Max Price"]]);
+  if (c["Max Price Per Sqft"]) {
+    if (!sqft) checks.push(["sqft unlisted (counts as under cap)", true]);
+    else if (ppsf) checks.push([`$${ppsf}/sqft vs $${c["Max Price Per Sqft"]} cap`, ppsf <= c["Max Price Per Sqft"]]);
+  }
+  const musts = String(c["Must Haves"] || "").toLowerCase();
+  if (musts.includes("basement"))
+    checks.push(["basement", cats.includes("basement") ? true : null]);
+  if (musts.includes("adu") || musts.includes("lot") || musts.includes("acre"))
+    checks.push(lot
+      ? [`lot room for ADU (${(lot / 43560).toFixed(2)} acre)`, lot >= OVERSIZED_LOT_SQFT_FIT]
+      : ["lot room for ADU", null]);
+  if (c["Target Total Sqft"] && sqft)
+    checks.push([`${Number(sqft).toLocaleString()} sqft vs ${Number(c["Target Total Sqft"]).toLocaleString()}+ goal`, sqft >= c["Target Total Sqft"]]);
+  if (c["Min Baths After Reno"] && baths != null)
+    checks.push([`${baths} baths now vs ${c["Min Baths After Reno"]}+ after reno`, baths >= c["Min Baths After Reno"]]);
+  if (c.Strategy === "Flip") {
+    const fixer = (year && year <= DATED_BUILD_YEAR_FIT) || cats.includes("days on market")
+      || cats.includes("price cut") || cats.includes("fixer");
+    checks.push(["fixer evidence (age / sitting / price cut)", fixer ? true : null]);
+  }
+  return checks;
+}
+
+function fitSummary(f) {
+  const fits = criteria.filter(r => (r.fields || {}).Active).map(r => {
+    const c = r.fields || {};
+    const checks = assessFit(f, c);
+    const known = checks.filter(([, s]) => s !== null);
+    const met = known.filter(([, s]) => s).length;
+    return { name: c.Name || "Search", checks, met, known: known.length,
+             score: known.length ? met / known.length : 0 };
+  });
+  const best = fits.length
+    ? fits.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.met > a.met)) ? b : a)
+    : null;
+  return { fits, best };
+}
+
+function fitBlock(f) {
+  const { fits, best } = fitSummary(f);
+  if (!fits.length) return "";
+  return `<div class="fits">${fits.map(fit => {
+    const isBest = best && fit.name === best.name && fit.score > 0;
+    const misses = fit.checks.filter(([, s]) => s === false).map(([l]) => l);
+    const unknowns = fit.checks.filter(([, s]) => s === null).map(([l]) => l);
+    const detail = [
+      misses.length ? `misses: ${misses.join("; ")}` : "",
+      unknowns.length ? `verify: ${unknowns.join("; ")}` : "",
+    ].filter(Boolean).join(" · ") || "meets everything we can measure";
+    const cls = fit.score >= 0.75 ? "fit-good" : fit.score >= 0.4 ? "fit-mid" : "fit-low";
+    return `<div class="fit-row">
+      <span class="fit-name">${esc(fit.name.split("—")[0].trim())}</span>
+      <span class="fit-score ${cls}">${fit.met}/${fit.known}</span>
+      ${isBest ? '<span class="fit-best">BEST FIT</span>' : ""}
+      <div class="fit-detail">${esc(detail)}</div>
+    </div>`;
+  }).join("")}</div>`;
 }
 
 // Value signals are why a house is here at all -- basement, ADU potential,
@@ -276,9 +354,13 @@ function houseCard({ id, f, v }) {
           ${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba
           ${f.Sqft ? ` · ${Number(f.Sqft).toLocaleString()} sqft` : ""}
           ${f["Price Per Sqft"] ? ` · $${Number(f["Price Per Sqft"]).toLocaleString()}/sqft` : ""}
+          ${f["Year Built"] ? ` · built ${f["Year Built"]}` : ""}
+          ${f["Days on Market"] ? ` · ${f["Days on Market"]} days on market` : ""}
+          ${f["Price Cut"] ? ` · cut ${f["Price Cut"]}%` : ""}
           ${f.Status ? ` · ${esc(f.Status)}` : ""}
         </div>
         ${signalChips(f["Value Signals"])}
+        ${fitBlock(f)}
         <div class="card-stats">
           <div><span class="stat-num ${(v.metrics.flipProfit ?? 0) > 0 ? "pos" : "neg"}">${money(v.metrics.flipProfit)}</span><span class="stat-lbl">Flip profit</span></div>
           <div><span class="stat-num">${pct(v.metrics.cashOnCash)}</span><span class="stat-lbl">Cash-on-cash</span></div>

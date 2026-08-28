@@ -231,3 +231,17 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   .house-card { flex-direction: column; }
   .card-photo { width: 100%; height: 160px; }
 }
+
+/* ---- fit by strategy ---- */
+.fits { margin: 8px 0 2px; border-top: 1px solid var(--line, #e0e6e3); }
+.fit-row { padding: 5px 0; border-bottom: 1px solid var(--line, #e0e6e3); font-size: 12px; }
+.fit-name { font-weight: 700; }
+.fit-score { font-weight: 700; margin-left: 6px; }
+.fit-good { color: #166534; }
+.fit-mid { color: #a2500c; }
+.fit-low { color: #7d8b88; }
+.fit-best {
+  background: #dcf2e3; color: #166534; border-radius: 9px;
+  padding: 1px 7px; font-size: 10px; font-weight: 700; margin-left: 6px;
+}
+.fit-detail { font-size: 11px; color: var(--muted, #5c6b69); line-height: 1.4; margin-top: 1px; }
