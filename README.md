@@ -126,6 +126,41 @@ Building something to get around that would be against those sites' terms, on a
 repo in your name, and would break constantly anyway. IDX is the path that
 actually works.
 
+## Moving to Supabase
+
+Airtable is still the database of record. Supabase is built, tested and
+ready, and the switch is one environment variable — but it needs a project
+that only the owner can create, so the last three steps are theirs.
+
+Why move at all: the Airtable connector drops constantly, which is why half
+the tooling in `.github/workflows` exists to do from a runner what should be
+one tap in a UI. Supabase also fixes two real weaknesses rather than just the
+flakiness — Postgres enforces uniqueness (Airtable cannot, which is how a
+duplicate criteria row went unnoticed for weeks costing an API call a run),
+and Row Level Security lets the PWA hold a public key that can only do the
+app's job, where today it holds an Airtable token that can read and write
+everything.
+
+1. Create a project at supabase.com (free tier is ample here).
+2. Run [`supabase/schema.sql`](supabase/schema.sql) in the SQL editor.
+3. Add two repo secrets from Settings → API:
+   `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (the `service_role` key — it
+   bypasses RLS, so it belongs in secrets and never in a browser).
+4. Run the **Migrate to Supabase** workflow with dry-run ticked, read the
+   counts, then run it again unticked. It reads Airtable and writes Supabase;
+   it never modifies Airtable, and it is idempotent, so it can be re-run to
+   pick up whatever the searches added since.
+5. Set the `DB_BACKEND` repo variable to `supabase`.
+
+Step 5 is the only irreversible-feeling one, and it isn't: set it back to
+`airtable` and everything reads from Airtable again, because the migration
+never removed anything. Leave both populated for a week before deleting
+anything.
+
+`scripts/db.py` picks the backend: `DB_BACKEND` when set, otherwise Supabase
+if its credentials exist and Airtable if they don't. Both clients speak the
+same `{"id", "fields"}` record shape, so no caller knows which one it got.
+
 ## Upgrade paths, for when they're wanted
 
 Nothing here is set up, and none of it is needed for the pipeline to run. This
