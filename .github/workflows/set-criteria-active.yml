@@ -1,0 +1,32 @@
+# Turn a Search Criteria row on or off without opening Airtable.
+# Airtable only -- no listing API calls, so this costs nothing.
+name: Set Criteria Active
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Search Criteria row name (partial is fine if unambiguous)"
+        type: string
+        required: true
+      active:
+        description: "Tick to activate, leave clear to deactivate"
+        type: boolean
+        default: false
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set Active
+        working-directory: scripts
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          CRITERIA_NAME: ${{ inputs.name }}
+          ACTIVE: ${{ inputs.active && '1' || '0' }}
+        run: python set_criteria_active.py
