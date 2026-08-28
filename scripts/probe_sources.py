@@ -13,12 +13,34 @@ import urllib.error
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
+# The big portals, probed first and all found closed -- kept so the finding
+# stays reproducible rather than becoming folklore.
 HOSTS = [
     "https://www.zillow.com",
     "https://www.redfin.com",
     "https://www.realtor.com",
     "https://www.trulia.com",
     "https://www.homes.com",
+    # Second round: the places a portal cannot show you.
+    #
+    # Deliberately NOT probed: Facebook Marketplace and Craigslist. Both
+    # require an authenticated session and both prohibit automated access in
+    # terms, so the answer is no regardless of what a robots.txt says, and
+    # probing them would only manufacture a number to argue with.
+    #
+    # County records are the real prize here. Tax-delinquent, code-violation
+    # and probate properties are motivated sellers who never list anywhere,
+    # so they are invisible to every portal AND to IDX -- which makes them
+    # the closest thing to the brief's "value others overlook".
+    "https://www.cobbtax.org",
+    "https://cobbcounty.org",
+    # Foreclosure and auction inventory, published to be found.
+    "https://www.auction.com",
+    "https://www.xome.com",
+    "https://www.hubzu.com",
+    # FSBO, which is explicitly in the brief and absent from MLS feeds.
+    "https://www.forsalebyowner.com",
+    "https://fsbo.com",
 ]
 
 # Paths we'd need if we were to pull search results from each site.
@@ -28,6 +50,13 @@ PROBE_PATHS = {
     "https://www.realtor.com": ["/realestateandhomes-search/", "/api/"],
     "https://www.trulia.com": ["/for_sale/"],
     "https://www.homes.com": ["/for-sale/"],
+    "https://www.cobbtax.org": ["/", "/property-tax", "/delinquent-tax"],
+    "https://cobbcounty.org": ["/", "/tax-commissioner"],
+    "https://www.auction.com": ["/residential/", "/search"],
+    "https://www.xome.com": ["/auctions", "/search"],
+    "https://www.hubzu.com": ["/search", "/property"],
+    "https://www.forsalebyowner.com": ["/search", "/listing"],
+    "https://fsbo.com": ["/listings", "/search"],
 }
 
 

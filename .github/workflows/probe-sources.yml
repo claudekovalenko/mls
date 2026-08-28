@@ -1,0 +1,25 @@
+# What listing sources are actually reachable, and what do their robots.txt
+# files permit? Evidence before committing to a data source.
+#
+# Only fetches robots.txt -- published for exactly this purpose -- plus one
+# homepage request per host to check reachability. It does not scrape any
+# listing data, and it never touches a site whose terms prohibit automated
+# access (Facebook Marketplace and Craigslist are deliberately absent).
+#
+# Costs nothing: no listing API calls, no database writes.
+name: Probe Sources
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe
+        working-directory: scripts
+        run: python probe_sources.py
