@@ -1,18 +1,18 @@
-# Turn a Search Criteria row on or off without opening Airtable.
+# Edit a Search Criteria row without opening Airtable.
 # Airtable only -- no listing API calls, so this costs nothing.
-name: Set Criteria Active
+name: Set Criteria
 
 on:
   workflow_dispatch:
     inputs:
       name:
-        description: "Search Criteria row name (partial is fine if unambiguous)"
+        description: "Row name (partial is fine if unambiguous)"
         type: string
         required: true
-      active:
-        description: "Tick to activate, leave clear to deactivate"
-        type: boolean
-        default: false
+      fields:
+        description: 'JSON, e.g. {"Zip Codes": "30068, 30062", "Active": true}'
+        type: string
+        required: true
 
 jobs:
   set:
@@ -22,11 +22,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Set Active
+      - name: Set fields
         working-directory: scripts
         env:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           CRITERIA_NAME: ${{ inputs.name }}
-          ACTIVE: ${{ inputs.active && '1' || '0' }}
-        run: python set_criteria_active.py
+          FIELDS: ${{ inputs.fields }}
+        run: python set_criteria.py
