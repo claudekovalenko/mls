@@ -462,7 +462,10 @@ const CRITERIA_FIELDS = [
   ["Min Baths", "number", ""],
   ["Min Sqft", "number", ""],
   ["Zip Codes", "text", "30068, 30067, 30062"],
-  ["Property Types", "text", "Single Family, Townhouse"],
+  // Searches are single family only; this column can narrow within that but
+  // never widen it, so suggesting "Townhouse" here only invites a value the
+  // worker will ignore. Leaving it blank is the normal case.
+  ["Property Types", "text", "Single Family (leave blank for all)"],
   ["Keywords", "text", "fixer, as-is, TLC"],
   ["Must Haves", "text", "basement, adu/oversized lot"],
   ["Max Price Per Sqft", "number", "175"],

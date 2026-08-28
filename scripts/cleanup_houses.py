@@ -37,6 +37,27 @@ PROTECTED_STATUSES = {"Interested", "Touring", "Toured", "Offer",
 # house ended up on the sheet for being 17% under the area median.
 BRIEF_MAX_PRICE = 500_000
 
+# A detached house needs land around it. Even over two storeys, and even
+# before setbacks, a house whose lot is smaller than this share of its
+# finished area cannot be standing on its own -- it is a townhouse or a
+# condo. 594 Parkside Village Way is 3,424 sqft of house on a 1,394 sqft
+# lot; 128 River Ridge Ln is 2,857 on 1,830. Neither is detached.
+#
+# Only applied to rows with no Property Type -- the ones written before that
+# column existed, where the address is otherwise the only evidence. Anything
+# the feed has actually typed is judged on the type, not on arithmetic.
+# Deliberately conservative: real Marietta lots in this table run 3-10x the
+# finished area, so 0.75 sits far below every genuine detached house here
+# and leaves the ambiguous 0.9-1.1 cases alone.
+MIN_LOT_TO_SQFT_RATIO = 0.75
+
+
+def looks_attached_by_lot(f):
+    sqft, lot = f.get("Sqft"), f.get("Lot Sqft")
+    if not sqft or not lot:
+        return False
+    return lot < sqft * MIN_LOT_TO_SQFT_RATIO
+
 
 def reason_to_drop(f):
     """Why this row would not be written today, or None to keep it."""
@@ -57,6 +78,9 @@ def reason_to_drop(f):
             return f"not single family ({listing['propertyType']})"
     elif looks_attached(listing):
         return "attached housing (condo/townhouse/unit)"
+    elif looks_attached_by_lot(f):
+        return (f"attached: {f['Sqft']:,.0f} sqft of house on a "
+                f"{f['Lot Sqft']:,.0f} sqft lot")
 
     price = f.get("Price")
     if price and price > BRIEF_MAX_PRICE:
