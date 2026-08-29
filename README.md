@@ -5,23 +5,61 @@ worker searches listing feeds and scores every result, and anything that clears
 your targets shows up in a phone app — best deal in each market first.
 
 - **App:** https://claudekovalenko.github.io/mls/ (installable — Share → Add to Home Screen)
-- **Database:** Airtable
-- **Worker:** GitHub Actions, every 6 hours
+- **Database:** Supabase (Postgres)
+- **Worker:** GitHub Actions, weekly
 
 ---
 
 ## How it fits together
 
 ```
-Airtable "Search Criteria"  ──►  search_worker.py  ──►  Airtable "Houses"  ──►  PWA
-   (what you want)               (fetch, filter,          (scored results)      (browse,
-                                  score, dedupe)                                 edit, decide)
+"search_criteria"  ──►  search_worker.py  ──►  "houses"  ──►  PWA
+ (what you want)        (fetch, filter,        (scored)      (browse,
+                         score, dedupe)                       edit, decide)
 ```
 
-Airtable is the database of record. The app talks to Airtable's REST API
-directly from your browser; there is no backend of ours in the middle.
+Supabase is the database of record. The app talks to PostgREST directly from
+your browser with the project's anon key; row-level security in the schema
+decides what that key can touch. There is no backend of ours in the middle.
 
 ## Setup
+
+### 1. Create the project
+
+supabase.com → new project. Then open the **SQL editor** and run
+[`supabase/schema.sql`](supabase/schema.sql) — it builds both tables, the
+uniqueness rules the worker upserts against, and the access policies.
+
+### 2. Connect the app
+
+Open the app → **Settings → API** in Supabase gives you the **Project URL** and
+the **anon public** key. Paste both into the app's setup screen. They are
+stored only in that browser.
+
+### 3. Let the worker in
+
+Add two repo secrets at github.com → Settings → Secrets → Actions:
+
+| Secret | Value |
+| --- | --- |
+| `SUPABASE_URL` | the project URL |
+| `SUPABASE_SERVICE_KEY` | the **service role** key, not the anon key — the worker writes rows |
+
+Every workflow picks Supabase up automatically once both exist; there is no
+switch to flip.
+
+### Coming from Airtable?
+
+`scripts/migrate_to_supabase.py` copies the rows over. It never writes to
+Airtable, and re-running it is safe. Run **Actions → Migrate to Supabase** with
+the dry-run box ticked first to see what it would do.
+
+---
+
+## The old Airtable setup
+
+Kept for reference while the migration finishes. Nothing new should be built
+against it.
 
 ### 1. Get a token
 
