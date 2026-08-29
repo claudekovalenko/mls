@@ -1,9 +1,8 @@
 /* House Finder — PWA over Supabase (Postgres).
  *
  * Supabase is the database of record. This app talks to PostgREST directly
- * with the project's anon key kept in localStorage; row-level security in
- * supabase/schema.sql decides what that key can touch.
- *
+ * with the project's publishable anon key, which ships in this file;
+ * row-level security in supabase/schema.sql decides what it can touch.
  *
  * Deal math here mirrors scripts/deals.py. If you change one, change both --
  * the worker scores listings server-side, this scores what you type live.
@@ -98,11 +97,45 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // ---- storage ----
+// The project this app belongs to, shipped in the code rather than typed in
+// on every device.
+//
+// This is safe, and it is the design Supabase intends. The anon key is a
+// *publishable* key: it is meant to sit in client JavaScript where anyone
+// can read it, and it grants nothing on its own. What it can touch is
+// decided server-side by the row-level security policies in
+// supabase/schema.sql -- read and write the two tables this app edits, and
+// read-only on recipients. The key that bypasses those policies is the
+// service_role key, and that one lives only in GitHub secrets and never
+// reaches a browser.
+//
+// The alternative -- a setup screen on every phone, every laptop, every
+// reinstall, and after every cache clear -- asks somebody to paste
+// credentials to use their own app. That is friction with no security
+// benefit, since the key it protects is public by design.
+const BUILT_IN = {
+  url: "https://dmiysgmhwpkrunmswtrn.supabase.co",
+  key: "sb_publishable_9NfxdWLrFdExD-_6HwPs8A_uUtlTH3C",
+};
+
+// localStorage still wins when set, so a second project (a test copy, a
+// fork, someone else's data) is possible without editing code.
 const store = {
-  get sbUrl() { return (localStorage.getItem("supabase_url") || "").replace(/\/+$/, ""); },
-  set sbUrl(v) { localStorage.setItem("supabase_url", v); },
-  get sbKey() { return localStorage.getItem("supabase_key") || ""; },
-  set sbKey(v) { localStorage.setItem("supabase_key", v); },
+  get sbUrl() {
+    return (localStorage.getItem("supabase_url") || BUILT_IN.url).replace(/\/+$/, "");
+  },
+  set sbUrl(v) {
+    if (v) localStorage.setItem("supabase_url", v);
+    else localStorage.removeItem("supabase_url");
+  },
+  get sbKey() { return localStorage.getItem("supabase_key") || BUILT_IN.key; },
+  set sbKey(v) {
+    if (v) localStorage.setItem("supabase_key", v);
+    else localStorage.removeItem("supabase_key");
+  },
+  get isCustom() {
+    return !!(localStorage.getItem("supabase_url") || localStorage.getItem("supabase_key"));
+  },
 };
 
 const isConnected = () => !!(store.sbUrl && store.sbKey);
@@ -858,6 +891,7 @@ async function saveHouse(e) {
 // ---- load / navigation ----
 async function refresh() {
   if (!isConnected()) { showSetup(true); return; }
+  showSetup(false);
   try {
     setStatus("Loading…");
     [criteria, houses] = await Promise.all([listAll(TABLE_CRITERIA), listAll(TABLE_HOUSES)]);
@@ -876,8 +910,11 @@ async function refresh() {
     showSetup(false);
     setStatus("");
   } catch (err) {
-    setStatus(err.message, false);
-    showSetup(true);
+    // Stay in the app and say what went wrong. Bouncing to a credentials
+    // form on any failure is how a dropped connection or a slow network
+    // turns into "this thing keeps asking me to log in" -- the credentials
+    // are almost never the problem, and re-typing them fixes nothing.
+    setStatus(`${err.message} — pull to retry.`, false);
   }
 }
 
@@ -885,13 +922,11 @@ function showSetup(show) {
   $("setup").style.display = show ? "block" : "none";
   $("app").style.display = show ? "none" : "block";
   const what = $("connection-what");
-  // Which backend is actually serving this device. Worth stating outright:
-  // during a migration both sets of credentials can be saved at once, and
-  // guessing wrong about which one you are editing wastes an afternoon.
   if (what) {
-    what.textContent = store.sbUrl
-      ? `Connected to Supabase at ${store.sbUrl}.`
-      : "Not connected.";
+    what.textContent = store.isCustom
+      ? `Pointed at a custom project: ${store.sbUrl}`
+      : "Connected to the House Finder database. Nothing to set up — this is "
+        + "built into the app.";
   }
 }
 
@@ -907,15 +942,20 @@ function setScreen(next) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  $("setup-sb-url").value = store.sbUrl;
-  $("setup-sb-key").value = store.sbKey;
+  // Prefilled only when this device is already pointed somewhere custom;
+  // otherwise the fields stay empty rather than inviting an edit to the
+  // built-in project.
+  if (store.isCustom) {
+    $("setup-sb-url").value = store.sbUrl;
+    $("setup-sb-key").value = store.sbKey;
+  }
   $("setup-sb-save").addEventListener("click", async () => {
     store.sbUrl = $("setup-sb-url").value.trim();
     store.sbKey = $("setup-sb-key").value.trim();
     await refresh();
   });
-  // The credentials live only in this browser. These buttons make this
-  // device the way to get them into the repo's GitHub secrets.
+  $("setup-cancel").addEventListener("click", () => showSetup(false));
+  // Copies what this device is using, for pasting into GitHub secrets.
   const copyOut = async (label, value) => {
     if (!value) { setStatus(`No ${label} saved on this device.`, false); return; }
     try {
@@ -948,11 +988,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("copy-url").addEventListener("click", () => copyOut("project URL", store.sbUrl));
   $("copy-key").addEventListener("click", () => copyOut("anon key", store.sbKey));
-  $("disconnect").addEventListener("click", () => {
-    if (!window.confirm("Disconnect this device? The saved credentials are removed from this browser — make sure they're saved somewhere (like the GitHub secrets) first.")) return;
+  // Only meaningful when someone has pointed this device at a different
+  // project; otherwise there is nothing to disconnect from.
+  $("disconnect").addEventListener("click", async () => {
+    if (!store.isCustom) { showSetup(true); return; }
+    if (!window.confirm("Go back to the built-in House Finder database?")) return;
     store.sbUrl = "";
     store.sbKey = "";
-    showSetup(true);
+    await refresh();
   });
 
   $("nav-criteria").addEventListener("click", () =>
