@@ -144,6 +144,16 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   background: var(--accent-soft); flex-shrink: 0;
 }
 .card-photo-empty { border-right: 1px dashed var(--line); }
+/* The keyless curb view: a tappable tile where the photo would be. */
+.card-photo-link {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px; padding: 10px;
+  text-align: center; text-decoration: none;
+  color: var(--accent); font-size: .72rem; font-weight: 700;
+  line-height: 1.25; border-right: 1px solid var(--line);
+}
+.card-photo-link:hover { background: var(--accent); color: #fff; }
+.card-photo-icon { font-size: 1.4rem; }
 .card-body { padding: 16px 18px; flex: 1; min-width: 0; }
 .card-title { font-weight: 800; font-size: 1rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .card-sub { color: var(--sub); font-size: .84rem; margin-top: 3px; }

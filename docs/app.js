@@ -370,9 +370,22 @@ function laneCounts() {
   return counts;
 }
 
-// The address as a Street View still. Needs a free Google Maps key; without
-// one this returns "" and the card renders exactly as it does today rather
-// than showing a broken image.
+// Two ways to see a house from the road, and the free one is the default.
+//
+// streetViewLink builds a plain Google Maps URL that opens the curb view in
+// the Maps app. No API key, no Google account, no billing -- which is the
+// point: embedding a Street View *image* requires a key, and getting a key
+// requires enabling billing and attaching a card even when usage stays
+// inside the free allowance. The link gives the same answer ("what does it
+// actually look like?") for nothing.
+function streetViewLink(address) {
+  if (!address) return "";
+  const q = encodeURIComponent(String(address));
+  return `https://www.google.com/maps/search/?api=1&query=${q}&layer=c`;
+}
+
+// The embedded still, only if someone has chosen to paste a key in. Absent a
+// key this returns "" and the card falls back to the link tile.
 function streetView(address, w = 640, h = 200) {
   const key = localStorage.getItem("mapsKey");
   if (!key || !address) return "";
@@ -515,9 +528,21 @@ function houseCard({ id, f, v }) {
   // for a fixer hunt the kerb shot is close to the point, since a tired roof
   // and an overgrown yard are visible from the road.
   const src = f["Photo URL"] || streetView(f.Address);
-  const photo = src
-    ? `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy">`
-    : `<div class="card-photo card-photo-empty"></div>`;
+  const link = streetViewLink(f.Address);
+  let photo;
+  if (src) {
+    photo = `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy">`;
+  } else if (link) {
+    // No key and no feed photo: a tappable tile that opens the curb view in
+    // Google Maps. Costs nothing and needs no account.
+    photo = `<a class="card-photo card-photo-link" href="${esc(link)}"
+                target="_blank" rel="noopener">
+               <span class="card-photo-icon">🛣️</span>
+               <span>See it from the street</span>
+             </a>`;
+  } else {
+    photo = `<div class="card-photo card-photo-empty"></div>`;
+  }
   const tier = t => `<span class="tier tier-${t.replace(" ", "-")}">${t}</span>`;
   return `
     <article class="card house-card" data-house-id="${esc(id)}">

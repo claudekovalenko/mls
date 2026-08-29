@@ -280,24 +280,35 @@ def _fit_rows_html(fits, best):
 
 
 def _street_view(address):
-    """A curb photo via Google Street View, when a key is configured.
+    """How the house looks from the road -- by link for free, by image if paid.
 
-    The listing feed carries no photos and the listing sites block fetching
-    theirs, so the street-facing shot is the honest option: it shows the
-    house as it actually looks from the road -- which for a fixer hunt is
-    half the point. Without GOOGLE_MAPS_KEY this renders nothing and the
-    card is unchanged.
+    Embedding a Street View still requires a Google Maps API key, and getting
+    a key requires enabling billing on a Google Cloud project, which means a
+    card on file even when usage never leaves the free allowance. So the
+    default is a plain Maps link: no key, no account, no card, and it opens
+    the same curb view one tap away. Set GOOGLE_MAPS_KEY only if you'd rather
+    have the picture inline and have accepted that trade.
     """
-    key = os.environ.get("GOOGLE_MAPS_KEY")
-    if not key or not address:
+    if not address:
         return ""
     q = urllib.parse.quote(str(address))
-    url = (f"https://maps.googleapis.com/maps/api/streetview"
-           f"?size=560x240&location={q}&fov=75&key={key}")
-    return (f'<img src="{html.escape(url)}" width="560" alt="Street view of '
-            f'{html.escape(str(address))}" style="display:block;width:100%;'
-            f'max-width:560px;height:auto;border:1px solid {LINE};'
-            f'margin:0 0 12px;">')
+    key = os.environ.get("GOOGLE_MAPS_KEY")
+    if key:
+        url = (f"https://maps.googleapis.com/maps/api/streetview"
+               f"?size=560x240&location={q}&fov=75&key={key}")
+        return (f'<img src="{html.escape(url)}" width="560" alt="Street view of '
+                f'{html.escape(str(address))}" style="display:block;width:100%;'
+                f'max-width:560px;height:auto;border:1px solid {LINE};'
+                f'margin:0 0 12px;">')
+    link = f"https://www.google.com/maps/search/?api=1&query={q}&layer=c"
+    return (f'<table role="presentation" width="100%" cellpadding="0" '
+            f'cellspacing="0" border="0" style="margin:0 0 12px;">'
+            f'<tr><td style="border:1px solid {LINE};background:{SOFT};'
+            f'text-align:center;">'
+            f'<a href="{html.escape(link)}" style="display:block;padding:12px 16px;'
+            f'color:{BRAND};font-size:12px;font-weight:700;text-decoration:none;'
+            f'letter-spacing:0.3px;">&#128739; See it from the street &rarr;</a>'
+            f'</td></tr></table>')
 
 
 def _discount_pct(cats):
