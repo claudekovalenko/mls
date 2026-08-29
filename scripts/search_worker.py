@@ -26,6 +26,7 @@ rather than failing the workflow.
 """
 import json
 import os
+import re
 import statistics
 import sys
 import urllib.parse
@@ -595,6 +596,20 @@ def build_house_fields(listing, criteria, verdict):
     }
 
 
+def address_key(value):
+    """The key two records are the same house under.
+
+    Lowercasing is not enough. The same address arrives as "1912 King Arthurs
+    Ct Marietta GA 30062" when a person types it and "1912 King Arthurs Ct,
+    Marietta, GA 30062" when the feed reports it, and an exact match treats
+    those as two different houses -- which means the price comparison silently
+    has nothing to compare against, and a house you already marked Under
+    Contract gets emailed to you again as new. Punctuation and spacing carry
+    no meaning in an address, so they are removed from the key.
+    """
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
 def price_change_update(listing, known):
     """An update for a house we already have, if its price moved. Else None.
 
@@ -640,7 +655,7 @@ def run_search(at, criteria_record, existing, budget):
     # cleared the criteria. This is the roll call the delisting pass checks
     # against, so it has to be the raw feed rather than the filtered set --
     # a house that stopped qualifying is still on the market.
-    seen = {(l.get("address") or "").strip().lower() for l in listings}
+    seen = {address_key(l.get("address")) for l in listings}
     seen.discard("")
 
     targets = {
@@ -660,7 +675,7 @@ def run_search(at, criteria_record, existing, budget):
     new_rows, updates = [], []
     for listing in eligible:
         listing["_signals"] = categories(listing, fields, median_ppsf)
-        key = (listing.get("address") or listing.get("url") or "").strip().lower()
+        key = address_key(listing.get("address") or listing.get("url"))
         if not key:
             continue
         if key in existing:
@@ -738,7 +753,7 @@ def retire_missing(houses, roll_call):
             continue
         if f.get("Status") in PIPELINE_STATUSES:
             continue
-        key = (f.get("Address") or "").strip().lower()
+        key = address_key(f.get("Address"))
         if not key:
             continue
         if key in seen:
@@ -792,7 +807,7 @@ def main():
         entry = {"id": rec.get("id"), "price": f.get("Price")}
         for candidate in (f.get("Address"), f.get("Listing URL")):
             if candidate:
-                existing[str(candidate).strip().lower()] = entry
+                existing[address_key(candidate)] = entry
 
     all_new, all_updates = [], []
     roll_call = {}          # search name -> addresses it saw on the market
