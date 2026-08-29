@@ -228,8 +228,8 @@ let houses = [];
 // Single Family or Multifamily, so a third tab would have been permanently
 // empty and would have implied a search that does not exist.
 const LANES = [
-  { id: "multifamily", label: "Complex matches", hint: "multifamily complexes, 20 units and up" },
-  { id: "house",       label: "House matches",   hint: "detached single family" },
+  { id: "multifamily", icon: "🏢", label: "Complex", hint: "multifamily complexes, 20 units and up" },
+  { id: "house",       icon: "🏠", label: "Home",    hint: "detached single family" },
 ];
 const DEFAULT_LANE = "house";
 // Which lane the Matches screen is showing. Remembered across reloads,
@@ -365,6 +365,7 @@ function renderLaneSwitch() {
       <button type="button" class="lane-btn${l.id === currentLane ? " on" : ""}"
               data-lane="${esc(l.id)}" role="tab"
               aria-selected="${l.id === currentLane}" title="${esc(l.hint)}">
+        <span class="lane-icon" aria-hidden="true">${l.icon}</span>
         <span class="lane-label">${esc(l.label)}</span>
         <span class="lane-count">${counts[l.id]}</span>
       </button>`).join("");
