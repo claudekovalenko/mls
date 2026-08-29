@@ -71,6 +71,10 @@ SCHEMA = {
         ("Listing URL", "url"),
         ("Photo URL", "url"),
         ("Property Type", "singleLineText"),  # as the feed reported it
+        # Street-level imagery is looked up by coordinate, not by address,
+        # so the feed's own position is worth keeping when it gives one.
+        ("Latitude", "number"),
+        ("Longitude", "number"),
         ("Units", "number"),                  # multifamily: unit count
         # Which criteria row found this house. Lets a digest be scoped to one
         # search, which is how the multifamily email stays separate from the
@@ -134,6 +138,9 @@ NUMBER_PRECISION = {
     "Baths": 1, "Min Baths": 1, "Min Baths After Reno": 1,
     "Cash on Cash": 1, "One Percent": 2, "Price Cut": 1,
     "Target Cash on Cash": 1, "Target One Percent": 2,
+    # Six decimals is roughly 0.1m. At zero, every house in Marietta would
+    # round onto the same point.
+    "Latitude": 6, "Longitude": 6,
 }
 
 
@@ -158,6 +165,9 @@ NUMBER_PRECISION = {
     "Baths": 1, "Min Baths": 1, "Min Baths After Reno": 1,
     "Cash on Cash": 1, "One Percent": 2, "Price Cut": 1,
     "Target Cash on Cash": 1, "Target One Percent": 2,
+    # Six decimals is roughly 0.1m. At zero, every house in Marietta would
+    # round onto the same point.
+    "Latitude": 6, "Longitude": 6,
 }
 
 

@@ -356,3 +356,10 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .price-drop { background: #f5e6d5; color: #a2500c; }
 .price-rise { background: var(--bg); color: var(--sub); }
 .price-change .was { font-weight: 500; color: var(--sub); margin-left: 6px; }
+
+/* Settings copy that qualifies a field, rather than introducing one. */
+.sub.small { font-size: .82rem; margin: 4px 0 16px; }
+.hint {
+  font-weight: 600; font-size: .68rem; letter-spacing: 0;
+  text-transform: none; color: var(--sub); margin-left: 6px;
+}

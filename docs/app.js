@@ -157,6 +157,7 @@ const FIELD_NAMES = [
   "BRRRR Verdict", "Best Strategy", "Qualified", "Listing URL", "Photo URL",
   "Property Type", "Units", "Found By", "Year Built", "Days on Market",
   "Price Cut", "Previous Price", "Price Change Date", "Listing Status",
+  "Latitude", "Longitude",
   "Last Seen", "Source", "Date Added",
   "Email",
 ];
@@ -427,6 +428,9 @@ function renderMatches() {
 
   wrap.querySelectorAll("[data-house-id]").forEach(el =>
     el.addEventListener("click", () => openHouse(el.dataset.houseId)));
+
+  // Photos arrive after the list does, so nothing waits on them.
+  hydratePhotos(rows);
 }
 
 // A Zillow search deep-link built from the address. Nothing is fetched --
@@ -524,6 +528,62 @@ function streetView(address, w = 640, h = 200) {
   const q = encodeURIComponent(String(address));
   return `https://maps.googleapis.com/maps/api/streetview?size=${w}x${h}`
        + `&location=${q}&fov=75&key=${encodeURIComponent(key)}`;
+}
+
+// ---- Mapillary ----
+// Crowdsourced street-level photos. Free key, no billing account, no card --
+// which is why it goes first. The trade is coverage: a through-road usually
+// has imagery, a cul-de-sac often does not, so every lookup can legitimately
+// come back with nothing and the card falls through to the next option.
+//
+// Looked up by coordinate rather than address, because that is what the API
+// takes. Houses recorded before the worker stored coordinates have none and
+// simply skip this step.
+const MAPILLARY_BOX = 0.0012;   // ~130m; near enough to be the same house
+const mapillaryCache = new Map();   // address -> url or null, per session
+
+async function mapillaryThumb(f) {
+  const key = localStorage.getItem("mapillaryKey");
+  const lat = Number(f.Latitude), lon = Number(f.Longitude);
+  if (!key || !lat || !lon) return null;
+  const id = `${lat},${lon}`;
+  if (mapillaryCache.has(id)) return mapillaryCache.get(id);
+
+  const bbox = [lon - MAPILLARY_BOX, lat - MAPILLARY_BOX,
+                lon + MAPILLARY_BOX, lat + MAPILLARY_BOX].join(",");
+  const url = `https://graph.mapillary.com/images?access_token=${encodeURIComponent(key)}`
+            + `&fields=thumb_1024_url&bbox=${bbox}&limit=1`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Mapillary ${res.status}`);
+    const data = await res.json();
+    const thumb = data?.data?.[0]?.thumb_1024_url || null;
+    mapillaryCache.set(id, thumb);
+    return thumb;
+  } catch {
+    // A failed lookup must not take the card down with it.
+    mapillaryCache.set(id, null);
+    return null;
+  }
+}
+
+// Fill in Mapillary photos after the list is on screen. Deliberately not
+// awaited during render: the cards should appear immediately and gain
+// pictures as they arrive, rather than the whole list waiting on the
+// slowest lookup.
+async function hydratePhotos(rows) {
+  for (const { id, f } of rows) {
+    const thumb = await mapillaryThumb(f);
+    if (!thumb) continue;
+    const slot = document.querySelector(`[data-house-id="${CSS.escape(id)}"] .card-photo`);
+    if (!slot) continue;
+    const img = document.createElement("img");
+    img.className = "card-photo";
+    img.src = thumb;
+    img.alt = "";
+    img.loading = "lazy";
+    slot.replaceWith(img);
+  }
 }
 
 // ---- fit by strategy ----
@@ -682,7 +742,7 @@ function houseCard({ id, f, v }) {
   } else if (link) {
     // No key and no feed photo: a tappable tile that opens the curb view in
     // Google Maps. Costs nothing and needs no account.
-    photo = `<a class="card-photo card-photo-link" href="${esc(link)}"
+    photo = `<a class="card-photo card-photo-link" href="${esc(link)}" data-photo-slot
                 target="_blank" rel="noopener">
                <span class="card-photo-icon">🛣️</span>
                <span>See it from the street</span>
@@ -928,25 +988,32 @@ function setScreen(next) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  // The Maps key lives in this browser only. It buys map images and nothing
-  // else, so it does not belong in the repo secrets alongside credentials
-  // that can read the database.
-  const mapsInput = $("maps-key");
-  if (mapsInput) mapsInput.value = localStorage.getItem("mapsKey") || "";
-  $("save-maps-key")?.addEventListener("click", () => {
-    const key = (mapsInput.value || "").trim();
-    if (!key) return setStatus("Enter a key first.", false);
-    localStorage.setItem("mapsKey", key);
-    setStatus("Saved. Photos will appear on the Matches tab.");
+  // Both photo keys live in this browser only. Neither can read the
+  // database, so neither belongs in the repo secrets.
+  const photoKeys = [["maps-key", "mapsKey"], ["mapillary-key", "mapillaryKey"]];
+  photoKeys.forEach(([id, slot]) => {
+    const el = $(id);
+    if (el) el.value = localStorage.getItem(slot) || "";
+  });
+  $("save-photo-keys")?.addEventListener("click", () => {
+    let saved = 0;
+    photoKeys.forEach(([id, slot]) => {
+      const value = ($(id).value || "").trim();
+      if (value) { localStorage.setItem(slot, value); saved += 1; }
+      else localStorage.removeItem(slot);
+    });
+    setStatus(saved ? "Saved. Photos will appear on the Matches tab."
+                    : "Both keys cleared; cards keep their street-view link.");
     renderMatches();
   });
-  $("clear-maps-key")?.addEventListener("click", () => {
-    localStorage.removeItem("mapsKey");
-    mapsInput.value = "";
-    setStatus("Key removed; cards go back to no photo.");
+  $("clear-photo-keys")?.addEventListener("click", () => {
+    photoKeys.forEach(([id, slot]) => {
+      localStorage.removeItem(slot);
+      $(id).value = "";
+    });
+    setStatus("Keys removed; cards keep their street-view link.");
     renderMatches();
   });
-
 
   $("nav-criteria").addEventListener("click", () =>
     setScreen(screen === "criteria" ? "matches" : "criteria"));
