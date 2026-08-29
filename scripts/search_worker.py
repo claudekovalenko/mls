@@ -575,7 +575,37 @@ def build_house_fields(listing, criteria, verdict):
     }
 
 
-def run_search(at, criteria_record, existing_keys, budget):
+def price_change_update(listing, known):
+    """An update for a house we already have, if its price moved. Else None.
+
+    A listing we have already recorded is not news twice -- unless the number
+    changed, which is the single most useful thing that can happen to a house
+    we are already watching. The feed never says "this dropped"; it just
+    reports today's price. Only a comparison against what we stored last run
+    can tell the difference, which is what makes the stored history worth
+    keeping at all.
+
+    Previous Price is written from the price we held, not from the feed's own
+    history, so the drop shown is the one that happened on our watch.
+    """
+    new_price = listing.get("price")
+    old_price = known.get("price")
+    if not new_price or not old_price or new_price == old_price:
+        return None
+    fields = {
+        "Price": new_price,
+        "Previous Price": old_price,
+        "Price Change Date": date.today().isoformat(),
+    }
+    sqft = listing.get("sqft")
+    if sqft:
+        fields["Price Per Sqft"] = round(new_price / sqft)
+    if listing.get("daysOnMarket") is not None:
+        fields["Days on Market"] = listing["daysOnMarket"]
+    return {"id": known["id"], "fields": fields}
+
+
+def run_search(at, criteria_record, existing, budget):
     fields = criteria_record["fields"]
     name = fields.get("Name") or fields.get("Market") or "(unnamed)"
 
@@ -599,11 +629,18 @@ def run_search(at, criteria_record, existing_keys, budget):
     if median_ppsf:
         print(f"  {name}: {len(eligible)} eligible, median ${median_ppsf:,.0f}/sqft")
 
-    new_rows = []
+    new_rows, updates = [], []
     for listing in eligible:
         listing["_signals"] = categories(listing, fields, median_ppsf)
         key = (listing.get("address") or listing.get("url") or "").strip().lower()
-        if not key or key in existing_keys:
+        if not key:
+            continue
+        if key in existing:
+            # Known house: not a new listing, but possibly a new price.
+            change = price_change_update(listing, existing[key])
+            if change:
+                updates.append(change)
+                existing[key]["price"] = listing.get("price")
             continue
 
         # ARV is left unknown rather than proxied by the list price. Setting
@@ -633,11 +670,12 @@ def run_search(at, criteria_record, existing_keys, budget):
             continue
 
         new_rows.append(build_house_fields(listing, fields, verdict))
-        existing_keys.add(key)
+        existing[key] = {"id": None, "price": listing.get("price")}
 
     new_rows.sort(key=lambda r: -len(str(r["Value Signals"]).split(", ")))
-    print(f"  {name}: {len(new_rows)} new in {MIN_CATEGORIES}+ categories")
-    return new_rows
+    print(f"  {name}: {len(new_rows)} new in {MIN_CATEGORIES}+ categories, "
+          f"{len(updates)} price change(s)")
+    return new_rows, updates
 
 
 def main():
@@ -667,19 +705,25 @@ def main():
     budget = rentcast_budget.load()
     print(budget.summary())
 
+    # Keyed by address and by listing URL, carrying the id and the price we
+    # last recorded -- the price is what makes a re-run able to notice a drop
+    # instead of silently skipping a house it already knows.
     houses = at.list_records(TABLE_HOUSES)
-    existing_keys = set()
+    existing = {}
     for rec in houses:
         f = rec.get("fields", {})
+        entry = {"id": rec.get("id"), "price": f.get("Price")}
         for candidate in (f.get("Address"), f.get("Listing URL")):
             if candidate:
-                existing_keys.add(str(candidate).strip().lower())
+                existing[str(candidate).strip().lower()] = entry
 
-    all_new = []
+    all_new, all_updates = [], []
     try:
         for record in criteria_rows:
             try:
-                all_new.extend(run_search(at, record, existing_keys, budget))
+                found, changed = run_search(at, record, existing, budget)
+                all_new.extend(found)
+                all_updates.extend(changed)
             except rentcast_budget.BudgetExhausted:
                 # Propagate: this is not a per-search failure, it means every
                 # remaining search would be refused too. Stop cleanly and keep
@@ -697,11 +741,25 @@ def main():
         rentcast_budget.save(budget)
         print(budget.summary())
 
+    # Price changes are written even when nothing new was found: a quiet week
+    # where two houses we are already watching dropped 20k is not a quiet week.
+    if all_updates:
+        # Guard against a house matched by two searches in one run, which
+        # would otherwise be patched twice and overwrite its own Previous
+        # Price with the value it was just given.
+        seen, deduped = set(), []
+        for u in all_updates:
+            if u["id"] and u["id"] not in seen:
+                seen.add(u["id"])
+                deduped.append(u)
+        at.update_records(TABLE_HOUSES, deduped)
+        print(f"Recorded {len(deduped)} price change(s).")
+
     if all_new:
         at.create_records(TABLE_HOUSES, all_new)
-        print(f"Added {len(all_new)} house(s) to Airtable.")
-    else:
-        print("No new qualifying houses this run.")
+        print(f"Added {len(all_new)} house(s).")
+    elif not all_updates:
+        print("No new qualifying houses and no price changes this run.")
     return 0
 
 

@@ -150,6 +150,15 @@ async function listAll(table) {
 // ---- state ----
 let criteria = [];
 let houses = [];
+// The three lanes. Declared here rather than beside laneOf() further down,
+// because currentLane below reads them while this file is still executing --
+// a `const` in the wrong order is a load-time crash, not a late failure.
+const LANES = [
+  { id: "multifamily", label: "Multiplex", hint: "20+ unit complexes" },
+  { id: "house",       label: "Houses",    hint: "detached single family" },
+  { id: "condo",       label: "Condos",    hint: "condo and townhouse units" },
+];
+const DEFAULT_LANE = "house";
 // Which lane the Matches screen is showing. Remembered across reloads,
 // because whichever one you were working in is the one you want back.
 let currentLane = localStorage.getItem("lane") || DEFAULT_LANE;
@@ -347,12 +356,9 @@ function houseAsText(f) {
 // Derived from the house rather than stored, so the lanes are right for the
 // rows that predate any of this. Units and Property Type are the evidence;
 // Found By breaks a tie when the feed said nothing useful.
-const LANES = [
-  { id: "multifamily", label: "Multiplex", hint: "20+ unit complexes" },
-  { id: "house",       label: "Houses",    hint: "detached single family" },
-  { id: "condo",       label: "Condos",    hint: "condo and townhouse units" },
-];
-const DEFAULT_LANE = "house";
+// LANES and DEFAULT_LANE are declared up in the state block, because the
+// initial value of currentLane reads them at load time and `const` is not
+// hoisted the way a function declaration is.
 
 function laneOf(f) {
   const type = String(f["Property Type"] || "").toLowerCase();
@@ -370,9 +376,22 @@ function laneCounts() {
   return counts;
 }
 
-// The address as a Street View still. Needs a free Google Maps key; without
-// one this returns "" and the card renders exactly as it does today rather
-// than showing a broken image.
+// Two ways to see a house from the road, and the free one is the default.
+//
+// streetViewLink builds a plain Google Maps URL that opens the curb view in
+// the Maps app. No API key, no Google account, no billing -- which is the
+// point: embedding a Street View *image* requires a key, and getting a key
+// requires enabling billing and attaching a card even when usage stays
+// inside the free allowance. The link gives the same answer ("what does it
+// actually look like?") for nothing.
+function streetViewLink(address) {
+  if (!address) return "";
+  const q = encodeURIComponent(String(address));
+  return `https://www.google.com/maps/search/?api=1&query=${q}&layer=c`;
+}
+
+// The embedded still, only if someone has chosen to paste a key in. Absent a
+// key this returns "" and the card falls back to the link tile.
 function streetView(address, w = 640, h = 200) {
   const key = localStorage.getItem("mapsKey");
   if (!key || !address) return "";
@@ -510,14 +529,41 @@ function sourceBadge(f) {
   return `<span class="src">found via ${esc(SOURCE_LABELS[raw] || raw)}</span>`;
 }
 
+// The move since the last run, in dollars. Mirrors send_digest._price_change_html:
+// "Price Cut" is the listing's whole life, this is what changed on our watch.
+function priceChangeChip(f) {
+  const old = f["Previous Price"], now = f.Price;
+  if (!old || !now || old === now) return "";
+  const delta = now - old;
+  const pct = Math.abs(delta) / old * 100;
+  const dir = delta < 0 ? "drop" : "rise";
+  const label = delta < 0
+    ? `↓ ${money(Math.abs(delta))} off · ${pct.toFixed(1)}%`
+    : `↑ ${money(delta)} up · ${pct.toFixed(1)}%`;
+  return `<div class="price-change price-${dir}">${label}
+            <span class="was">was ${money(old)}</span></div>`;
+}
+
 function houseCard({ id, f, v }) {
   // The feed's own photo when it has one, a Street View still otherwise --
   // for a fixer hunt the kerb shot is close to the point, since a tired roof
   // and an overgrown yard are visible from the road.
   const src = f["Photo URL"] || streetView(f.Address);
-  const photo = src
-    ? `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy">`
-    : `<div class="card-photo card-photo-empty"></div>`;
+  const link = streetViewLink(f.Address);
+  let photo;
+  if (src) {
+    photo = `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy">`;
+  } else if (link) {
+    // No key and no feed photo: a tappable tile that opens the curb view in
+    // Google Maps. Costs nothing and needs no account.
+    photo = `<a class="card-photo card-photo-link" href="${esc(link)}"
+                target="_blank" rel="noopener">
+               <span class="card-photo-icon">🛣️</span>
+               <span>See it from the street</span>
+             </a>`;
+  } else {
+    photo = `<div class="card-photo card-photo-empty"></div>`;
+  }
   const tier = t => `<span class="tier tier-${t.replace(" ", "-")}">${t}</span>`;
   return `
     <article class="card house-card" data-house-id="${esc(id)}">
@@ -537,6 +583,7 @@ function houseCard({ id, f, v }) {
           ${f.Status ? ` · ${esc(f.Status)}` : ""}
           ${sourceBadge(f)}
         </div>
+        ${priceChangeChip(f)}
         ${signalChips(f["Value Signals"])}
         ${fitBlock(f)}
         ${cardStats(f, v)}

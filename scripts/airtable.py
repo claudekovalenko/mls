@@ -92,6 +92,13 @@ SCHEMA = {
         ("Year Built", "number"),
         ("Days on Market", "number"),
         ("Price Cut", "number"),              # percent off the first asking price
+        # What the house cost the last time we looked, and when that changed.
+        # This is the whole reason houses are stored rather than re-fetched:
+        # a listing we already know about is only news again if its price
+        # moved, and nothing in the feed tells us that -- only a comparison
+        # against what we recorded last run can.
+        ("Previous Price", "number"),
+        ("Price Change Date", "date"),
         ("Source", "singleLineText"),
         ("Notes", "multilineText"),
         ("Date Added", "date"),

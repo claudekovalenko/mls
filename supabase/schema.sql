@@ -85,6 +85,11 @@ create table if not exists houses (
   year_built         numeric,
   days_on_market     numeric,
   price_cut          numeric,
+  -- What it cost last time we looked, and the day that changed. The digest
+  -- selects on price_change_date, so a house we already know about can come
+  -- back into an email when -- and only when -- its price actually moved.
+  previous_price     numeric,
+  price_change_date  date,
   source             text,
   notes              text,
   date_added         date not null default current_date,
@@ -96,6 +101,7 @@ create table if not exists houses (
 create unique index if not exists houses_address_key on houses (lower(address));
 
 create index if not exists houses_date_added_idx on houses (date_added desc);
+create index if not exists houses_price_change_idx on houses (price_change_date desc);
 create index if not exists houses_found_by_idx   on houses (found_by);
 
 -- Keep updated_at honest without every caller remembering to set it.

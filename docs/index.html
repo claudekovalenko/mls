@@ -108,12 +108,17 @@
       <h2>Photos</h2>
       <p class="sub">
         The listing feed carries no photos, and the listing sites block fetching theirs.
-        A Google Maps key puts a Street View shot of each address on its card — for a
-        fixer hunt the kerb view is close to the point, since a tired roof and an
-        overgrown yard show from the road. Free at this volume.
-        Get one at <code>console.cloud.google.com</code> → enable
-        <strong>Street View Static API</strong>.
-        Stored on this device only; it never leaves your browser.
+        So every card carries a <strong>See it from the street</strong> tile that opens
+        the Google Maps curb view — no key, no account, no card on file. For a fixer
+        hunt the kerb view is close to the point, since a tired roof and an overgrown
+        yard show from the road.
+      </p>
+      <p class="sub">
+        Optional: pasting a Google Maps key below swaps that tile for the photo itself,
+        inline on the card. Google requires billing enabled on the project to issue a
+        key — a card on file, even though this volume stays inside the free
+        5,000/month. Leave it blank to keep everything free. Stored on this device
+        only; it never leaves your browser.
       </p>
       <label class="field">Google Maps key
         <input type="password" id="maps-key" placeholder="AIza…" autocomplete="off">
