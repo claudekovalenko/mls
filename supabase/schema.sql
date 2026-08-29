@@ -80,6 +80,9 @@ create table if not exists houses (
   listing_url        text,
   photo_url          text,
   property_type      text,
+  -- Street-level imagery is looked up by coordinate, not by address.
+  latitude           numeric,
+  longitude          numeric,
   units              numeric,
   found_by           text,          -- the criteria row that found it
   year_built         numeric,

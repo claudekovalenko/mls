@@ -81,25 +81,39 @@
     <div class="card" id="photos-card">
       <h2>Photos</h2>
       <p class="sub">
-        The listing feed carries no photos, and the listing sites block fetching theirs.
-        So every card carries a <strong>See it from the street</strong> tile that opens
-        the Google Maps curb view — no key, no account, no card on file. For a fixer
-        hunt the kerb view is close to the point, since a tired roof and an overgrown
-        yard show from the road.
+        The listing feed carries no photos and the listing sites block fetching theirs,
+        so every card links to the Google Maps curb view — no key, no account, nothing
+        to set up. For a fixer hunt the kerb view is close to the point: a tired roof
+        and an overgrown yard show from the road.
       </p>
       <p class="sub">
-        Optional: pasting a Google Maps key below swaps that tile for the photo itself,
-        inline on the card. Google requires billing enabled on the project to issue a
-        key — a card on file, even though this volume stays inside the free
-        5,000/month. Leave it blank to keep everything free. Stored on this device
-        only; it never leaves your browser.
+        Both fields below are optional and both stay on this device only.
       </p>
-      <label class="field">Google Maps key
+
+      <label class="field">Mapillary token <span class="hint">free, no card</span>
+        <input type="password" id="mapillary-key" placeholder="MLY|…" autocomplete="off">
+      </label>
+      <p class="sub small">
+        Crowdsourced street photos, shown right on the card. Sign up at
+        <code>mapillary.com/dashboard/developer</code> — a token is free and needs no
+        billing account. Coverage is the trade: through-roads usually have imagery,
+        cul-de-sacs often don't, and a house with none just keeps its link.
+        Only works on houses found after August 2026, when the search started
+        recording coordinates.
+      </p>
+
+      <label class="field">Google Maps key <span class="hint">needs a card on file</span>
         <input type="password" id="maps-key" placeholder="AIza…" autocomplete="off">
       </label>
+      <p class="sub small">
+        Near-total coverage, and it works from the address alone, so it fills the gaps
+        Mapillary leaves. Google requires billing enabled to issue a key — a card on
+        file, even though this volume stays inside the free 5,000 images a month.
+      </p>
+
       <div class="card-actions">
-        <button class="secondary" id="save-maps-key" type="button">Save key</button>
-        <button class="secondary" id="clear-maps-key" type="button">Remove</button>
+        <button class="secondary" id="save-photo-keys" type="button">Save</button>
+        <button class="secondary" id="clear-photo-keys" type="button">Remove both</button>
       </div>
     </div>
   </div>

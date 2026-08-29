@@ -190,6 +190,10 @@ def fetch_rentcast(criteria, api_key, budget, coverage=None):
                 # feed that reports "Pending" is telling us something we
                 # would otherwise only guess at from an absence next week.
                 "feedStatus": (r.get("mlsStatus") or r.get("status") or "").strip(),
+                # Kept for street-level imagery, which is looked up by
+                # coordinate rather than by address.
+                "latitude": _num(r.get("latitude")),
+                "longitude": _num(r.get("longitude")),
             })
     # "No agent" only means FSBO if this feed names agents for anyone. If the
     # response carries none at all, the field is simply unpopulated and every
@@ -583,6 +587,8 @@ def build_house_fields(listing, criteria, verdict):
         "Listing URL": listing.get("url") or zillow_url(listing.get("address")),
         "Photo URL": listing.get("photoUrl") or "",
         "Property Type": listing.get("propertyType") or "",
+        "Latitude": listing.get("latitude"),
+        "Longitude": listing.get("longitude"),
         "Units": listing.get("units"),
         "Found By": criteria.get("Name") or "",
         "Year Built": listing.get("yearBuilt"),
