@@ -121,7 +121,7 @@ def fetch_reso(criteria, base_url, api_key):
 
 # ------------------------------------------------------------------ RentCast
 
-def fetch_rentcast(criteria, api_key, budget):
+def fetch_rentcast(criteria, api_key, budget, coverage=None):
     # RentCast takes one zip per request, so a zip ring costs one call each --
     # the 16-zip "30068 + 10 mi" row is 16 billed requests every single run.
     # Every one of them goes through the budget gate before it is issued.
@@ -131,6 +131,10 @@ def fetch_rentcast(criteria, api_key, budget):
         if not budget.can_spend():
             print(f"    budget gate: stopping after {len(out)} listing(s); "
                   f"remaining zips deferred to the next run")
+            # Half a search is not evidence of absence. Anything not fetched
+            # must not be read as "gone from the market" later.
+            if coverage is not None:
+                coverage["complete"] = False
             break
         params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
         if zip_code:
@@ -152,6 +156,11 @@ def fetch_rentcast(criteria, api_key, budget):
         budget.spend(note=f"{criteria.get('Name', '?')} / {zip_code or criteria.get('City', '?')}")
         payload = _get_json(url, {"X-Api-Key": api_key, "Accept": "application/json"})
         records = payload if isinstance(payload, list) else payload.get("listings", [])
+        # A response filled to the limit is a page, not a complete answer:
+        # the houses past the cut-off are missing because we stopped asking,
+        # not because they sold.
+        if coverage is not None and len(records) >= MAX_PER_SEARCH:
+            coverage["complete"] = False
 
         for r in records:
             out.append({
@@ -228,7 +237,16 @@ def resolve_source():
     return None
 
 
-def fetch_listings(criteria, budget):
+def fetch_listings(criteria, budget, coverage=None):
+    """Listings for one criteria row.
+
+    `coverage` is an out-parameter: the adapter sets complete=False if it
+    could not see the whole slice it was asked about (budget ran out, a
+    response came back filled to the page limit). Only a complete answer can
+    justify concluding that a house we already track has left the market,
+    which is why the flag travels with the results rather than being guessed
+    at afterwards.
+    """
     source = resolve_source()
     if source == "reso":
         base_url = os.environ.get("LISTINGS_API_URL")
@@ -239,7 +257,7 @@ def fetch_listings(criteria, budget):
         api_key = os.environ.get("RENTCAST_API_KEY")
         if not api_key:
             raise RuntimeError("LISTINGS_API_TYPE=rentcast but RENTCAST_API_KEY is unset")
-        return fetch_rentcast(criteria, api_key, budget)
+        return fetch_rentcast(criteria, api_key, budget, coverage)
     return None  # nothing configured
 
 
@@ -571,6 +589,8 @@ def build_house_fields(listing, criteria, verdict):
         # changes how much the rest of the row should be trusted.
         "Source": listing.get("source") or resolve_source(),
         "Notes": " · ".join(verdict["flipReasons"][:2]),
+        "Listing Status": "Active",
+        "Last Seen": date.today().isoformat(),
         "Date Added": date.today().isoformat(),
     }
 
@@ -609,11 +629,19 @@ def run_search(at, criteria_record, existing, budget):
     fields = criteria_record["fields"]
     name = fields.get("Name") or fields.get("Market") or "(unnamed)"
 
-    listings = fetch_listings(fields, budget)
+    coverage = {"complete": True}
+    listings = fetch_listings(fields, budget, coverage)
     if listings is None:
         print(f"  {name}: no listing source configured, skipping")
-        return []
+        return [], [], None
     print(f"  {name}: fetched {len(listings)}")
+
+    # Every address this search saw on the market right now, whether or not it
+    # cleared the criteria. This is the roll call the delisting pass checks
+    # against, so it has to be the raw feed rather than the filtered set --
+    # a house that stopped qualifying is still on the market.
+    seen = {(l.get("address") or "").strip().lower() for l in listings}
+    seen.discard("")
 
     targets = {
         "flipProfit": fields.get("Target Flip Profit"),
@@ -675,7 +703,57 @@ def run_search(at, criteria_record, existing, budget):
     new_rows.sort(key=lambda r: -len(str(r["Value Signals"]).split(", ")))
     print(f"  {name}: {len(new_rows)} new in {MIN_CATEGORIES}+ categories, "
           f"{len(updates)} price change(s)")
-    return new_rows, updates
+    # The roll call is only usable as evidence of absence if the search
+    # actually saw its whole slice this run.
+    return new_rows, updates, (seen if coverage["complete"] else None)
+
+
+# Statuses that mean a person has taken an interest. The feed does not get to
+# retire these: if you are touring a house or have an offer on it, it staying
+# in your list is the whole point, and "it left the public feed" is often
+# precisely because of what you did.
+PIPELINE_STATUSES = {"Interested", "Touring", "Toured", "Offer",
+                     "Under Contract", "Purchased"}
+
+
+def retire_missing(houses, roll_call):
+    """Mark houses that a complete search no longer sees as off the market.
+
+    The feed is queried for Active listings only, so a house that was in a
+    search's results before and is absent from a complete pass of that same
+    search is no longer for sale -- under contract, sold, or withdrawn. That
+    is the single most important thing to know about a house you were about
+    to drive to, and nothing in the data says it outright.
+
+    Deliberately conservative: only searches that saw their whole slice this
+    run get a vote, only houses that search found are eligible, and anything
+    in your own pipeline is left alone.
+    """
+    today = date.today().isoformat()
+    updates = []
+    for rec in houses:
+        f = rec.get("fields", {})
+        seen = roll_call.get(f.get("Found By") or "")
+        if seen is None:
+            continue
+        if f.get("Status") in PIPELINE_STATUSES:
+            continue
+        key = (f.get("Address") or "").strip().lower()
+        if not key:
+            continue
+        if key in seen:
+            # Still listed. Record that we saw it, and undo a previous
+            # retirement if it came back on the market.
+            fields = {"Last Seen": today}
+            if f.get("Listing Status") == "Off Market":
+                fields["Listing Status"] = "Active"
+            if f.get("Last Seen") == today and "Listing Status" not in fields:
+                continue
+            updates.append({"id": rec["id"], "fields": fields})
+        elif f.get("Listing Status") != "Off Market":
+            updates.append({"id": rec["id"],
+                            "fields": {"Listing Status": "Off Market"}})
+    return updates
 
 
 def main():
@@ -718,12 +796,15 @@ def main():
                 existing[str(candidate).strip().lower()] = entry
 
     all_new, all_updates = [], []
+    roll_call = {}          # search name -> addresses it saw on the market
     try:
         for record in criteria_rows:
             try:
-                found, changed = run_search(at, record, existing, budget)
+                found, changed, seen = run_search(at, record, existing, budget)
                 all_new.extend(found)
                 all_updates.extend(changed)
+                if seen is not None:
+                    roll_call[record.get("fields", {}).get("Name") or ""] = seen
             except rentcast_budget.BudgetExhausted:
                 # Propagate: this is not a per-search failure, it means every
                 # remaining search would be refused too. Stop cleanly and keep
@@ -740,6 +821,14 @@ def main():
         # counter after real spend is exactly how a balance gets drained twice.
         rentcast_budget.save(budget)
         print(budget.summary())
+
+    retirements = retire_missing(houses, roll_call)
+    if retirements:
+        gone = sum(1 for u in retirements
+                   if u["fields"].get("Listing Status") == "Off Market")
+        at.update_records(TABLE_HOUSES, retirements)
+        print(f"Marked {gone} off market; refreshed {len(retirements) - gone} "
+              f"still-listed house(s).")
 
     # Price changes are written even when nothing new was found: a quiet week
     # where two houses we are already watching dropped 20k is not a quiet week.

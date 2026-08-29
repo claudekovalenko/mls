@@ -712,6 +712,10 @@ def main():
             return False
         if skip and skip in found_by:
             return False
+        # A house you can no longer buy is not news. Under contract, sold or
+        # withdrawn houses drop out of the email entirely.
+        if f.get("Listing Status") == "Off Market":
+            return False
         # Two ways in, and only two: it is newly listed, or its price moved.
         # Everything else is a house we already emailed about, unchanged --
         # and re-sending it is how a digest turns into noise nobody opens.

@@ -213,16 +213,40 @@ function sortOptions() {
   return opts;
 }
 
+// Is this house still buyable? The worker marks anything a complete search
+// stopped seeing as Off Market -- under contract, sold, or withdrawn. Rows
+// written before that field existed have no value, and absence of evidence
+// is not evidence of absence, so they count as live.
+const isLive = f => f["Listing Status"] !== "Off Market";
+
+// The short list. Everything that matches criteria is worth having; this is
+// the subset worth looking at today -- it qualifies on the numbers, or a
+// human already flagged it, or its price just moved, or it lands in enough
+// of the brief's categories to be more than a near-miss.
+function isHighlighted(f, v) {
+  if (f.Qualified || v.bestRank >= 2) return true;
+  if (f.Status && f.Status !== "New" && f.Status !== "Rejected") return true;
+  if (f["Previous Price"] && f.Price && f.Price < f["Previous Price"]) return true;
+  return String(f["Value Signals"] || "").split(",").filter(s => s.trim()).length >= 3;
+}
+
 function visibleMatches() {
   const marketFilter = $("filter-market").value;
-  const onlyQualified = $("filter-qualified").checked;
+  const view = ($("filter-view") || {}).value || "highlights";
   const sortBy = ($("sort-by") || {}).value || "best";
   const catCount = f => String(f["Value Signals"] || "").split(",").filter(s => s.trim()).length;
 
   let rows = houses.map(r => ({ id: r.id, f: r.fields || {}, v: houseVerdict(r.fields || {}) }));
   rows = rows.filter(r => laneOf(r.f) === currentLane);
   if (marketFilter) rows = rows.filter(r => (r.f.Market || "") === marketFilter);
-  if (onlyQualified) rows = rows.filter(r => r.f.Qualified || r.v.bestRank >= 2);
+  // Off market is its own view rather than a hidden state: the houses are
+  // still there when you want to look back at what a street actually sold
+  // for, but they never sit in a list of things to go and buy.
+  if (view === "off") rows = rows.filter(r => !isLive(r.f));
+  else {
+    rows = rows.filter(r => isLive(r.f));
+    if (view === "highlights") rows = rows.filter(r => isHighlighted(r.f, r.v));
+  }
 
   const desc = get => (a, b) => (get(b.f) ?? -Infinity) - (get(a.f) ?? -Infinity);
   const asc = get => (a, b) => (get(a.f) ?? Infinity) - (get(b.f) ?? Infinity);
@@ -285,7 +309,21 @@ function renderMatches() {
   const wrap = $("matches-list");
   const rows = visibleMatches();
 
-  $("matches-empty").style.display = rows.length ? "none" : "block";
+  const empty = $("matches-empty");
+  empty.style.display = rows.length ? "none" : "block";
+  if (!rows.length) {
+    // An empty Highlights lane means something different from an empty
+    // database, and telling someone to go connect a feed they already
+    // connected is how an app loses their trust.
+    const view = ($("filter-view") || {}).value || "highlights";
+    empty.textContent = houses.length
+      ? (view === "highlights"
+          ? "Nothing stands out in this lane right now. Switch to “Everything live” for the full set that matches your criteria."
+          : view === "off"
+            ? "Nothing has come off the market in this lane yet."
+            : "No live listings in this lane. Check “Off market” for ones that have gone under contract.")
+      : "Nothing yet. Add a search on the Searches tab — the worker fills this in once a listing feed is connected.";
+  }
 
   const markets = [...new Set(rows.map(r => r.f.Market || "Unspecified"))];
   wrap.innerHTML = markets.map(market => {
@@ -372,7 +410,15 @@ function laneOf(f) {
 
 function laneCounts() {
   const counts = Object.fromEntries(LANES.map(l => [l.id, 0]));
-  houses.forEach(r => { counts[laneOf(r.fields || {})] += 1; });
+  // Counted against the view you are actually in, so the number on the tab
+  // matches the number of cards under it rather than contradicting them.
+  const view = ($("filter-view") || {}).value || "highlights";
+  houses.forEach(r => {
+    const f = r.fields || {};
+    if (view === "off" ? isLive(f) : !isLive(f)) return;
+    if (view === "highlights" && !isHighlighted(f, houseVerdict(f))) return;
+    counts[laneOf(f)] += 1;
+  });
   return counts;
 }
 
@@ -572,6 +618,7 @@ function houseCard({ id, f, v }) {
         <div class="card-title">
           ${esc(f.Address || "Untitled")}
           ${f.Qualified ? '<span class="badge">QUALIFIED</span>' : ""}
+          ${isLive(f) ? "" : '<span class="badge badge-off" title="No longer an active listing — under contract, sold, or withdrawn">OFF MARKET</span>'}
         </div>
         <div class="card-sub">
           ${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba
@@ -916,7 +963,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   $("filter-market").addEventListener("change", renderMatches);
-  $("filter-qualified").addEventListener("change", renderMatches);
+  $("filter-view").addEventListener("change", renderMatches);
   $("sort-by").addEventListener("change", renderMatches);
 
   setScreen("matches");

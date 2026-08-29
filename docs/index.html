@@ -64,8 +64,12 @@
         <select id="filter-market"><option value="">All markets</option></select>
         <select id="sort-by"><option value="best">Sort: best overall</option></select>
       </label>
-      <label class="check">
-        <input type="checkbox" id="filter-qualified"> Only ones that qualify
+      <label>Show
+        <select id="filter-view">
+          <option value="highlights">Highlights</option>
+          <option value="live">Everything live</option>
+          <option value="off">Off market</option>
+        </select>
       </label>
       <button class="secondary" id="copy-matches" type="button">Copy as text</button>
     </div>
