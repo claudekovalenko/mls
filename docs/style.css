@@ -257,7 +257,11 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   position: fixed;
   isolation: isolate;
   left: 50%;
-  bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  /* --viewport-lift is the gap between the layout bottom and the bottom of
+     what is actually visible, kept current by trackViewport(). Zero on a
+     desktop and on a scrolled phone page; a real number on a short page
+     where the browser keeps its chrome expanded. */
+  bottom: calc(max(18px, env(safe-area-inset-bottom, 0px)) + var(--viewport-lift, 0px));
   transform: translate3d(-50%, 0, 0);
   will-change: transform;
   display: flex; align-items: center; gap: 2px;

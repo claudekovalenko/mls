@@ -416,29 +416,93 @@ function shiftLane(step) {
   if (next) goToLane(next.id);
 }
 
-// Swipe left and right across the list to move between lanes, the way the
-// sliding thumb implies you can. Deliberately strict: the gesture has to be
-// mostly horizontal and long enough to be intentional, or every diagonal
-// scroll on a phone would change lane underneath you.
-const SWIPE_MIN_X = 60;      // px of travel before it counts
-const SWIPE_MAX_Y = 45;      // vertical drift allowed; more means you scrolled
+// Keeps the dock pinned to the bottom of what you can actually see.
+//
+// A fixed element sits at the bottom of the layout viewport, and on a phone
+// that is not where the screen ends: a page too short to scroll keeps the
+// browser's URL bar expanded, so the viewport is shorter and the dock rides
+// visibly higher than it does on a long, scrolled page. That is why it moved
+// when switching to an empty lane -- nothing about the bar changed, the
+// window did. visualViewport reports the real visible rectangle, so the dock
+// is positioned against that instead and stays put whatever the page length
+// or the browser chrome is doing.
+function trackViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;   // desktop and older browsers: layout viewport is correct
+  const apply = () => {
+    const lift = Math.max(0, document.documentElement.clientHeight
+                             - (vv.height + vv.offsetTop));
+    document.documentElement.style.setProperty("--viewport-lift", `${lift}px`);
+  };
+  vv.addEventListener("resize", apply);
+  vv.addEventListener("scroll", apply);
+  apply();
+}
+
+// Drag left and right across the list to move between lanes.
+//
+// The list follows the finger rather than waiting for release, because a
+// switch that only responds after you let go gives you nothing to judge the
+// gesture by -- you cannot tell whether it took until it is over. Following
+// the finger makes the state of the gesture visible the whole way through,
+// and a drag that will not commit springs back so the refusal is legible too.
+const SWIPE_COMMIT = 0.28;   // fraction of the width that commits the change
+const SWIPE_MIN_X = 12;      // px before we decide this is a drag, not a tap
+const SWIPE_SLOPE = 1.2;     // horizontal must beat vertical by this much
 
 function enableLaneSwipe(el) {
-  let x0 = null, y0 = null;
+  const pane = () => $("matches-list");
+  let x0 = null, y0 = null, dragging = false, locked = null, width = 1;
+
+  const setShift = (px, animate) => {
+    const p = pane();
+    if (!p) return;
+    p.style.transition = animate
+      ? "transform .28s cubic-bezier(0.32, 0.72, 0, 1), opacity .28s ease"
+      : "none";
+    p.style.transform = px ? `translate3d(${px}px, 0, 0)` : "";
+    // Fading as it goes stops the drag reading as the list itself sliding
+    // off somewhere it could be scrolled back from.
+    p.style.opacity = px ? String(Math.max(0.35, 1 - Math.abs(px) / (width * 0.9))) : "";
+  };
+
+  const neighbour = step => LANES[LANES.findIndex(l => l.id === currentLane) + step];
+
   el.addEventListener("touchstart", e => {
     if (e.touches.length !== 1) { x0 = null; return; }
     x0 = e.touches[0].clientX;
     y0 = e.touches[0].clientY;
+    dragging = false; locked = null;
+    width = el.clientWidth || 1;
   }, { passive: true });
+
+  el.addEventListener("touchmove", e => {
+    if (x0 === null) return;
+    const dx = e.touches[0].clientX - x0;
+    const dy = e.touches[0].clientY - y0;
+    if (locked === null) {
+      if (Math.abs(dx) < SWIPE_MIN_X && Math.abs(dy) < SWIPE_MIN_X) return;
+      // Decide once, at the start, whether this is a scroll or a lane drag.
+      // Re-deciding mid-gesture is how a list ends up fighting the finger.
+      locked = Math.abs(dx) > Math.abs(dy) * SWIPE_SLOPE ? "lane" : "scroll";
+    }
+    if (locked !== "lane") return;
+    dragging = true;
+    // Nothing to move to on that side: let it stretch a little and stop, so
+    // the edge of the set is something you feel rather than guess at.
+    const resist = neighbour(dx < 0 ? 1 : -1) ? 1 : 0.25;
+    setShift(dx * resist, false);
+  }, { passive: true });
+
   el.addEventListener("touchend", e => {
     if (x0 === null) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - x0, dy = t.clientY - y0;
+    const dx = e.changedTouches[0].clientX - x0;
     x0 = null;
-    if (Math.abs(dx) < SWIPE_MIN_X || Math.abs(dy) > SWIPE_MAX_Y) return;
-    // Swiping left moves to the next lane on the right, which is how every
-    // paged interface on a phone behaves.
-    shiftLane(dx < 0 ? 1 : -1);
+    if (!dragging) return;
+    const step = dx < 0 ? 1 : -1;
+    const committed = Math.abs(dx) > width * SWIPE_COMMIT && neighbour(step);
+    setShift(0, true);
+    if (committed) shiftLane(step);
   }, { passive: true });
 }
 
@@ -1215,6 +1279,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch { window.prompt("Copy this:", text); }
   });
 
+  trackViewport();
   enableLaneSwipe($("screen-matches"));
 
   // Arrow keys do the same thing on a laptop.
