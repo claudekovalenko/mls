@@ -152,7 +152,7 @@ WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 # Feed names in words a person recognises. An empty Source means nobody's
 # adapter wrote the row -- a human typed it in.
 SOURCE_LABELS = {"rentcast": "RentCast", "reso": "MLS / IDX", "search": "search",
-                 "": "added by hand"}
+                 "manual": "typed in by hand"}
 
 # Verdict colours for the per-strategy fit rows.
 GOOD_FIT = "#166534"
@@ -421,8 +421,13 @@ def _house_card(f, criteria_rows=()):
     # Which net caught this one. Zillow is the hub every house links to, so
     # this is the other half of the provenance -- and a hand-added house says
     # so, since that is the one whose numbers no feed has checked.
-    stats.append("found via " + SOURCE_LABELS.get(
-        str(f.get("Source") or "").strip(), (f.get("Source") or "added by hand")))
+    # Only claim a source when one was actually recorded. Rows written
+    # before the field existed have none, and labelling those "added by
+    # hand" asserts something untrue about where the numbers came from --
+    # which is exactly the thing a provenance line is supposed to settle.
+    source = str(f.get("Source") or "").strip()
+    if source:
+        stats.append("found via " + SOURCE_LABELS.get(source, source))
 
     star = ('<span style="background:#fef3c7;color:#92400e;border-radius:10px;'
             'padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;">'
