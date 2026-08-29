@@ -28,7 +28,7 @@ create table if not exists search_criteria (
   keywords              text,
   must_haves            text,
   strategy              text check (strategy in ('Flip', 'BRRRR', 'Either')),
-  property_class        text check (property_class in ('Single Family', 'Multifamily', 'Any')),
+  property_class        text check (property_class in ('Single Family', 'Multifamily', 'Condo', 'Any')),
   min_units             numeric,
   max_price_per_sqft    numeric,
   max_all_in            numeric,
@@ -111,8 +111,14 @@ create index if not exists houses_price_change_idx on houses (price_change_date 
 create index if not exists houses_found_by_idx   on houses (found_by);
 
 -- Keep updated_at honest without every caller remembering to set it.
+-- search_path is pinned empty deliberately. Left mutable, schema resolution
+-- inside the function depends on whoever fires the trigger, so a role with a
+-- shadowing schema on its path could change what this runs. Supabase's own
+-- security linter flags the unpinned version.
 create or replace function touch_updated_at() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = ''
+as $$
 begin
   new.updated_at = now();
   return new;
