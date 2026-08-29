@@ -56,9 +56,6 @@
       within each market.
     </p>
 
-    <div id="lane-switch" class="lane-switch" role="tablist"
-         aria-label="Property type"></div>
-
     <div class="toolbar">
       <label>Market
         <select id="filter-market"><option value="">All markets</option></select>
@@ -133,6 +130,12 @@
       </div>
     </div>
   </div>
+
+  <!-- The lane switch sits at the bottom, directly above the nav, so the two
+       things you reach for most often are both under your thumb. Hidden on
+       the Searches screen, where it has nothing to switch. -->
+  <div id="lane-switch" class="lane-switch" role="tablist"
+       aria-label="Property type"></div>
 
   <nav class="bottom-nav">
     <button class="nav-btn active" id="nav-matches" type="button">
