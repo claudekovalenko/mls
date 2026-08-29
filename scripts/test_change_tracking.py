@@ -15,7 +15,7 @@ Run: python test_change_tracking.py
 import sys
 from datetime import date, timedelta
 
-from search_worker import price_change_update, retire_missing
+from search_worker import address_key, price_change_update, retire_missing
 from send_digest import lane_of
 
 TODAY = date.today().isoformat()
@@ -46,12 +46,12 @@ def digest_picks(house, days=1):
 def main():
     print("\nRUN 1 -- four houses recorded, then a week passes.\n")
     # What the first run left in the database.
-    stored = {
-        "1 dropped ln":   {"id": "r1", "price": 400000},
-        "2 unchanged rd": {"id": "r2", "price": 350000},
-        "3 sold ct":      {"id": "r3", "price": 275000},
-        "4 raised ave":   {"id": "r4", "price": 300000},
-    }
+    stored = {address_key(a): {"id": rid, "price": p} for a, rid, p in (
+        ("1 Dropped Ln", "r1", 400000),
+        ("2 Unchanged Rd", "r2", 350000),
+        ("3 Sold Ct", "r3", 275000),
+        ("4 Raised Ave", "r4", 300000),
+    )}
     rows = {
         "r1": {"Address": "1 Dropped Ln", "Price": 400000, "Date Added": OLD,
                "Found By": "Flip", "Status": "New", "Listing Status": "Active"},
@@ -74,8 +74,7 @@ def main():
     print("What the worker concludes:")
     changes = {}
     for listing in feed:
-        key = listing["address"].strip().lower()
-        known = stored.get(key)
+        known = stored.get(address_key(listing["address"]))
         if known:
             upd = price_change_update(listing, known)
             if upd:
@@ -95,7 +94,7 @@ def main():
     rows["r5"] = {"Address": "5 Brand New Way", "Price": 260000, "Date Added": TODAY,
                   "Found By": "Flip", "Status": "New", "Listing Status": "Active"}
 
-    seen = {l["address"].strip().lower() for l in feed}
+    seen = {address_key(l["address"]) for l in feed}
     records = [{"id": rid, "fields": f} for rid, f in rows.items()]
     for upd in retire_missing(records, {"Flip": seen}):
         rows[upd["id"]].update(upd["fields"])
@@ -122,6 +121,13 @@ def main():
 
     check("digest sends exactly the three that changed",
           picked, ["1 Dropped Ln", "4 Raised Ave", "5 Brand New Way"])
+
+    print("\nSame house, written two ways:")
+    check("typed by hand matches the feed's format",
+          address_key("1912 King Arthurs Ct Marietta GA 30062")
+          == address_key("1912 King Arthurs Ct, Marietta, GA 30062"), True)
+    check("different houses stay different",
+          address_key("1912 King Arthurs Ct") == address_key("1913 King Arthurs Ct"), False)
 
     print("\nLane routing, so the two emails stay separate:")
     check("a 24-unit block is a complex", lane_of({"Units": 24}), "multifamily")
