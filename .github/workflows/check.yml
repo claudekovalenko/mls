@@ -21,6 +21,10 @@ jobs:
         working-directory: scripts
         run: python check_schema_sync.py
 
+      - name: A second run notices what changed
+        working-directory: scripts
+        run: python test_change_tracking.py
+
       - name: Python compiles
         run: python -m compileall -q scripts
 
