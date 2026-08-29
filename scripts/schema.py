@@ -120,7 +120,7 @@ SCHEMA = {
 SELECT_OPTIONS = {
     "Strategy": ["Flip", "BRRRR", "Either"],
     "Property Class": ["Single Family", "Multifamily", "Condo", "Any"],
-    "Listing Status": ["Active", "Off Market"],
+    "Listing Status": ["Active", "Under Contract", "Off Market"],
     "Status": ["New", "Interested", "Touring", "Toured", "Offer",
                "Under Contract", "Purchased", "Rejected"],
     "Flip Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],
@@ -144,7 +144,7 @@ NUMBER_PRECISION = {
 SELECT_OPTIONS = {
     "Strategy": ["Flip", "BRRRR", "Either"],
     "Property Class": ["Single Family", "Multifamily", "Condo", "Any"],
-    "Listing Status": ["Active", "Off Market"],
+    "Listing Status": ["Active", "Under Contract", "Off Market"],
     "Status": ["New", "Interested", "Touring", "Toured", "Offer",
                "Under Contract", "Purchased", "Rejected"],
     "Flip Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],

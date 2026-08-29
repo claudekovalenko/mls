@@ -290,7 +290,7 @@ function sortOptions() {
 // stopped seeing as Off Market -- under contract, sold, or withdrawn. Rows
 // written before that field existed have no value, and absence of evidence
 // is not evidence of absence, so they count as live.
-const isLive = f => f["Listing Status"] !== "Off Market";
+const isLive = f => !["Off Market", "Under Contract"].includes(f["Listing Status"]);
 
 // The short list. Everything that matches criteria is worth having; this is
 // the subset worth looking at today -- it qualifies on the numbers, or a
@@ -698,7 +698,9 @@ function houseCard({ id, f, v }) {
         <div class="card-title">
           ${esc(f.Address || "Untitled")}
           ${f.Qualified ? '<span class="badge">QUALIFIED</span>' : ""}
-          ${isLive(f) ? "" : '<span class="badge badge-off" title="No longer an active listing — under contract, sold, or withdrawn">OFF MARKET</span>'}
+          ${isLive(f) ? "" : (f["Listing Status"] === "Under Contract"
+            ? '<span class="badge badge-pending" title="The listing feed reports this as pending or contingent">UNDER CONTRACT</span>'
+            : '<span class="badge badge-off" title="No longer an active listing — sold, withdrawn, or stopped appearing in the feed">OFF MARKET</span>')}
         </div>
         <div class="card-sub">
           ${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba
