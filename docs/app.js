@@ -153,10 +153,14 @@ let houses = [];
 // The three lanes. Declared here rather than beside laneOf() further down,
 // because currentLane below reads them while this file is still executing --
 // a `const` in the wrong order is a load-time crash, not a late failure.
+// Two things are being hunted, and they are different businesses: a block of
+// twenty-plus doors bought whole, and a single detached house to flip. There
+// is no condo lane because there is no condo search -- every criteria row is
+// Single Family or Multifamily, so a third tab would have been permanently
+// empty and would have implied a search that does not exist.
 const LANES = [
-  { id: "multifamily", label: "Multiplex", hint: "20+ unit complexes" },
+  { id: "multifamily", label: "20+ doors", hint: "multifamily complexes, 20 units and up" },
   { id: "house",       label: "Houses",    hint: "detached single family" },
-  { id: "condo",       label: "Condos",    hint: "condo and townhouse units" },
 ];
 const DEFAULT_LANE = "house";
 // Which lane the Matches screen is showing. Remembered across reloads,
@@ -404,7 +408,10 @@ function laneOf(f) {
   const units = Number(f.Units) || 0;
   if (units >= 5 || /multi|residential income|apartment|plex/.test(type)
       || foundBy.includes("multifamily")) return "multifamily";
-  if (/condo|townhouse|co-?op/.test(type) || foundBy.includes("condo")) return "condo";
+  // Everything else is the houses lane. Attached stock does not get filtered
+  // out here -- the searches already refuse it -- so anything of that kind
+  // still in the sheet is a legacy row, and hiding it in a lane that no
+  // longer exists would be worse than showing it.
   return "house";
 }
 
@@ -847,6 +854,9 @@ function setScreen(next) {
   $("screen-criteria").style.display = next === "criteria" ? "block" : "none";
   $("nav-matches").classList.toggle("active", next === "matches");
   $("nav-criteria").classList.toggle("active", next === "criteria");
+  // The lane switch belongs to the Matches list. On Searches it would be a
+  // floating control that changes nothing on screen.
+  $("lane-switch").style.display = next === "matches" ? "grid" : "none";
 }
 
 // The base id is buried in an Airtable URL and is the one piece of setup with

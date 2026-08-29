@@ -37,7 +37,7 @@ html, body { background: var(--bg); color: var(--ink); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   margin: 0;
-  padding: 36px 18px calc(104px + env(safe-area-inset-bottom, 0px));
+  padding: 36px 18px calc(164px + env(safe-area-inset-bottom, 0px));
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -270,17 +270,25 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
    different slice". Frosted so the ground shows through, which keeps it
    feeling like a layer over the page rather than another box on it. */
 .lane-switch {
-  position: relative;
+  /* Docked at the bottom, above the nav pill: which kind of property you are
+     looking at is a thumb-reach decision, not a scroll-to-the-top one. */
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  z-index: 49;
   display: grid;
-  grid-template-columns: repeat(var(--lane-count, 3), 1fr);
+  grid-template-columns: repeat(var(--lane-count, 2), 1fr);
   gap: 0;
-  margin: 0 0 14px;
+  margin: 0;
   padding: 4px;
   border-radius: 14px;
-  background: rgba(127, 140, 136, 0.14);
-  backdrop-filter: saturate(140%) blur(12px);
-  -webkit-backdrop-filter: saturate(140%) blur(12px);
-  border: 1px solid rgba(127, 140, 136, 0.18);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  box-shadow: 0 8px 30px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.15);
   overflow: hidden;
 }
 
@@ -289,10 +297,11 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   top: 4px;
   bottom: 4px;
   left: 4px;
-  width: calc((100% - 8px) / var(--lane-count, 3));
+  width: calc((100% - 8px) / var(--lane-count, 2));
   transform: translateX(calc(var(--lane-index, 1) * 100%));
+  /* Solid, so the frosted bar reads as a track with a thumb on it. */
   border-radius: 11px;
-  background: var(--surface, #fff);
+  background: var(--card);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
   transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
