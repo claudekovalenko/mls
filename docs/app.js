@@ -150,6 +150,15 @@ async function listAll(table) {
 // ---- state ----
 let criteria = [];
 let houses = [];
+// The three lanes. Declared here rather than beside laneOf() further down,
+// because currentLane below reads them while this file is still executing --
+// a `const` in the wrong order is a load-time crash, not a late failure.
+const LANES = [
+  { id: "multifamily", label: "Multiplex", hint: "20+ unit complexes" },
+  { id: "house",       label: "Houses",    hint: "detached single family" },
+  { id: "condo",       label: "Condos",    hint: "condo and townhouse units" },
+];
+const DEFAULT_LANE = "house";
 // Which lane the Matches screen is showing. Remembered across reloads,
 // because whichever one you were working in is the one you want back.
 let currentLane = localStorage.getItem("lane") || DEFAULT_LANE;
@@ -347,12 +356,9 @@ function houseAsText(f) {
 // Derived from the house rather than stored, so the lanes are right for the
 // rows that predate any of this. Units and Property Type are the evidence;
 // Found By breaks a tie when the feed said nothing useful.
-const LANES = [
-  { id: "multifamily", label: "Multiplex", hint: "20+ unit complexes" },
-  { id: "house",       label: "Houses",    hint: "detached single family" },
-  { id: "condo",       label: "Condos",    hint: "condo and townhouse units" },
-];
-const DEFAULT_LANE = "house";
+// LANES and DEFAULT_LANE are declared up in the state block, because the
+// initial value of currentLane reads them at load time and `const` is not
+// hoisted the way a function declaration is.
 
 function laneOf(f) {
   const type = String(f["Property Type"] || "").toLowerCase();
