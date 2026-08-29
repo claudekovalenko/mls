@@ -270,7 +270,7 @@ function discountPct(f) {
 // its own entry, sorted by that strategy's fit score -- so "sort by BRRRR A"
 // literally reorders the list by how well each house fits that plan.
 function sortOptions() {
-  const opts = [["best", "Sort: best overall"]];
+  const opts = [["best", "Best overall"]];
   criteria.filter(r => (r.fields || {}).Active).forEach(r => {
     const name = (r.fields || {}).Name || "Search";
     opts.push(["fit:" + name, "Fit: " + name.split("—")[0].trim()]);
@@ -391,6 +391,28 @@ function renderLaneSwitch() {
     }));
 }
 
+// What the filters are doing right now, in a sentence. Collapsing the
+// controls behind a button is only safe if their effect stays visible --
+// otherwise an empty list looks like "no houses" when it means "you filtered
+// them out three days ago and forgot".
+function renderFilterSummary(shown) {
+  const el = $("filter-summary");
+  if (!el) return;
+  const view = ($("filter-view") || {}).value || "highlights";
+  const market = ($("filter-market") || {}).value || "";
+  const sort = $("sort-by");
+  const sortLabel = sort && sort.selectedIndex >= 0
+    ? sort.options[sort.selectedIndex].text : "";
+  const lane = (LANES.find(l => l.id === currentLane) || {}).label || "";
+  const viewWord = { highlights: "Highlights", live: "Everything live",
+                     off: "Off market" }[view];
+  const bits = [`${shown} ${lane.toLowerCase()}${shown === 1 ? "" : "s"}`,
+                viewWord.toLowerCase()];
+  if (market) bits.push(`in ${market}`);
+  if (sortLabel) bits.push(`by ${sortLabel.toLowerCase()}`);
+  el.textContent = bits.join(" · ");
+}
+
 function renderMatches() {
   renderLaneSwitch();
   const wrap = $("matches-list");
@@ -442,6 +464,8 @@ function renderMatches() {
       if (ev.target.closest("a")) return;
       openHouse(el.dataset.houseId);
     }));
+
+  renderFilterSummary(rows.length);
 
   // Photos arrive after the list does, so nothing waits on them.
   hydratePhotos(rows);
@@ -1125,6 +1149,13 @@ document.addEventListener("DOMContentLoaded", () => {
       await navigator.clipboard.writeText(text);
       setStatus(`Copied ${visibleMatches().length} house(s) — paste into a message.`);
     } catch { window.prompt("Copy this:", text); }
+  });
+
+  $("filters-toggle").addEventListener("click", () => {
+    const panel = $("filters");
+    const open = panel.hidden;
+    panel.hidden = !open;
+    $("filters-toggle").setAttribute("aria-expanded", String(open));
   });
 
   $("filter-market").addEventListener("change", renderMatches);
