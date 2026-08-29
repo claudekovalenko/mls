@@ -1,7 +1,7 @@
 {
   "name": "House Finder",
   "short_name": "Houses",
-  "description": "Flip / BRRRR deal finder backed by Airtable",
+  "description": "Flip / BRRRR deal finder for Marietta and East Cobb",
   "start_url": "index.html",
   "scope": ".",
   "display": "standalone",
