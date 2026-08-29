@@ -374,3 +374,6 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 }
 .card-link:hover { text-decoration: underline; }
 .primary-link { color: var(--accent-dark); }
+
+#key-test { margin-top: 12px; font-size: .84rem; line-height: 1.7; color: var(--sub); }
+#key-test div { padding: 2px 0; }

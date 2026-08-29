@@ -1033,6 +1033,66 @@ document.addEventListener("DOMContentLoaded", () => {
                     : "Both keys cleared; cards keep their street-view link.");
     renderMatches();
   });
+  // Tests the keys from inside the app, which is the only place a test is
+  // meaningful: a key restricted to this site (as it should be) fails from a
+  // browser address bar no matter how correct it is, because there is no
+  // referrer. Google's metadata endpoint is used rather than the image one --
+  // it reports the same errors and is explicitly free, so checking costs
+  // nothing against the quota.
+  $("test-photo-keys")?.addEventListener("click", async () => {
+    const out = $("key-test");
+    out.textContent = "Testing…";
+    const lines = [];
+
+    const mapsKey = (($("maps-key") || {}).value || "").trim()
+                    || localStorage.getItem("mapsKey");
+    if (!mapsKey) lines.push("Google: no key saved.");
+    else {
+      const url = "https://maps.googleapis.com/maps/api/streetview/metadata"
+                + "?location=" + encodeURIComponent("3601 Longfellow Trl, Marietta, GA 30062")
+                + "&key=" + encodeURIComponent(mapsKey);
+      try {
+        const d = await (await fetch(url)).json();
+        if (d.status === "OK") lines.push("Google: working — imagery found for a test address.");
+        else if (d.status === "ZERO_RESULTS")
+          lines.push("Google: key accepted, but no imagery at the test address.");
+        else if (d.status === "REQUEST_DENIED")
+          lines.push(`Google: rejected — ${d.error_message || "check the key and its restrictions."}`);
+        else lines.push(`Google: ${d.status}${d.error_message ? " — " + d.error_message : ""}`);
+      } catch (err) {
+        lines.push(`Google: request failed (${err.message}).`);
+      }
+    }
+
+    const mlyKey = (($("mapillary-key") || {}).value || "").trim()
+                   || localStorage.getItem("mapillaryKey");
+    if (!mlyKey) lines.push("Mapillary: no token saved.");
+    else {
+      const url = `https://graph.mapillary.com/images?access_token=${encodeURIComponent(mlyKey)}`
+                + "&fields=id&bbox=-84.5612,33.9388,-84.5412,33.9588&limit=1";
+      try {
+        const res = await fetch(url);
+        const d = await res.json();
+        if (!res.ok) lines.push(`Mapillary: rejected — ${d?.error?.message || res.status}.`);
+        else if (d?.data?.length) lines.push("Mapillary: working — imagery found near Marietta.");
+        else lines.push("Mapillary: token accepted, but no imagery in the test area.");
+      } catch (err) {
+        lines.push(`Mapillary: request failed (${err.message}).`);
+      }
+    }
+
+    // How many houses each source can actually serve, which is the question
+    // behind the question.
+    // Only worth saying once there are houses to count. "0 of 0" reads as a
+    // failure when it only means the list has not loaded yet.
+    if (houses.length) {
+      const withCoords = houses.filter(r => r.fields?.Latitude && r.fields?.Longitude).length;
+      lines.push(`${withCoords} of ${houses.length} houses have coordinates `
+               + "(Mapillary needs them; Google works from the address).");
+    }
+    out.innerHTML = lines.map(l => `<div>${esc(l)}</div>`).join("");
+  });
+
   $("clear-photo-keys")?.addEventListener("click", () => {
     photoKeys.forEach(([id, slot]) => {
       localStorage.removeItem(slot);
