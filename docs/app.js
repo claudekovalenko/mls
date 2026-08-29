@@ -529,6 +529,21 @@ function sourceBadge(f) {
   return `<span class="src">found via ${esc(SOURCE_LABELS[raw] || raw)}</span>`;
 }
 
+// The move since the last run, in dollars. Mirrors send_digest._price_change_html:
+// "Price Cut" is the listing's whole life, this is what changed on our watch.
+function priceChangeChip(f) {
+  const old = f["Previous Price"], now = f.Price;
+  if (!old || !now || old === now) return "";
+  const delta = now - old;
+  const pct = Math.abs(delta) / old * 100;
+  const dir = delta < 0 ? "drop" : "rise";
+  const label = delta < 0
+    ? `↓ ${money(Math.abs(delta))} off · ${pct.toFixed(1)}%`
+    : `↑ ${money(delta)} up · ${pct.toFixed(1)}%`;
+  return `<div class="price-change price-${dir}">${label}
+            <span class="was">was ${money(old)}</span></div>`;
+}
+
 function houseCard({ id, f, v }) {
   // The feed's own photo when it has one, a Street View still otherwise --
   // for a fixer hunt the kerb shot is close to the point, since a tired roof
@@ -568,6 +583,7 @@ function houseCard({ id, f, v }) {
           ${f.Status ? ` · ${esc(f.Status)}` : ""}
           ${sourceBadge(f)}
         </div>
+        ${priceChangeChip(f)}
         ${signalChips(f["Value Signals"])}
         ${fitBlock(f)}
         ${cardStats(f, v)}

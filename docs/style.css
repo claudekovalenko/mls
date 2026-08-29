@@ -325,3 +325,14 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 @media (prefers-reduced-motion: reduce) {
   .lane-thumb { transition: none; }
 }
+
+/* ---- price movement ---- */
+/* A drop is the interesting direction, so it borrows the deal-signal ochre;
+   a rise is worth knowing and worth not shouting about. */
+.price-change {
+  display: inline-block; margin-top: 7px; padding: 4px 9px;
+  border-radius: 5px; font-size: .74rem; font-weight: 800;
+}
+.price-drop { background: #f5e6d5; color: #a2500c; }
+.price-rise { background: var(--bg); color: var(--sub); }
+.price-change .was { font-weight: 500; color: var(--sub); margin-left: 6px; }

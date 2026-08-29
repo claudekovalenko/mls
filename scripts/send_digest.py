@@ -311,6 +311,39 @@ def _street_view(address):
             f'</td></tr></table>')
 
 
+DROP = "#a2500c"        # a cut is the interesting direction, so it gets the hue
+DROP_SOFT = "#f5e6d5"
+RISE = "#5c6b69"        # a raise is worth knowing and worth not shouting about
+
+
+def _price_change_html(f):
+    """The actual dollars off, since the last time we looked.
+
+    "Price cut" from the feed's own history is the whole life of the listing;
+    this is the move that happened between two of our runs, which is the one
+    that is news today. Shown in dollars first because that is the number
+    people react to -- "$25,000 off" lands where "-6.1%" does not.
+    """
+    old, new = f.get("Previous Price"), f.get("Price")
+    if not old or not new or old == new:
+        return ""
+    delta = new - old
+    pct = abs(delta) / old * 100
+    when = f.get("Price Change Date") or ""
+    if delta < 0:
+        label = f"&darr; {_money(abs(delta))} off &nbsp;·&nbsp; {pct:.1f}% cut"
+        fg, bg = DROP, DROP_SOFT
+    else:
+        label = f"&uarr; {_money(delta)} up &nbsp;·&nbsp; {pct:.1f}%"
+        fg, bg = RISE, GROUND
+    was = f'was {_money(old)}' + (f' &nbsp;·&nbsp; changed {html.escape(when)}' if when else "")
+    return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            f'style="margin:0 0 8px;"><tr><td style="background:{bg};'
+            f'border-radius:4px;padding:6px 10px;font-size:12px;font-weight:700;'
+            f'color:{fg};">{label}<span style="font-weight:400;color:{MUTED};">'
+            f'&nbsp;&nbsp;{was}</span></td></tr></table>')
+
+
 def _discount_pct(cats):
     """The 'N% under area $/sqft' figure, if the scorer wrote one."""
     for c in cats:
@@ -392,6 +425,8 @@ def _house_card(f, criteria_rows=()):
                       f'font-weight:700;margin-left:8px;vertical-align:middle;">'
                       f'{short} · {best["met"]}/{best["known"]}</span>')
 
+    change = _price_change_html(f)
+
     # A bordered table cell, not a CSS button: Outlook drops padding on <a>.
     button = (
         f'<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
@@ -411,6 +446,7 @@ def _house_card(f, criteria_rows=()):
           <span style="font-family:{SERIF};font-size:26px;font-weight:700;
                        color:{INK};">{_money(f.get('Price'))}</span>{best_badge}
         </div>
+        {change}
         <div style="font-size:13px;color:{MUTED};line-height:1.5;">{html.escape(' · '.join(stats))}</div>
         {bar}
         <div style="margin:11px 0 10px;">{chips}</div>
@@ -475,6 +511,13 @@ def text_summary(new_houses, criteria_rows=()):
                 short = best["name"].split("—")[0].strip()
                 lines.append(f"  Best fit: {short} ({best['met']}/{best['known']} checks)")
         lines.append("  " + " · ".join(b for b in bits if b))
+        old = f.get("Previous Price")
+        if old and f.get("Price") and old != f["Price"]:
+            delta = f["Price"] - old
+            way = "off" if delta < 0 else "up"
+            lines.append(f"  PRICE {'DROP' if delta < 0 else 'RAISE'}: "
+                         f"{_money(abs(delta))} {way} from {_money(old)} "
+                         f"({abs(delta) / old * 100:.1f}%)")
         if cats:
             lines.append(f"  Why: {', '.join(cats)}")
         lines.append("  " + (f.get("Listing URL") or zillow_url(f.get("Address"))))
@@ -498,10 +541,23 @@ def build_email(criteria_rows, new_houses):
 
     if new_houses:
         n = len(new_houses)
-        subject = f"House Finder: {n} new match{'es' if n != 1 else ''}"
-        headline = f"{n} new match{'es' if n != 1 else ''}"
-        sub = ("Ranked by how many of your criteria each one provably falls into. "
-               "Tap through for photos and the full listing.")
+        # Two kinds of news, counted separately, because "3 price drops" is a
+        # different email from "3 new listings" and the subject line is the
+        # only part most people read.
+        drops = sum(1 for r in new_houses
+                    if r.get("fields", {}).get("Previous Price")
+                    and r.get("fields", {}).get("Price")
+                    and r["fields"]["Price"] < r["fields"]["Previous Price"])
+        fresh = n - drops
+        parts = []
+        if fresh:
+            parts.append(f"{fresh} new match{'es' if fresh != 1 else ''}")
+        if drops:
+            parts.append(f"{drops} price drop{'s' if drops != 1 else ''}")
+        headline = " · ".join(parts) or f"{n} match{'es' if n != 1 else ''}"
+        subject = f"House Finder: {headline}"
+        sub = ("Newly listed, or newly cheaper. Ranked by how many of your criteria "
+               "each one provably falls into. Tap through for the full listing.")
         content = house_rows(new_houses, criteria_rows)
     else:
         subject = "House Finder: search criteria are live"
@@ -656,7 +712,12 @@ def main():
             return False
         if skip and skip in found_by:
             return False
-        if (f.get("Date Added") or "") < cutoff:
+        # Two ways in, and only two: it is newly listed, or its price moved.
+        # Everything else is a house we already emailed about, unchanged --
+        # and re-sending it is how a digest turns into noise nobody opens.
+        is_new = (f.get("Date Added") or "") >= cutoff
+        dropped = (f.get("Price Change Date") or "") >= cutoff
+        if not (is_new or dropped):
             return False
         # A house someone costed and rejected stays out of the email. NO DATA
         # is not a rejection -- it means nobody has put real numbers in yet.
