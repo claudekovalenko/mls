@@ -105,11 +105,49 @@ button.secondary:hover { border-color: var(--accent); }
 details { margin-top: 16px; font-size: .88rem; color: var(--sub); }
 details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
 
-.toolbar {
-  display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 18px;
+/* ---- screen head + filters ---- */
+.screen-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 2px;
 }
-.toolbar label { margin-top: 0; }
-.toolbar select { width: auto; min-width: 170px; margin-top: 4px; }
+.icon-btn {
+  flex: 0 0 auto; width: 42px; height: 42px; margin-top: 4px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; cursor: pointer; padding: 0;
+}
+.icon-btn:hover { border-color: var(--accent); }
+.icon-btn[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent); }
+/* Three lines. The middle one shortens when open, so the button says which
+   state it is in without needing a second icon. */
+.bars { display: flex; flex-direction: column; gap: 4px; width: 18px; }
+.bars i {
+  display: block; height: 2px; border-radius: 2px;
+  background: var(--ink); transition: width .18s ease;
+}
+.bars i:nth-child(1), .bars i:nth-child(3) { width: 100%; }
+.bars i:nth-child(2) { width: 100%; }
+.icon-btn[aria-expanded="true"] .bars i:nth-child(2) { width: 55%; }
+
+#filter-summary { margin: 0 0 18px; font-size: .88rem; }
+
+/* display:grid outranks the UA rule that makes [hidden] display:none, so the
+   panel needs to say so itself. Without this the attribute flips, every
+   aria state is correct, and the panel stays on screen anyway. */
+.filters[hidden] { display: none; }
+.filters {
+  display: grid; gap: 12px; margin: 0 0 20px;
+  padding: 16px 18px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.filters label { margin-top: 0; }
+.filters select { width: 100%; margin-top: 5px; }
+.filters button { justify-self: start; margin-top: 4px; }
+@media (min-width: 620px) {
+  .filters { grid-template-columns: repeat(3, 1fr); align-items: end; }
+  .filters button { grid-column: 1 / -1; }
+}
 
 /* ---- market blocks ---- */
 .market-block { margin-bottom: 28px; }

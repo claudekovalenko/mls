@@ -21,18 +21,25 @@
 
   <!-- Matches -->
   <div class="wrap" id="screen-matches">
-    <div class="eyebrow">Search results</div>
-    <h1>Matches</h1>
-    <p class="sub">
-      Houses found by your active searches, scored for flip and BRRRR and ranked best-first
-      within each market.
-    </p>
+    <!-- Title left, controls behind one button right. The filters are a
+         once-in-a-while decision and were taking three lines of every
+         screen to say so. -->
+    <div class="screen-head">
+      <div>
+        <div class="eyebrow">Search results</div>
+        <h1>Matches</h1>
+      </div>
+      <button class="icon-btn" id="filters-toggle" type="button"
+              aria-expanded="false" aria-controls="filters"
+              aria-label="Filters and sorting">
+        <span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+    </div>
+    <!-- What the filters are currently doing, so hiding them never hides
+         the fact that something is filtered. -->
+    <p class="sub" id="filter-summary"></p>
 
-    <div class="toolbar">
-      <label>Market
-        <select id="filter-market"><option value="">All markets</option></select>
-        <select id="sort-by"><option value="best">Sort: best overall</option></select>
-      </label>
+    <div class="filters" id="filters" hidden>
       <label>Show
         <select id="filter-view">
           <option value="highlights">Highlights</option>
@@ -40,7 +47,13 @@
           <option value="off">Off market</option>
         </select>
       </label>
-      <button class="secondary" id="copy-matches" type="button">Copy as text</button>
+      <label>Market
+        <select id="filter-market"><option value="">All markets</option></select>
+      </label>
+      <label>Sort by
+        <select id="sort-by"><option value="best">Best overall</option></select>
+      </label>
+      <button class="secondary" id="copy-matches" type="button">Copy list as text</button>
     </div>
 
     <div id="matches-list"></div>
