@@ -99,6 +99,14 @@ SCHEMA = {
         # against what we recorded last run can.
         ("Previous Price", "number"),
         ("Price Change Date", "date"),
+        # Whether the listing is still on the market. The feed is queried for
+        # Active listings only, so a house we already track that stops coming
+        # back from a complete search has gone under contract, sold, or been
+        # withdrawn -- and a house you can no longer buy should not be sitting
+        # in a list of houses to buy. Kept as a flag rather than a delete, so
+        # the history survives and a relisting can flip back to Active.
+        ("Listing Status", "singleSelect"),
+        ("Last Seen", "date"),
         ("Source", "singleLineText"),
         ("Notes", "multilineText"),
         ("Date Added", "date"),
@@ -123,6 +131,7 @@ SCHEMA = {
 SELECT_OPTIONS = {
     "Strategy": ["Flip", "BRRRR", "Either"],
     "Property Class": ["Single Family", "Multifamily", "Condo", "Any"],
+    "Listing Status": ["Active", "Off Market"],
     "Status": ["New", "Interested", "Touring", "Toured", "Offer",
                "Under Contract", "Purchased", "Rejected"],
     "Flip Verdict": ["STRONG", "GOOD", "MARGINAL", "PASS", "NO DATA"],

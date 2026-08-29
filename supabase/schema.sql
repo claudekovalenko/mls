@@ -90,6 +90,12 @@ create table if not exists houses (
   -- back into an email when -- and only when -- its price actually moved.
   previous_price     numeric,
   price_change_date  date,
+  -- Still buyable? The feed is asked for Active listings only, so a house
+  -- that stops coming back from a complete search has gone under contract,
+  -- sold or been withdrawn. Flagged rather than deleted so the history
+  -- survives and a relisting can flip back.
+  listing_status     text default 'Active',
+  last_seen          date,
   source             text,
   notes              text,
   date_added         date not null default current_date,
