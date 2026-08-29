@@ -14,40 +14,9 @@
 </head>
 <body>
 
-<!-- Not a gate. The database ships with the app; this screen only exists
-     for pointing a device at a different project. -->
-<div class="wrap" id="setup" style="display:none;">
-  <div class="eyebrow">Advanced</div>
-  <h1>Use a different database</h1>
-  <p class="sub">
-    House Finder is already connected — you don't need anything here. This is only
-    for pointing this one device at a different Supabase project, such as a test copy.
-  </p>
-  <div class="card">
-    <label>Project URL
-      <input type="text" id="setup-sb-url" placeholder="https://xxxx.supabase.co">
-    </label>
-    <label>Anon public key
-      <input type="password" id="setup-sb-key" placeholder="sb_publishable_… or eyJ…">
-    </label>
-    <div class="card-actions">
-      <button class="primary" id="setup-sb-save">Use this project</button>
-      <button class="secondary" id="setup-cancel" type="button">Back</button>
-    </div>
-    <div id="status"></div>
-    <details>
-      <summary>Why is a key in the app at all?</summary>
-      <p>The anon key is a <strong>publishable</strong> key — it is designed to sit in
-      client code. It grants nothing by itself; the row-level security policies in
-      <code>supabase/schema.sql</code> decide what it can reach.</p>
-      <p>The key that bypasses those policies is the <strong>service_role</strong> key.
-      That one lives only in GitHub secrets, for the background search and the emails,
-      and never touches a browser.</p>
-    </details>
-  </div>
-</div>
-
-<div id="app" style="display:none;">
+<!-- Visible from the markup. Nothing hides this, and no script has to
+     run for the app to be on screen. -->
+<div id="app">
   <div class="wrap"><div id="app-status"></div></div>
 
   <!-- Matches -->
@@ -95,19 +64,18 @@
     </div>
 
     <div class="card" id="connection-card">
-      <h2>Connection</h2>
-      <p class="sub" id="connection-what"></p>
+      <h2>Database</h2>
+      <p class="sub">
+        Connected to the House Finder database, built into the app. There is nothing
+        to set up and nothing that can disconnect — this works on every device you
+        open it on.
+      </p>
       <p class="sub">
         The background search and the emails run in GitHub Actions, so they need their
-        own copy of the credentials — at github.com → Settings → Secrets → Actions.
-        Supabase needs <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_KEY</code>
-        (the service key, not the anon key: the worker writes rows).
+        own credentials — at github.com → Settings → Secrets → Actions:
+        <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_KEY</code>
+        (the service key, not the one in the app: the worker writes rows).
       </p>
-      <div class="card-actions">
-        <button class="secondary" id="copy-url" type="button">Copy project URL</button>
-        <button class="secondary" id="copy-key" type="button">Copy anon key</button>
-        <button class="secondary" id="disconnect" type="button">Disconnect</button>
-      </div>
     </div>
 
     <div class="card" id="photos-card">
