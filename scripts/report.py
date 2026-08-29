@@ -12,7 +12,7 @@ category. Everything is scored on what the data can actually prove, ranked,
 and printed. A house hitting three categories is worth a look even if the
 other four are unknowable.
 
-Read-only: prints a report, writes nothing to Airtable. Budget-gated like the
+Read-only: prints a report, writes nothing back. Budget-gated like the
 worker, and capped tighter -- this is meant to be run on demand.
 """
 import os

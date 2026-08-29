@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Continuous search: read criteria from Airtable, find listings, qualify, write back.
+"""Continuous search: read criteria, find listings, qualify, write back.
 
 Runs on a schedule. For every Active row in the Search Criteria table it
 queries the configured listing source, filters to that row's requirements,
@@ -764,8 +764,7 @@ def main():
         # while it did nothing at all -- three scheduled runs "succeeded"
         # without ever reaching a listing source, and the only way to notice
         # was to open the logs. An unconfigured worker is a broken worker.
-        print(f"::error::Airtable not configured: {exc}")
-        print("::error::Set the AIRTABLE_TOKEN repository secret.")
+        print(f"::error::Database not configured: {exc}")
         return 1
 
     source = resolve_source()

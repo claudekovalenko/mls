@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Edit a Search Criteria row from a workflow instead of the Airtable UI.
+"""Edit a Search Criteria row from a workflow instead of the dashboard.
 
-The Airtable connector drops often enough that changing a search should not
+A dashboard is not always to hand, and changing a search should not
 depend on it, and the Active checkbox in particular is the only thing the
 worker reads -- a row's Notes saying "deactivated" while Active stays ticked
 is a silent, expensive mistake (the Atlanta row cost a call a run for weeks
 that way).
 
-Costs nothing: Airtable reads and one update, no listing API calls.
+Costs nothing: database reads and one update, no listing API calls.
 
   CRITERIA_NAME   the row to change; matched case-insensitively, and a
                   partial match is accepted when it is unambiguous
@@ -23,7 +23,7 @@ import json
 import os
 import sys
 
-from airtable import SCHEMA
+from schema import SCHEMA
 from db import connect, TABLE_CRITERIA
 
 
@@ -49,7 +49,7 @@ def find_row(records, wanted):
 def check_fields(fields):
     """Reject a field the schema doesn't define.
 
-    Airtable with typecast on will happily accept an unknown name and drop
+    A loosely-typed write will happily accept an unknown name and drop
     it, so a typo'd 'Zip Code' would report success and change nothing.
     """
     known = {name for name, _ in SCHEMA[TABLE_CRITERIA]}

@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Supabase (Postgres) client, shaped like the Airtable one.
+"""Supabase (Postgres) client.
 
-Deliberately mirrors airtable.Airtable method for method -- list_records,
-create_records, update_records, delete_records -- and speaks the same
-{"id": ..., "fields": {...}} record shape. That is what lets db.py choose a
-backend at import time and leaves every caller unchanged.
-
-The translation that makes it possible: Airtable columns are "Days on
-Market", Postgres columns are days_on_market. FIELD_TO_COLUMN does that in
-one place rather than in every query.
+Exposes list_records, create_records, update_records, delete_records and the
+{"id": ..., "fields": {...}} record shape, so callers name fields ("Days on
+Market") and never columns (days_on_market). FIELD_TO_COLUMN does that
+translation in one place rather than in every query.
 
 Auth:
   SUPABASE_URL          https://<project>.supabase.co
@@ -27,8 +23,7 @@ TABLE_CRITERIA = "search_criteria"
 TABLE_HOUSES = "houses"
 TABLE_RECIPIENTS = "recipients"
 
-# Airtable's table names, so callers written against the old client keep
-# working when db.py routes them here.
+# The logical table names callers use, mapped to their Postgres tables.
 TABLE_ALIASES = {
     "Search Criteria": TABLE_CRITERIA,
     "Houses": TABLE_HOUSES,
@@ -53,7 +48,7 @@ def _build_column_to_field():
     would fix today's five and miss the sixth field somebody adds next month.
     """
     try:
-        from airtable import SCHEMA
+        from schema import SCHEMA
     except ImportError:      # standalone use, e.g. a one-off script
         return {}
     return {to_column(name): name
@@ -108,8 +103,8 @@ class Supabase:
     def list_records(self, table, formula=None, max_records=None):
         """All rows, in the {"id", "fields"} shape callers expect.
 
-        `formula` accepts the one Airtable formula this project actually
-        uses -- "{Active}" -- and rejects anything else rather than silently
+        `formula` accepts the one filter this project actually uses --
+        "{Active}" -- and rejects anything else rather than silently
         returning every row, which is how a filter quietly stops filtering.
         """
         query = "select=*"
@@ -128,8 +123,8 @@ class Supabase:
 
     @staticmethod
     def _as_fields(row):
-        """Postgres row -> Airtable-style fields, dropping nulls so callers
-        can keep using `.get(...)` truthiness the way they do today."""
+        """Postgres row -> the field-name shape callers expect, dropping nulls
+        so `.get(...)` truthiness keeps working."""
         return {to_field(k): v for k, v in row.items()
                 if k != "id" and v is not None}
 
@@ -160,7 +155,7 @@ class Supabase:
         return [{"id": r.get("id")} for r in rows]
 
     def upsert_records(self, table, fields_list, on_conflict):
-        """What Airtable could not do: insert-or-update in one round trip.
+        """Insert-or-update in one round trip.
 
         The search worker reads every house, matches on address in Python,
         then splits into creates and updates. Postgres does that server-side
@@ -176,7 +171,7 @@ class Supabase:
 
 
 def parse_list_field(value):
-    """Comma-separated text -> list of trimmed strings. Same as Airtable's."""
+    """Comma-separated text -> list of trimmed strings."""
     if not value:
         return []
     return [part.strip() for part in str(value).split(",") if part.strip()]

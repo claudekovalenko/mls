@@ -1,5 +1,5 @@
-# Edit a Search Criteria row without opening Airtable.
-# Airtable only -- no listing API calls, so this costs nothing.
+# Edit a Search Criteria row without opening the database dashboard.
+# Database only -- no listing API calls, so this costs nothing.
 name: Set Criteria
 
 on:
@@ -29,14 +29,8 @@ jobs:
       - name: Set fields
         working-directory: scripts
         env:
-          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
-          # Both backends are wired up; scripts/db.py picks one.
-          # Unset, it stays on Airtable, so this is inert until the
-          # Supabase secrets exist and DB_BACKEND says so.
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          DB_BACKEND: ${{ vars.DB_BACKEND }}
           CRITERIA_NAME: ${{ inputs.name }}
           FIELDS: ${{ inputs.fields }}
           CREATE: ${{ inputs.create && '1' || '0' }}

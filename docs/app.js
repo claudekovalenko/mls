@@ -4,9 +4,6 @@
  * with the project's anon key kept in localStorage; row-level security in
  * supabase/schema.sql decides what that key can touch.
  *
- * Airtable is the old backend and is still wired up so an existing install
- * keeps working until its data is migrated. When both are configured
- * Supabase wins. Nothing new should be built against Airtable.
  *
  * Deal math here mirrors scripts/deals.py. If you change one, change both --
  * the worker scores listings server-side, this scores what you type live.
@@ -100,31 +97,21 @@ const pct = n => n == null || Number.isNaN(n) ? "—" : (n >= 99 ? "∞" : (n * 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-// ---- storage backends ----
-// Two of them, and Supabase is the one being moved to. Airtable stays only
-// so an existing install keeps working until its data is migrated; nothing
-// new should be built against it.
+// ---- storage ----
 const store = {
-  get token() { return localStorage.getItem("airtable_token") || ""; },
-  set token(v) { localStorage.setItem("airtable_token", v); },
-  get baseId() { return localStorage.getItem("airtable_base") || ""; },
-  set baseId(v) { localStorage.setItem("airtable_base", v); },
   get sbUrl() { return (localStorage.getItem("supabase_url") || "").replace(/\/+$/, ""); },
   set sbUrl(v) { localStorage.setItem("supabase_url", v); },
   get sbKey() { return localStorage.getItem("supabase_key") || ""; },
   set sbKey(v) { localStorage.setItem("supabase_key", v); },
 };
 
-// Supabase wins when both are configured, so a finished migration switches
-// the app over by itself without anyone disconnecting anything.
-const usingSupabase = () => !!(store.sbUrl && store.sbKey);
-const isConnected = () => usingSupabase() || !!(store.token && store.baseId);
+const isConnected = () => !!(store.sbUrl && store.sbKey);
 
 // Postgres columns are snake_case; the rest of this app speaks the field
 // names the schema declares. Listed rather than derived, because neither
 // direction is mechanical -- "Days on Market" title-cases to "Days On
 // Market", and ARV and BRRRR survive no casing rule at all. Mirrors
-// scripts/airtable.py SCHEMA; a name missing here is a value silently
+// scripts/schema.py SCHEMA; a name missing here is a value silently
 // dropped, which is exactly the bug this shape is meant to make obvious.
 const FIELD_NAMES = [
   "Name", "Active", "Market", "City", "State", "Min Price", "Max Price",
@@ -185,63 +172,17 @@ async function supabase(method, table, { body, query } = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-async function airtable(method, table, { body, query } = {}) {
-  if (!store.token || !store.baseId) throw new Error("Airtable not connected yet.");
-  let url = `https://api.airtable.com/v0/${store.baseId}/${encodeURIComponent(table)}`;
-  if (query) url += "?" + new URLSearchParams(query).toString();
-  const res = await fetch(url, {
-    method,
-    headers: { Authorization: `Bearer ${store.token}`, "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({}));
-    const type = detail?.error?.type || "";
-    // Airtable deliberately conflates "no permission" with "no such table" in
-    // one 403, and its wording sends people off checking their token when the
-    // real answer is almost always that the base is still empty. Say both.
-    if (res.status === 403 && type === "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND") {
-      throw new Error(
-        `Couldn't read the "${table}" table. Either the base doesn't have it yet ` +
-        `— run the "Set Up Airtable Base" action to build it — or the token isn't granted on this base.`
-      );
-    }
-    if (res.status === 404) {
-      throw new Error(`Base ${store.baseId} has no "${table}" table yet. Run the "Set Up Airtable Base" action to build it.`);
-    }
-    if (res.status === 401) throw new Error("Airtable rejected the token. Check it was copied whole.");
-    throw new Error(detail?.error?.message || type || `Airtable ${res.status}`);
-  }
-  return res.json();
-}
-
 async function listAll(table) {
-  if (usingSupabase()) {
-    const rows = await supabase("GET", table, { query: "select=*" });
-    return rows.map(rowToRecord);
-  }
-  // Follow pagination so a growing table isn't silently cut off at 100.
-  let records = [], offset;
-  do {
-    const query = { pageSize: "100" };
-    if (offset) query.offset = offset;
-    const page = await airtable("GET", table, { query });
-    records = records.concat(page.records || []);
-    offset = page.offset;
-  } while (offset);
-  return records;
+  const rows = await supabase("GET", table, { query: "select=*" });
+  return rows.map(rowToRecord);
 }
 
-// One row in, one row out, whichever backend is behind it. Every write in
-// this app is a single record, so these two are the whole surface.
+// One row in, one row out. Every write in this app is a single record, so
+// this plus listAll is the whole database surface.
 async function saveRecord(table, id, fields) {
-  if (usingSupabase()) {
-    return id
-      ? supabase("PATCH", table, { body: fieldsToRow(fields), query: `id=eq.${encodeURIComponent(id)}` })
-      : supabase("POST", table, { body: fieldsToRow(fields) });
-  }
-  const body = { records: [id ? { id, fields } : { fields }], typecast: true };
-  return airtable(id ? "PATCH" : "POST", table, { body });
+  return id
+    ? supabase("PATCH", table, { body: fieldsToRow(fields), query: `id=eq.${encodeURIComponent(id)}` })
+    : supabase("POST", table, { body: fieldsToRow(fields) });
 }
 
 // ---- state ----
@@ -920,7 +861,7 @@ async function refresh() {
     const markets = [...new Set(houses.map(r => r.fields?.Market).filter(Boolean))];
     $("filter-market").innerHTML = '<option value="">All markets</option>' +
       markets.map(m => `<option>${esc(m)}</option>`).join("");
-    // Rebuilt on every load so a strategy added in Airtable becomes a sort
+    // Rebuilt on every load so a strategy added to a search becomes a sort
     // option on the next refresh. The current choice survives the rebuild.
     const sortSel = $("sort-by");
     const keep = sortSel.value;
@@ -945,11 +886,9 @@ function showSetup(show) {
   // during a migration both sets of credentials can be saved at once, and
   // guessing wrong about which one you are editing wastes an afternoon.
   if (what) {
-    what.textContent = usingSupabase()
+    what.textContent = store.sbUrl
       ? `Connected to Supabase at ${store.sbUrl}.`
-      : store.token
-        ? "Connected to Airtable — the old backend. Move to Supabase when you can."
-        : "Not connected.";
+      : "Not connected.";
   }
 }
 
@@ -964,48 +903,7 @@ function setScreen(next) {
   $("lane-switch").style.display = next === "matches" ? "grid" : "none";
 }
 
-// The base id is buried in an Airtable URL and is the one piece of setup with
-// no obvious home, so look it up from the token instead of asking for it.
-// Needs schema.bases:read, which a data-only token won't have -- hence the
-// fallback message rather than treating the failure as fatal.
-async function findBases() {
-  const token = $("setup-token").value.trim();
-  const out = $("setup-bases");
-  out.innerHTML = "";
-  if (!token) { setStatus("Paste your token first.", false); return; }
-  setStatus("Looking…");
-  let bases;
-  try {
-    const res = await fetch("https://api.airtable.com/v0/meta/bases", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error(res.status === 403
-      ? "That token can't list bases — add the schema.bases:read scope, or paste the app… id from your Airtable URL."
-      : `Airtable said ${res.status}.`);
-    bases = (await res.json()).bases || [];
-  } catch (err) {
-    setStatus(err.message, false);
-    return;
-  }
-  if (!bases.length) {
-    setStatus("This token has no bases yet. Create one in Airtable and grant the token access.", false);
-    return;
-  }
-  setStatus(`Found ${bases.length} base${bases.length > 1 ? "es" : ""}. Pick one:`);
-  out.innerHTML = bases.map(b =>
-    `<button type="button" class="secondary base-pick" data-base-id="${esc(b.id)}">${esc(b.name)}</button>`
-  ).join("");
-  out.querySelectorAll("[data-base-id]").forEach(btn =>
-    btn.addEventListener("click", () => {
-      $("setup-base").value = btn.dataset.baseId;
-      out.innerHTML = "";
-      setStatus(`Using ${btn.textContent} — hit Connect.`);
-    }));
-}
-
 document.addEventListener("DOMContentLoaded", () => {
-  $("setup-token").value = store.token;
-  $("setup-base").value = store.baseId;
   $("setup-sb-url").value = store.sbUrl;
   $("setup-sb-key").value = store.sbKey;
   $("setup-sb-save").addEventListener("click", async () => {
@@ -1013,18 +911,8 @@ document.addEventListener("DOMContentLoaded", () => {
     store.sbKey = $("setup-sb-key").value.trim();
     await refresh();
   });
-  $("setup-save").addEventListener("click", async () => {
-    store.token = $("setup-token").value.trim();
-    store.baseId = $("setup-base").value.trim();
-    await refresh();
-  });
-
-  $("setup-find").addEventListener("click", findBases);
-
-  // The token lives only in this browser, and the person may have nowhere
-  // else to retrieve it from -- Airtable shows a token once at creation and
-  // never again. These buttons make this device the way to get it into the
-  // repo's GitHub secrets without creating a new token.
+  // The credentials live only in this browser. These buttons make this
+  // device the way to get them into the repo's GitHub secrets.
   const copyOut = async (label, value) => {
     if (!value) { setStatus(`No ${label} saved on this device.`, false); return; }
     try {
@@ -1036,9 +924,9 @@ document.addEventListener("DOMContentLoaded", () => {
       window.prompt(`Copy this ${label}:`, value);
     }
   };
-  // The Maps key lives in this browser only. It is not an Airtable token --
-  // it buys map images and nothing else -- so it does not belong in the repo
-  // secrets alongside credentials that can read the database.
+  // The Maps key lives in this browser only. It buys map images and nothing
+  // else, so it does not belong in the repo secrets alongside credentials
+  // that can read the database.
   const mapsInput = $("maps-key");
   if (mapsInput) mapsInput.value = localStorage.getItem("mapsKey") || "";
   $("save-maps-key")?.addEventListener("click", () => {
@@ -1055,12 +943,10 @@ document.addEventListener("DOMContentLoaded", () => {
     renderMatches();
   });
 
-  $("copy-token").addEventListener("click", () => copyOut("token", store.token));
-  $("copy-base").addEventListener("click", () => copyOut("base ID", store.baseId));
+  $("copy-url").addEventListener("click", () => copyOut("project URL", store.sbUrl));
+  $("copy-key").addEventListener("click", () => copyOut("anon key", store.sbKey));
   $("disconnect").addEventListener("click", () => {
     if (!window.confirm("Disconnect this device? The saved credentials are removed from this browser — make sure they're saved somewhere (like the GitHub secrets) first.")) return;
-    store.token = "";
-    store.baseId = "";
     store.sbUrl = "";
     store.sbKey = "";
     showSetup(true);

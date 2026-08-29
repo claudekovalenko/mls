@@ -13,7 +13,7 @@ import pathlib
 import re
 import sys
 
-from airtable import SCHEMA, TABLE_CRITERIA, TABLE_HOUSES
+from schema import SCHEMA, TABLE_CRITERIA, TABLE_HOUSES
 from supabase_db import to_column
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

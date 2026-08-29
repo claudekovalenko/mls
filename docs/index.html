@@ -47,26 +47,6 @@
     </details>
   </div>
 
-  <details class="card">
-    <summary><strong>Still on Airtable?</strong></summary>
-    <p class="sub">
-      The old backend. Connect it here to keep working until the data is migrated —
-      once a Supabase project is connected above, the app uses that instead.
-    </p>
-    <label>Airtable Personal Access Token
-      <input type="password" id="setup-token" placeholder="pat…">
-    </label>
-    <label>Base ID
-      <input type="text" id="setup-base" placeholder="app…">
-    </label>
-    <div class="card-actions">
-      <button class="secondary" id="setup-save" type="button">Connect Airtable</button>
-      <button class="secondary" id="setup-find" type="button">Find my base</button>
-    </div>
-    <div id="setup-bases"></div>
-  </details>
-</div>
-
 </div>
 
 <div id="app" style="display:none;">
@@ -126,8 +106,8 @@
         (the service key, not the anon key: the worker writes rows).
       </p>
       <div class="card-actions">
-        <button class="secondary" id="copy-token" type="button">Copy token</button>
-        <button class="secondary" id="copy-base" type="button">Copy base ID</button>
+        <button class="secondary" id="copy-url" type="button">Copy project URL</button>
+        <button class="secondary" id="copy-key" type="button">Copy anon key</button>
         <button class="secondary" id="disconnect" type="button">Disconnect</button>
       </div>
     </div>

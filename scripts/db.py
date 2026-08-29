@@ -1,56 +1,38 @@
 #!/usr/bin/env python3
-"""Which database the project talks to.
+"""The database, ready to use.
 
-One import for every script, so switching backends is an environment
-variable rather than an edit in six files -- and so switching back is too,
-which matters more. A migration you cannot reverse in one setting is a
-migration nobody wants to run on a Friday.
+One import for every script. Supabase (Postgres via PostgREST) is the only
+backend; Airtable was removed once its data was migrated.
 
-  DB_BACKEND=airtable   the default, unchanged behaviour
-  DB_BACKEND=supabase   Postgres via PostgREST
-
-Unset, it infers: Supabase when its credentials are present, Airtable
-otherwise. So adding the two secrets is enough to move, and removing them is
-enough to move back.
-
-Table names are the Airtable ones in both cases. The Supabase client
-translates them, so callers never learn which backend they got.
+Table names are the logical ones -- "Houses", "Search Criteria" -- and the
+client translates them to their Postgres tables, so callers never spell a
+column name.
 """
 import os
+
+from schema import parse_list_field  # noqa: F401  (re-exported for callers)
 
 TABLE_CRITERIA = "Search Criteria"
 TABLE_HOUSES = "Houses"
 TABLE_RECIPIENTS = "Recipients"
 
 
-def backend_name():
-    explicit = (os.environ.get("DB_BACKEND") or "").strip().lower()
-    if explicit in ("airtable", "supabase"):
-        return explicit
-    if explicit:
-        raise RuntimeError(
-            f"DB_BACKEND={explicit!r} is not a backend. Use 'airtable' or "
-            f"'supabase', or leave it unset to infer from the credentials.")
-    if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"):
-        return "supabase"
-    return "airtable"
-
-
 def connect():
-    """The database, ready to use. Callers do not branch on the backend."""
-    name = backend_name()
-    if name == "supabase":
-        from supabase_db import Supabase
-        return Supabase()
-    from airtable import Airtable
-    return Airtable()
+    """Connect, or explain exactly what is missing.
 
-
-def parse_list_field(value):
-    """Comma-separated text -> list of trimmed strings.
-
-    Identical in both clients, so it lives here and neither backend owns it.
+    A worker that cannot reach its database should say which secret is absent
+    and where to get it, not raise something generic three frames deep. This
+    is the message somebody reads at 8am when the digest did not arrive.
     """
-    if not value:
-        return []
-    return [part.strip() for part in str(value).split(",") if part.strip()]
+    missing = [name for name in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY")
+               if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(
+            f"{' and '.join(missing)} not set. Add "
+            f"{'them' if len(missing) > 1 else 'it'} at GitHub -> Settings -> "
+            f"Secrets -> Actions. SUPABASE_URL is the project URL and "
+            f"SUPABASE_SERVICE_KEY is the service_role key (not the anon key: "
+            f"the worker writes rows). Both are in the Supabase dashboard "
+            f"under Settings -> API.")
+    from supabase_db import Supabase
+    return Supabase()
