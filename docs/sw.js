@@ -1,7 +1,7 @@
-// Caches only the static app shell. Airtable API calls are never cached --
+// Caches only the static app shell. Database API calls are never cached --
 // house data must always be live, or the app would quietly show stale prices
 // and verdicts with no way for the user to tell.
-const CACHE = "house-finder-v9";
+const CACHE = "house-finder-v10";
 const SHELL = ["index.html", "app.js", "style.css", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -17,7 +17,7 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) return;  // never touch Airtable
+  if (url.origin !== self.location.origin) return;  // never touch the database
   if (e.request.method !== "GET") return;
   // Network-first so shell updates land immediately; cache is the offline fallback.
   e.respondWith(
