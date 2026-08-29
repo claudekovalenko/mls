@@ -293,13 +293,21 @@ function sortOptions() {
 // is not evidence of absence, so they count as live.
 const isLive = f => !["Off Market", "Under Contract"].includes(f["Listing Status"]);
 
+// Your own decision about a house, as opposed to what the market did.
+// Under Contract, Purchased and Rejected are settled -- there is nothing
+// left to do about any of them. Interested and Touring are not: those are
+// live, and a price drop on one is the most useful alert this app can send.
+const DECIDED_STATUSES = ["Under Contract", "Purchased", "Rejected"];
+const isDecided = f => DECIDED_STATUSES.includes(f.Status);
+
 // The short list. Everything that matches criteria is worth having; this is
 // the subset worth looking at today -- it qualifies on the numbers, or a
 // human already flagged it, or its price just moved, or it lands in enough
 // of the brief's categories to be more than a near-miss.
 function isHighlighted(f, v) {
+  if (isDecided(f)) return false;
   if (f.Qualified || v.bestRank >= 2) return true;
-  if (f.Status && f.Status !== "New" && f.Status !== "Rejected") return true;
+  if (f.Status && f.Status !== "New") return true;
   if (f["Previous Price"] && f.Price && f.Price < f["Previous Price"]) return true;
   return String(f["Value Signals"] || "").split(",").filter(s => s.trim()).length >= 3;
 }

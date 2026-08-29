@@ -34,9 +34,13 @@ def check(label, got, want):
 
 def digest_picks(house, days=1):
     """The digest's own selection rule, as send_digest.worth_sending applies
-    it: newly listed, or newly cheaper, and still buyable."""
+    it: newly listed or newly cheaper, still buyable, and not already
+    decided."""
+    from send_digest import DECIDED_STATUSES
     cutoff = (date.today() - timedelta(days=days)).isoformat()
-    if house.get("Listing Status") == "Off Market":
+    if house.get("Listing Status") in ("Off Market", "Under Contract"):
+        return False
+    if house.get("Status") in DECIDED_STATUSES:
         return False
     is_new = (house.get("Date Added") or "") >= cutoff
     dropped = (house.get("Price Change Date") or "") >= cutoff
@@ -121,6 +125,18 @@ def main():
 
     check("digest sends exactly the three that changed",
           picked, ["1 Dropped Ln", "4 Raised Ave", "5 Brand New Way"])
+
+    print("\nHouses whose question is already settled:")
+    for status, sends in (("New", True), ("Interested", True), ("Touring", True),
+                          ("Under Contract", False), ("Purchased", False),
+                          ("Rejected", False)):
+        check(f"a {status!r} house with a fresh price cut is emailed: {sends}",
+              digest_picks({"Address": "x", "Status": status,
+                            "Price": 300000, "Previous Price": 340000,
+                            "Price Change Date": TODAY, "Date Added": OLD}), sends)
+    check("a house the market put under contract is not emailed",
+          digest_picks({"Address": "x", "Status": "New", "Date Added": TODAY,
+                        "Listing Status": "Under Contract"}), False)
 
     print("\nWhen the feed states a status outright:")
     from search_worker import listing_status_from_feed as feed_status
