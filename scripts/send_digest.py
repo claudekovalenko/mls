@@ -151,6 +151,11 @@ WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 
 # Feed names in words a person recognises. An empty Source means nobody's
 # adapter wrote the row -- a human typed it in.
+# Statuses that mean the question is settled. Interested and Touring are
+# deliberately absent: those are live and a price drop on one is exactly the
+# email worth getting.
+DECIDED_STATUSES = {"Under Contract", "Purchased", "Rejected"}
+
 SOURCE_LABELS = {"rentcast": "RentCast", "reso": "MLS / IDX", "search": "search",
                  "manual": "typed in by hand"}
 
@@ -750,6 +755,14 @@ def main():
         is_new = (f.get("Date Added") or "") >= cutoff
         dropped = (f.get("Price Change Date") or "") >= cutoff
         if not (is_new or dropped):
+            return False
+        # A decision already made is not news. Under Contract, Purchased and
+        # Rejected are your own words about a house -- there is nothing left
+        # to do about any of them, and putting one back in a list of things
+        # to go and look at is worse than useless. This is the pipeline
+        # Status, which is separate from Listing Status: one is what you
+        # decided, the other is what the market did.
+        if f.get("Status") in DECIDED_STATUSES:
             return False
         # A house someone costed and rejected stays out of the email. NO DATA
         # is not a rejection -- it means nobody has put real numbers in yet.
