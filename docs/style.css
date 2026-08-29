@@ -363,3 +363,14 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   font-weight: 600; font-size: .68rem; letter-spacing: 0;
   text-transform: none; color: var(--sub); margin-left: 6px;
 }
+
+/* ---- card links ---- */
+/* Zillow is where the photos and the listing remarks live, so it earns a
+   place on the card rather than one tap further in. */
+.card-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+.card-link {
+  font-size: .78rem; font-weight: 700; text-decoration: none;
+  color: var(--sub); white-space: nowrap;
+}
+.card-link:hover { text-decoration: underline; }
+.primary-link { color: var(--accent-dark); }

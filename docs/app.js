@@ -435,7 +435,12 @@ function renderMatches() {
   }).join("");
 
   wrap.querySelectorAll("[data-house-id]").forEach(el =>
-    el.addEventListener("click", () => openHouse(el.dataset.houseId)));
+    el.addEventListener("click", ev => {
+      // A link inside the card is its own destination; without this, tapping
+      // Zillow would also open the detail dialog behind the new tab.
+      if (ev.target.closest("a")) return;
+      openHouse(el.dataset.houseId);
+    }));
 
   // Photos arrive after the list does, so nothing waits on them.
   hydratePhotos(rows);
@@ -446,7 +451,15 @@ function renderMatches() {
 // how you get to the photos and remarks the listing feed doesn't carry.
 function zillowUrl(address) {
   if (!address) return "";
-  const slug = String(address).replace(/,/g, " ").trim().split(/\s+/).join("-");
+  // Zillow resolves an address slug to the listing itself when the string is
+  // clean: commas out, punctuation out, single hyphens between words. A
+  // stray comma or double space lands you on a search page instead of the
+  // house, which is the difference between one tap and five.
+  const slug = String(address)
+    .replace(/[.,#]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .join("-");
   return `https://www.zillow.com/homes/${encodeURIComponent(slug)}_rb/`;
 }
 
@@ -787,6 +800,12 @@ function houseCard({ id, f, v }) {
         <div class="card-verdicts">
           Flip ${tier(v.flipTier)} &nbsp; BRRRR ${tier(v.brrrrTier)}
           ${v.bestStrategy ? `<span class="best-strategy">→ better as ${v.bestStrategy}</span>` : ""}
+        </div>
+        <div class="card-links">
+          <a class="card-link primary-link" href="${esc(listingLink(f))}"
+             target="_blank" rel="noopener">Zillow — photos &amp; remarks →</a>
+          ${link ? `<a class="card-link" href="${esc(link)}" target="_blank"
+             rel="noopener">Street view →</a>` : ""}
         </div>
       </div>
     </article>`;
