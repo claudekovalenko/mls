@@ -307,11 +307,14 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .lane-btn {
   position: relative;      /* above the thumb */
   z-index: 1;
+  /* One line, not a stack: icon, word, count reads faster and leaves the
+     bar shallower. */
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 1px;
-  padding: 9px 4px 8px;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 6px;
   border: 0;
   background: none;
   cursor: pointer;
@@ -322,8 +325,16 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .lane-btn.on { color: var(--ink, #16211f); }
 .lane-btn:focus-visible { outline: 2px solid var(--accent, #0f766e); outline-offset: -2px; border-radius: 11px; }
 
+.lane-icon  { font-size: 15px; line-height: 1; }
 .lane-label { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
-.lane-count { font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.75; }
+/* The count sits in its own chip so a two- and a three-digit number do not
+   shift the word beside them. */
+.lane-count {
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  min-width: 20px; padding: 1px 5px; border-radius: 999px;
+  background: color-mix(in srgb, var(--sub) 14%, transparent);
+}
+.lane-btn.on .lane-count { background: var(--accent-soft); color: var(--accent-dark); }
 
 /* A row typed in by hand has been checked by nobody -- worth a different
    colour from a row a feed wrote. */
