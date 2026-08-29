@@ -255,6 +255,7 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
    scroll. translate3d keeps it on its own compositor layer. */
 .dock {
   position: fixed;
+  isolation: isolate;
   left: 50%;
   bottom: max(18px, env(safe-area-inset-bottom, 0px));
   transform: translate3d(-50%, 0, 0);
@@ -264,9 +265,48 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   padding: 4px;
   border-radius: 16px;
   z-index: 50;
-  background: var(--card);
-  border: 1px solid var(--line);
-  box-shadow: 0 6px 20px rgba(8, 18, 17, .14);
+  /* Liquid glass, the way Apple does it: transparent enough that the list
+     genuinely shows through, a strong blur with saturation lifted so the
+     colour behind bleeds into the panel, and -- the part that actually sells
+     it -- a bright specular rim along the top edge fading to nothing at the
+     bottom, as if light were catching a bevel. The outer shadow is wide and
+     weak so the panel floats without looking heavy. */
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid color-mix(in srgb, var(--line) 45%, transparent);
+  box-shadow:
+    0 10px 32px rgba(8, 18, 17, .16),
+    0 1px 3px rgba(8, 18, 17, .06),
+    inset 0 1px 0 rgba(255, 255, 255, .55),
+    inset 0 -8px 16px -8px rgba(255, 255, 255, .18);
+}
+/* The rim light. A pseudo-element rather than another inset shadow, because
+   a gradient can fade around the curve where a shadow cannot. */
+.dock::before {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg,
+    rgba(255, 255, 255, .75), rgba(255, 255, 255, .10) 40%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) {
+  .dock {
+    background: color-mix(in srgb, var(--card) 58%, transparent);
+    box-shadow:
+      0 10px 32px rgba(0, 0, 0, .55),
+      inset 0 1px 0 rgba(255, 255, 255, .12);
+  }
+  .dock::before {
+    background: linear-gradient(160deg,
+      rgba(255, 255, 255, .28), rgba(255, 255, 255, .04) 40%, transparent 70%);
+  }
 }
 
 .dock-btn {
@@ -343,8 +383,15 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   width: calc(100% / var(--lane-count, 2));
   transform: translateX(calc(var(--lane-index, 1) * 100%));
   border-radius: 12px;
-  background: var(--accent-soft);
-  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+  /* The lens the selection slides under: brighter than the panel it sits in,
+     with a highlight along its own top edge. */
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--card) 96%, transparent),
+    color-mix(in srgb, var(--card) 78%, transparent));
+  box-shadow:
+    0 1px 4px rgba(8, 18, 17, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .70);
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
 }
 
 .lane-btn {
