@@ -138,8 +138,6 @@ const store = {
   },
 };
 
-const isConnected = () => !!(store.sbUrl && store.sbKey);
-
 // Postgres columns are snake_case; the rest of this app speaks the field
 // names the schema declares. Listed rather than derived, because neither
 // direction is mechanical -- "Days on Market" title-cases to "Days On
@@ -890,8 +888,6 @@ async function saveHouse(e) {
 
 // ---- load / navigation ----
 async function refresh() {
-  if (!isConnected()) { showSetup(true); return; }
-  showSetup(false);
   try {
     setStatus("Loading…");
     [criteria, houses] = await Promise.all([listAll(TABLE_CRITERIA), listAll(TABLE_HOUSES)]);
@@ -907,26 +903,13 @@ async function refresh() {
     if ([...sortSel.options].some(o => o.value === keep)) sortSel.value = keep;
     renderCriteria();
     renderMatches();
-    showSetup(false);
     setStatus("");
   } catch (err) {
-    // Stay in the app and say what went wrong. Bouncing to a credentials
-    // form on any failure is how a dropped connection or a slow network
-    // turns into "this thing keeps asking me to log in" -- the credentials
-    // are almost never the problem, and re-typing them fixes nothing.
-    setStatus(`${err.message} — pull to retry.`, false);
-  }
-}
-
-function showSetup(show) {
-  $("setup").style.display = show ? "block" : "none";
-  $("app").style.display = show ? "none" : "block";
-  const what = $("connection-what");
-  if (what) {
-    what.textContent = store.isCustom
-      ? `Pointed at a custom project: ${store.sbUrl}`
-      : "Connected to the House Finder database. Nothing to set up — this is "
-        + "built into the app.";
+    // Say what went wrong and stay put. There is no screen to fall back to
+    // and nothing for anyone to re-enter -- the database is built in, so a
+    // failure here is a network or a server problem, never a credentials
+    // one, and the only useful response is to try again.
+    setStatus(`${err.message} — pull down to retry.`, false);
   }
 }
 
@@ -942,31 +925,6 @@ function setScreen(next) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Prefilled only when this device is already pointed somewhere custom;
-  // otherwise the fields stay empty rather than inviting an edit to the
-  // built-in project.
-  if (store.isCustom) {
-    $("setup-sb-url").value = store.sbUrl;
-    $("setup-sb-key").value = store.sbKey;
-  }
-  $("setup-sb-save").addEventListener("click", async () => {
-    store.sbUrl = $("setup-sb-url").value.trim();
-    store.sbKey = $("setup-sb-key").value.trim();
-    await refresh();
-  });
-  $("setup-cancel").addEventListener("click", () => showSetup(false));
-  // Copies what this device is using, for pasting into GitHub secrets.
-  const copyOut = async (label, value) => {
-    if (!value) { setStatus(`No ${label} saved on this device.`, false); return; }
-    try {
-      await navigator.clipboard.writeText(value);
-      setStatus(`${label} copied — paste it into the GitHub secret.`);
-    } catch {
-      // Clipboard API can be blocked (http, permissions); prompt() still
-      // gives a selectable string on every mobile browser.
-      window.prompt(`Copy this ${label}:`, value);
-    }
-  };
   // The Maps key lives in this browser only. It buys map images and nothing
   // else, so it does not belong in the repo secrets alongside credentials
   // that can read the database.
@@ -986,17 +944,6 @@ document.addEventListener("DOMContentLoaded", () => {
     renderMatches();
   });
 
-  $("copy-url").addEventListener("click", () => copyOut("project URL", store.sbUrl));
-  $("copy-key").addEventListener("click", () => copyOut("anon key", store.sbKey));
-  // Only meaningful when someone has pointed this device at a different
-  // project; otherwise there is nothing to disconnect from.
-  $("disconnect").addEventListener("click", async () => {
-    if (!store.isCustom) { showSetup(true); return; }
-    if (!window.confirm("Go back to the built-in House Finder database?")) return;
-    store.sbUrl = "";
-    store.sbKey = "";
-    await refresh();
-  });
 
   $("nav-criteria").addEventListener("click", () =>
     setScreen(screen === "criteria" ? "matches" : "criteria"));
