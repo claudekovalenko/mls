@@ -10,7 +10,7 @@ arithmetic artefact, not a judgement about the house.
 Both are fixed going forward. This clears what the old rules left behind so
 the app shows only what the current ones would produce.
 
-Costs nothing: Airtable reads and deletes only, no listing API calls.
+Costs nothing: database reads and deletes only, no listing API calls.
 
 Two things are never touched, because deleting is irreversible:
 

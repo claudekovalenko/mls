@@ -48,70 +48,19 @@ Add two repo secrets at github.com → Settings → Secrets → Actions:
 Every workflow picks Supabase up automatically once both exist; there is no
 switch to flip.
 
-### Coming from Airtable?
-
-`scripts/migrate_to_supabase.py` copies the rows over. It never writes to
-Airtable, and re-running it is safe. Run **Actions → Migrate to Supabase** with
-the dry-run box ticked first to see what it would do.
-
----
-
-## The old Airtable setup
-
-Kept for reference while the migration finishes. Nothing new should be built
-against it.
-
-### 1. Get a token
-
-airtable.com/create/tokens → scopes `data.records:read`, `data.records:write`,
-`schema.bases:read`, `schema.bases:write`. Grant it on your whole workspace if
-you want the next step to create the base for you, or on one existing base
-otherwise.
-
-### 2. Build the base
-
-Don't create the forty-odd fields by hand — `bootstrap_base.py` builds both
-tables from `SCHEMA` in [`scripts/airtable.py`](scripts/airtable.py), with the
-right number precision and select options:
-
-**From a phone**, where there's no shell: add `AIRTABLE_TOKEN` and
-`AIRTABLE_BASE_ID` as repo secrets (step 4), then run
-**Actions → Set Up Airtable Base → Run workflow**.
-
-**From a terminal:**
-
-```sh
-cd scripts
-
-# make a blank base called "House Finder" in Airtable, grant the token on it,
-# then just:
-AIRTABLE_TOKEN=pat… python bootstrap_base.py
-
-# or let it create the base (wsp… is in the Airtable URL)
-AIRTABLE_TOKEN=pat… AIRTABLE_WORKSPACE_ID=wsp… python bootstrap_base.py
-```
-
-You don't need to hunt down a base ID — it finds the base from the token and
-prints the ID when it's done. If it can't identify one it lists every base the
-token can see, with IDs, so you can re-run with `AIRTABLE_BASE_ID=app…`. Re-running is safe: it only adds fields
-that are missing and never renames, retypes, or deletes anything, so columns you
-add yourself survive.
-
 ### 3. Connect the app
 
-Open the site, paste the token, and hit **Find my base** to fill the ID in (or
-paste it yourself). They're kept in `localStorage` on
-that device and sent only to `api.airtable.com`. Nothing is committed to this
-repo and nothing is shared between devices — each phone/laptop connects once.
+Open the site and paste the project URL and anon key into the setup screen.
+They are kept in `localStorage` on that device and sent only to your own
+Supabase project. Nothing is committed to this repo and nothing is shared
+between devices — each phone or laptop connects once.
 
-### 4. Connect the worker
+### 4. Point the worker at a listing feed
 
 Repo → Settings → Secrets and variables → Actions:
 
 | Name | Kind | Value |
 |---|---|---|
-| `AIRTABLE_TOKEN` | secret | same token as above |
-| `AIRTABLE_BASE_ID` | secret | `app…` |
 | `LISTINGS_API_TYPE` | variable | `reso` or `rentcast` |
 | `LISTINGS_API_URL` | secret | RESO OData endpoint (reso only) |
 | `LISTINGS_API_KEY` | secret | bearer token for that feed |
@@ -119,13 +68,13 @@ Repo → Settings → Secrets and variables → Actions:
 
 Then run **Actions → Search Listings → Run workflow** to test it.
 
-### 5. Email digest (optional)
+### 5. Email digests
 
-`send_digest.py` mails the active criteria plus anything new, daily at 8am ET.
-Quiet by default when nothing turned up; run **Actions → Email Digest** with
-*force* checked to send a kickoff email announcing the criteria. Secrets:
-`SMTP_USER` (Gmail address), `SMTP_PASS` (a Gmail **App Password**, not the
-account password), `EMAIL_TO` (comma-separated recipients).
+`send_digest.py` mails anything newly listed or newly cheaper, daily at 8am
+Atlanta. There are two: **Email Digest** for houses and **Email Multifamily
+Digest** for 20+ door complexes. Both stay quiet when nothing changed.
+Secrets: `SMTP_USER` (Gmail address), `SMTP_PASS` (a Gmail **App Password**,
+not the account password). Recipients live in the `recipients` table.
 
 ## Where listings come from
 
@@ -164,40 +113,17 @@ Building something to get around that would be against those sites' terms, on a
 repo in your name, and would break constantly anyway. IDX is the path that
 actually works.
 
-## Moving to Supabase
+## Why Postgres
 
-Airtable is still the database of record. Supabase is built, tested and
-ready, and the switch is one environment variable — but it needs a project
-that only the owner can create, so the last three steps are theirs.
+The database was Airtable until August 2026. Postgres fixes two real
+weaknesses beyond the connector dropping constantly: it enforces uniqueness
+(Airtable could not, which is how a duplicate criteria row went unnoticed for
+weeks, costing an API call a run), and Row Level Security lets the app hold a
+public key that can only do the app's job, where an Airtable token could read
+and write everything in the base.
 
-Why move at all: the Airtable connector drops constantly, which is why half
-the tooling in `.github/workflows` exists to do from a runner what should be
-one tap in a UI. Supabase also fixes two real weaknesses rather than just the
-flakiness — Postgres enforces uniqueness (Airtable cannot, which is how a
-duplicate criteria row went unnoticed for weeks costing an API call a run),
-and Row Level Security lets the PWA hold a public key that can only do the
-app's job, where today it holds an Airtable token that can read and write
-everything.
-
-1. Create a project at supabase.com (free tier is ample here).
-2. Run [`supabase/schema.sql`](supabase/schema.sql) in the SQL editor.
-3. Add two repo secrets from Settings → API:
-   `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (the `service_role` key — it
-   bypasses RLS, so it belongs in secrets and never in a browser).
-4. Run the **Migrate to Supabase** workflow with dry-run ticked, read the
-   counts, then run it again unticked. It reads Airtable and writes Supabase;
-   it never modifies Airtable, and it is idempotent, so it can be re-run to
-   pick up whatever the searches added since.
-5. Set the `DB_BACKEND` repo variable to `supabase`.
-
-Step 5 is the only irreversible-feeling one, and it isn't: set it back to
-`airtable` and everything reads from Airtable again, because the migration
-never removed anything. Leave both populated for a week before deleting
-anything.
-
-`scripts/db.py` picks the backend: `DB_BACKEND` when set, otherwise Supabase
-if its credentials exist and Airtable if they don't. Both clients speak the
-same `{"id", "fields"}` record shape, so no caller knows which one it got.
+It is also plain Postgres, so nothing here is locked to Supabase — `pg_dump`
+moves the whole thing to any other host with the same schema.
 
 ## Upgrade paths, for when they're wanted
 
@@ -290,25 +216,28 @@ real numbers, and every verdict updates live before you save.
 ```
 docs/            the PWA (GitHub Pages)
   index.html     screens: setup, matches, searches
-  app.js         Airtable client, deal math, rendering
+  app.js         Supabase client, deal math, rendering
   style.css
   sw.js          caches the app shell only, never API responses
   manifest.json
 scripts/
-  airtable.py    REST client + SCHEMA (source of truth)
-  bootstrap_base.py  builds the base/tables from SCHEMA
+  schema.py      field names and allowed values (source of truth)
+  db.py          connect() -- the one import every script uses
+  supabase_db.py PostgREST client
   deals.py       flip/BRRRR math and qualification
   search_worker.py   the scheduled search + value signals
-  send_digest.py     daily email digest
-  migrate_to_airtable.py
+  send_digest.py     the email digests
+  cleanup_houses.py  removes rows the current rules would not write
+  check_schema_sync.py  fails the build if schema.py, the SQL and app.js drift
   probe_sources.py   the scraping-feasibility probe
-.github/workflows/search.yml
+supabase/schema.sql  the physical mirror of schema.py
+.github/workflows/
 ```
 
 ## Local use
 
 ```sh
 cd scripts
-export AIRTABLE_TOKEN=pat… AIRTABLE_BASE_ID=app…
+export SUPABASE_URL=https://….supabase.co SUPABASE_SERVICE_KEY=…
 python search_worker.py
 ```

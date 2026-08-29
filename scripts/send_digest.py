@@ -9,7 +9,7 @@ By default it stays silent when there's nothing new -- a daily "no houses"
 email trains people to ignore the ones that matter. Set FORCE_SEND=1 to send
 anyway (used for the kickoff email that announces the criteria).
 
-Recipients live in the Airtable "Recipients" table (Email + Active), not in
+Recipients live in the "Recipients" table (Email + Active), not in
 config, so the list can be changed from a phone without touching repo
 settings -- adding a partner, an agent, or a lender for one deal is a normal
 thing to do and shouldn't require editing a GitHub secret.
@@ -618,7 +618,7 @@ def build_email(criteria_rows, new_houses):
     <tr><td style="background:{GROUND};border-top:1px solid {LINE};padding:14px 24px;
                    font-size:11px;color:{MUTED};line-height:1.5;text-align:center;">
       Sent by House Finder &middot; searches run weekly &middot;
-      change recipients or criteria in Airtable
+      change recipients or criteria in the database
     </td></tr>
   </table>
  </td></tr>
@@ -634,7 +634,7 @@ def _looks_like_email(value):
 
 
 def resolve_recipients(at):
-    """Recipients come from Airtable, so they can be changed from a phone.
+    """Recipients come from the database, so they can be changed from a phone.
 
     EMAIL_TO still works and wins when set -- useful for a one-off send to
     someone who shouldn't join the standing list, and for running this
@@ -658,7 +658,7 @@ def resolve_recipients(at):
         (good if _looks_like_email(email) else bad).append(email or "(blank)")
     for entry in bad:
         print(f"::warning::Skipping {entry!r} in {TABLE_RECIPIENTS} -- not a valid address.")
-    print(f"Recipients: {len(good)} active from Airtable")
+    print(f"Recipients: {len(good)} active")
     return good
 
 
@@ -690,7 +690,8 @@ def main():
     to = resolve_recipients(at)
     if not to:
         print(f"::error::No recipients. Add a row to the {TABLE_RECIPIENTS} table in "
-              "Airtable with an Email and Active checked, or set EMAIL_TO for a one-off.")
+              "the Recipients table with an Email and Active checked, or set "
+              "EMAIL_TO for a one-off.")
         return 1
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
     if only:

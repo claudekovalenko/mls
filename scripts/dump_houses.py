@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Print the Houses table as JSON, for reading out of a workflow log.
 
-The Airtable token lives in repo secrets and only the runner holds it, so
+The database credentials live in repo secrets and only the runner holds them, so
 there is otherwise no way to see what the table actually contains without
-opening Airtable by hand. This prints the fields the digest renders, which
+opening the dashboard by hand. This prints the fields the digest renders, which
 makes "what is in the app right now" answerable from a run log.
 
-Costs nothing: one Airtable read, no listing API calls.
+Costs nothing: one database read, no listing API calls.
 
-Notes stay in Airtable -- only the scored fields are printed.
+Notes stay in the database -- only the scored fields are printed.
 """
 import json
 import sys
