@@ -208,27 +208,57 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
 
 /* ---- the dock ---- */
 /* One bar, not two. The match-type selector is the thing you touch
-   constantly, so it gets the width; Searches is a trailing button. */
+   constantly, so it gets the width; Searches is a trailing button.
+
+   The offset uses max() rather than adding to the safe-area inset. Added,
+   the bar's position is a function of a value the browser changes as the
+   URL bar collapses on scroll -- so it drifts upward and settles back, over
+   and over, exactly as you scroll a list. max() pins it: 18px normally, the
+   inset only where the inset is larger than that. And translate3d puts it on
+   its own compositor layer so scrolling never repaints it. */
 .dock {
-  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  display: flex; align-items: stretch; gap: 6px;
-  width: min(440px, calc(100vw - 28px));
-  padding: 5px; border-radius: 18px;
-  background: color-mix(in srgb, var(--card) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: 0 8px 30px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.15);
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  transform: translate3d(-50%, 0, 0);
+  will-change: transform;
+  display: flex; align-items: stretch; gap: 4px;
+  width: min(420px, calc(100vw - 28px));
+  padding: 5px;
+  border-radius: 20px;
   z-index: 50;
+
+  /* Liquid glass: a heavy blur with the saturation pushed up so colour
+     bleeds through from whatever is behind, a hairline that catches light
+     at the top edge, and a wide soft shadow so the bar reads as floating
+     above the list rather than sitting in it. */
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  box-shadow:
+    0 12px 40px rgba(8, 18, 17, .20),
+    0 2px 8px rgba(8, 18, 17, .08),
+    inset 0 1px 0 rgba(255, 255, 255, .35),
+    inset 0 -1px 0 rgba(255, 255, 255, .06);
 }
+@media (prefers-color-scheme: dark) {
+  .dock {
+    background: color-mix(in srgb, var(--card) 62%, transparent);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, .5),
+      inset 0 1px 0 rgba(255, 255, 255, .10);
+  }
+}
+
 .dock-btn {
-  flex: 0 0 auto; width: 46px;
-  background: none; border: none; border-radius: 13px;
+  flex: 0 0 auto; width: 44px;
+  background: none; border: none; border-radius: 15px;
   font-size: 1.15rem; line-height: 1; color: var(--sub);
   cursor: pointer;
+  transition: background .18s ease;
 }
-.dock-btn:hover { background: var(--accent-soft); }
+.dock-btn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .dock-btn.active { background: var(--accent-soft); }
 
 /* ---- dialogs ---- */
@@ -284,7 +314,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   gap: 0;
   margin: 0;
   padding: 0;
-  border-radius: 13px;
+  border-radius: 15px;
   overflow: hidden;
 }
 /* Off the matches list the thumb fades rather than vanishing, so the bar
@@ -300,10 +330,15 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   width: calc(100% / var(--lane-count, 2));
   transform: translateX(calc(var(--lane-index, 1) * 100%));
   /* Solid, so the frosted bar reads as a track with a thumb on it. */
-  border-radius: 13px;
-  background: var(--card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+  border-radius: 15px;
+  /* The thumb is the lit pane the selection slides between: brighter than
+     the bar it sits in, with its own highlight along the top. */
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  box-shadow:
+    0 2px 8px rgba(8, 18, 17, .16),
+    0 0 0 1px rgba(255, 255, 255, .30) inset,
+    0 1px 0 rgba(255, 255, 255, .55) inset;
+  transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
 }
 
 .lane-btn {
@@ -316,7 +351,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 6px;
+  padding: 10px 6px;
   border: 0;
   background: none;
   cursor: pointer;
@@ -327,8 +362,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .lane-btn.on { color: var(--ink, #16211f); }
 .lane-btn:focus-visible { outline: 2px solid var(--accent, #0f766e); outline-offset: -2px; border-radius: 11px; }
 
-.lane-icon  { font-size: 15px; line-height: 1; }
-.lane-label { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+.lane-icon  { font-size: 19px; line-height: 1; }
 /* The count sits in its own chip so a two- and a three-digit number do not
    shift the word beside them. */
 .lane-count {

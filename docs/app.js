@@ -373,9 +373,10 @@ function renderLaneSwitch() {
     LANES.map(l => `
       <button type="button" class="lane-btn${l.id === currentLane ? " on" : ""}"
               data-lane="${esc(l.id)}" role="tab"
-              aria-selected="${l.id === currentLane}" title="${esc(l.hint)}">
+              aria-selected="${l.id === currentLane}"
+              aria-label="${esc(l.label)} — ${esc(l.hint)}"
+              title="${esc(l.label)} — ${esc(l.hint)}">
         <span class="lane-icon" aria-hidden="true">${l.icon}</span>
-        <span class="lane-label">${esc(l.label)}</span>
         <span class="lane-count">${counts[l.id]}</span>
       </button>`).join("");
   el.querySelectorAll("[data-lane]").forEach(b =>
@@ -729,10 +730,14 @@ const SOURCE_LABELS = {
 };
 function sourceBadge(f) {
   const raw = String(f.Source || "").trim();
-  // No Source means no adapter wrote this row -- somebody typed it in, so
-  // nothing here has been checked against a feed. Worth saying plainly
-  // rather than as a bare label nobody can interpret.
-  if (!raw) return `<span class="src src-hand" title="Typed in by hand — no feed has verified these numbers">typed in by hand</span>`;
+  // Only claim a source when one was recorded. Rows written before the field
+  // existed have none, and "typed in by hand" asserts something untrue about
+  // where the numbers came from -- the opposite of what a provenance label is
+  // for. Same fix as send_digest.
+  if (!raw) return "";
+  if (raw === "manual") {
+    return `<span class="src src-hand" title="Typed in by hand — no feed has verified these numbers">typed in by hand</span>`;
+  }
   return `<span class="src">found via ${esc(SOURCE_LABELS[raw] || raw)}</span>`;
 }
 
