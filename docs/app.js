@@ -378,10 +378,9 @@ function renderLaneSwitch() {
       <button type="button" class="lane-btn${l.id === currentLane ? " on" : ""}"
               data-lane="${esc(l.id)}" role="tab"
               aria-selected="${l.id === currentLane}"
-              aria-label="${esc(l.label)} — ${esc(l.hint)}"
-              title="${esc(l.label)} — ${esc(l.hint)}">
+              aria-label="${esc(l.label)} — ${counts[l.id]} ${esc(l.hint)}"
+              title="${esc(l.label)} — ${counts[l.id]}">
         <span class="lane-icon" aria-hidden="true">${l.icon}</span>
-        <span class="lane-count">${counts[l.id]}</span>
       </button>`).join("");
   el.querySelectorAll("[data-lane]").forEach(b =>
     b.addEventListener("click", () => {
