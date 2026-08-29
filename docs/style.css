@@ -37,7 +37,7 @@ html, body { background: var(--bg); color: var(--ink); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   margin: 0;
-  padding: 36px 18px calc(164px + env(safe-area-inset-bottom, 0px));
+  padding: 36px 18px calc(112px + env(safe-area-inset-bottom, 0px));
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -204,26 +204,30 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
 
 .empty { color: var(--sub); text-align: center; padding: 44px 0; font-size: .92rem; }
 
-/* ---- bottom nav ---- */
-.bottom-nav {
+/* ---- the dock ---- */
+/* One bar, not two. The match-type selector is the thing you touch
+   constantly, so it gets the width; Searches is a trailing button. */
+.dock {
   position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
-  display: flex; gap: 4px; padding: 6px; border-radius: 999px;
-  background: color-mix(in srgb, var(--card) 70%, transparent);
+  display: flex; align-items: stretch; gap: 6px;
+  width: min(440px, calc(100vw - 28px));
+  padding: 5px; border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   box-shadow: 0 8px 30px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.15);
   z-index: 50;
 }
-.nav-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  background: none; border: none; border-radius: 999px;
-  padding: 8px 24px; min-width: 84px;
-  font-size: .68rem; font-weight: 800; color: var(--sub);
+.dock-btn {
+  flex: 0 0 auto; width: 46px;
+  background: none; border: none; border-radius: 13px;
+  font-size: 1.15rem; line-height: 1; color: var(--sub);
+  cursor: pointer;
 }
-.nav-icon { font-size: 1.2rem; line-height: 1; }
-.nav-btn.active { background: var(--accent-soft); color: var(--accent-dark); }
+.dock-btn:hover { background: var(--accent-soft); }
+.dock-btn.active { background: var(--accent-soft); }
 
 /* ---- dialogs ---- */
 dialog {
@@ -270,40 +274,34 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
    different slice". Frosted so the ground shows through, which keeps it
    feeling like a layer over the page rather than another box on it. */
 .lane-switch {
-  /* Docked at the bottom, above the nav pill: which kind of property you are
-     looking at is a thumb-reach decision, not a scroll-to-the-top one. */
-  position: fixed;
-  left: 50%;
-  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  width: min(420px, calc(100vw - 32px));
-  z-index: 49;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(var(--lane-count, 2), 1fr);
   gap: 0;
   margin: 0;
-  padding: 4px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--card) 72%, transparent);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-  box-shadow: 0 8px 30px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.15);
+  padding: 0;
+  border-radius: 13px;
   overflow: hidden;
 }
+/* Off the matches list the thumb fades rather than vanishing, so the bar
+   does not jump and nothing claims to be selected. */
+.lane-switch.idle .lane-thumb { opacity: 0; }
+.lane-switch.idle .lane-btn.on { color: var(--sub); }
 
 .lane-thumb {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: calc((100% - 8px) / var(--lane-count, 2));
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(100% / var(--lane-count, 2));
   transform: translateX(calc(var(--lane-index, 1) * 100%));
   /* Solid, so the frosted bar reads as a track with a thumb on it. */
-  border-radius: 11px;
+  border-radius: 13px;
   background: var(--card);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
 }
 
 .lane-btn {
@@ -313,7 +311,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  padding: 7px 4px 6px;
+  padding: 9px 4px 8px;
   border: 0;
   background: none;
   cursor: pointer;

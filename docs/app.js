@@ -197,8 +197,8 @@ let houses = [];
 // Single Family or Multifamily, so a third tab would have been permanently
 // empty and would have implied a search that does not exist.
 const LANES = [
-  { id: "multifamily", label: "20+ doors", hint: "multifamily complexes, 20 units and up" },
-  { id: "house",       label: "Houses",    hint: "detached single family" },
+  { id: "multifamily", label: "Complex matches", hint: "multifamily complexes, 20 units and up" },
+  { id: "house",       label: "House matches",   hint: "detached single family" },
 ];
 const DEFAULT_LANE = "house";
 // Which lane the Matches screen is showing. Remembered across reloads,
@@ -341,6 +341,9 @@ function renderLaneSwitch() {
     b.addEventListener("click", () => {
       currentLane = b.dataset.lane;
       localStorage.setItem("lane", currentLane);
+      // Picking a match type means "show me those", so it also brings the
+      // list back if you were off on the Searches screen.
+      if (screen !== "matches") setScreen("matches");
       renderLaneSwitch();
       renderMatches();
     }));
@@ -896,11 +899,11 @@ function setScreen(next) {
   screen = next;
   $("screen-matches").style.display = next === "matches" ? "block" : "none";
   $("screen-criteria").style.display = next === "criteria" ? "block" : "none";
-  $("nav-matches").classList.toggle("active", next === "matches");
+  // The selector stays visible on both screens -- it is how you get back --
+  // but it reads as unselected while you are off the list, so the highlight
+  // never claims you are looking at something you are not.
+  $("lane-switch").classList.toggle("idle", next !== "matches");
   $("nav-criteria").classList.toggle("active", next === "criteria");
-  // The lane switch belongs to the Matches list. On Searches it would be a
-  // floating control that changes nothing on screen.
-  $("lane-switch").style.display = next === "matches" ? "grid" : "none";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -952,8 +955,8 @@ document.addEventListener("DOMContentLoaded", () => {
     showSetup(true);
   });
 
-  $("nav-matches").addEventListener("click", () => setScreen("matches"));
-  $("nav-criteria").addEventListener("click", () => setScreen("criteria"));
+  $("nav-criteria").addEventListener("click", () =>
+    setScreen(screen === "criteria" ? "matches" : "criteria"));
   $("new-criteria").addEventListener("click", () => openCriteria(null));
   $("criteria-form").addEventListener("submit", saveCriteria);
   $("criteria-cancel").addEventListener("click", () => $("criteria-dialog").close());
