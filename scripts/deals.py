@@ -39,7 +39,19 @@ def monthly_mortgage_payment(loan_amount, annual_rate, years):
 
 def compute_metrics(price, rehab_cost, arv, rent_estimate):
     """All the derived numbers. Any input may be None; anything that can't be
-    computed comes back as None rather than a misleading zero."""
+    computed comes back as None rather than a misleading zero.
+
+    An ARV equal to the list price is treated as no ARV at all. Nobody
+    estimates that a house will resell for exactly what it is listed at --
+    that value only ever arrives as a placeholder, and left alone it makes
+    flip profit negative by construction: price minus price minus rehab minus
+    selling costs. The result looks like a projection about the house and is
+    really just its rehab budget with a minus sign, which is worse than
+    having no number at all.
+    """
+    if arv is not None and price is not None and arv == price:
+        arv = None
+
     m = {
         "maxOffer70": None, "flipProfit": None, "flipRoi": None,
         "cashLeftInDeal": None, "brrrrCashflow": None, "cashOnCash": None,

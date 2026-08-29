@@ -31,6 +31,10 @@ function monthlyPayment(loan, rate, years) {
 }
 
 function computeMetrics(price, rehab, arv, rent) {
+  // An ARV equal to the list price is a placeholder, not an estimate, and
+  // left alone it makes flip profit negative by construction. Mirrors
+  // deals.compute_metrics.
+  if (arv != null && price != null && arv === price) arv = null;
   const m = {
     maxOffer70: null, flipProfit: null, flipRoi: null,
     cashLeftInDeal: null, brrrrCashflow: null, cashOnCash: null, onePercentRatio: null,
@@ -688,16 +692,28 @@ function fitSummary(f) {
   return { fits, best };
 }
 
-function fitBlock(f) {
+// bestOnly is the card: one line saying which plan this house is for and
+// what it misses. The full per-strategy breakdown is four to twelve lines
+// and belongs in the detail view, where you have gone looking for it --
+// printed on every card it buries the house under its own analysis.
+function fitBlock(f, bestOnly = false) {
   const { fits, best } = fitSummary(f);
   if (!fits.length) return "";
-  return `<div class="fits">${fits.map(fit => {
+  const shown = bestOnly ? (best && best.score > 0 ? [best] : []) : fits;
+  if (!shown.length) return "";
+  return `<div class="fits">${shown.map(fit => {
     const isBest = best && fit.name === best.name && fit.score > 0;
     const misses = fit.checks.filter(([, s]) => s === false).map(([l]) => l);
     const unknowns = fit.checks.filter(([, s]) => s === null).map(([l]) => l);
+    // On the card, one miss is the useful one -- the rest is a list nobody
+    // reads standing in a driveway.
+    const shownMisses = bestOnly ? misses.slice(0, 1) : misses;
     const detail = [
-      misses.length ? `misses: ${misses.join("; ")}` : "",
-      unknowns.length ? `verify: ${unknowns.join("; ")}` : "",
+      shownMisses.length
+        ? `misses: ${shownMisses.join("; ")}${bestOnly && misses.length > 1
+            ? ` +${misses.length - 1} more` : ""}`
+        : "",
+      bestOnly || !unknowns.length ? "" : `verify: ${unknowns.join("; ")}`,
     ].filter(Boolean).join(" · ") || "meets everything we can measure";
     const cls = fit.score >= 0.75 ? "fit-good" : fit.score >= 0.4 ? "fit-mid" : "fit-low";
     return `<div class="fit-row">
@@ -711,11 +727,14 @@ function fitBlock(f) {
 
 // Value signals are why a house is here at all -- basement, ADU potential,
 // FSBO, missing sqft, oversized lot. They get chips, not a buried field.
-function signalChips(raw) {
+function signalChips(raw, limit = 0) {
   const signals = String(raw || "").split(",").map(s => s.trim()).filter(Boolean);
   if (!signals.length) return "";
-  return `<div class="signals">${signals.map(s =>
-    `<span class="signal">${esc(s)}</span>`).join("")}</div>`;
+  const shown = limit ? signals.slice(0, limit) : signals;
+  const rest = signals.length - shown.length;
+  return `<div class="signals">${shown.map(s =>
+    `<span class="signal">${esc(s)}</span>`).join("")}${
+    rest ? `<span class="signal signal-more">+${rest}</span>` : ""}</div>`;
 }
 
 // The three most informative numbers this house actually has. The old tiles
@@ -816,15 +835,11 @@ function houseCard({ id, f, v }) {
           ${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba
           ${f.Sqft ? ` · ${Number(f.Sqft).toLocaleString()} sqft` : ""}
           ${f["Price Per Sqft"] ? ` · $${Number(f["Price Per Sqft"]).toLocaleString()}/sqft` : ""}
-          ${f["Year Built"] ? ` · built ${f["Year Built"]}` : ""}
-          ${f["Days on Market"] ? ` · ${f["Days on Market"]} days on market` : ""}
-          ${f["Price Cut"] ? ` · cut ${f["Price Cut"]}%` : ""}
-          ${f.Status ? ` · ${esc(f.Status)}` : ""}
-          ${sourceBadge(f)}
+          ${f.Status && f.Status !== "New" ? ` · ${esc(f.Status)}` : ""}
         </div>
         ${priceChangeChip(f)}
-        ${signalChips(f["Value Signals"])}
-        ${fitBlock(f)}
+        ${signalChips(f["Value Signals"], 3)}
+        ${fitBlock(f, true)}
         ${cardStats(f, v)}
         <div class="card-verdicts">
           Flip ${tier(v.flipTier)} &nbsp; BRRRR ${tier(v.brrrrTier)}
@@ -955,6 +970,8 @@ function openHouse(id) {
   $("house-dialog-title").textContent = f.Address || "House";
   $("house-detail").innerHTML = `
     <div class="card-sub">${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba${f.Sqft ? ` · ${Number(f.Sqft).toLocaleString()} sqft` : ""}</div>
+    ${signalChips(f["Value Signals"])}
+    ${fitBlock(f)}
     <div class="verdict-block">
       <strong>Flip — ${v.flipTier}</strong>
       <ul>${v.flipReasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
