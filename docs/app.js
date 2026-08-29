@@ -1,8 +1,12 @@
-/* House Finder — Airtable-backed PWA.
+/* House Finder — PWA over Supabase (Postgres).
  *
- * Airtable is the database of record. This app talks to its REST API directly
- * with a Personal Access Token kept in localStorage (never committed, never
- * sent anywhere but api.airtable.com).
+ * Supabase is the database of record. This app talks to PostgREST directly
+ * with the project's anon key kept in localStorage; row-level security in
+ * supabase/schema.sql decides what that key can touch.
+ *
+ * Airtable is the old backend and is still wired up so an existing install
+ * keeps working until its data is migrated. When both are configured
+ * Supabase wins. Nothing new should be built against Airtable.
  *
  * Deal math here mirrors scripts/deals.py. If you change one, change both --
  * the worker scores listings server-side, this scores what you type live.
@@ -96,13 +100,90 @@ const pct = n => n == null || Number.isNaN(n) ? "—" : (n >= 99 ? "∞" : (n * 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-// ---- Airtable client ----
+// ---- storage backends ----
+// Two of them, and Supabase is the one being moved to. Airtable stays only
+// so an existing install keeps working until its data is migrated; nothing
+// new should be built against it.
 const store = {
   get token() { return localStorage.getItem("airtable_token") || ""; },
   set token(v) { localStorage.setItem("airtable_token", v); },
   get baseId() { return localStorage.getItem("airtable_base") || ""; },
   set baseId(v) { localStorage.setItem("airtable_base", v); },
+  get sbUrl() { return (localStorage.getItem("supabase_url") || "").replace(/\/+$/, ""); },
+  set sbUrl(v) { localStorage.setItem("supabase_url", v); },
+  get sbKey() { return localStorage.getItem("supabase_key") || ""; },
+  set sbKey(v) { localStorage.setItem("supabase_key", v); },
 };
+
+// Supabase wins when both are configured, so a finished migration switches
+// the app over by itself without anyone disconnecting anything.
+const usingSupabase = () => !!(store.sbUrl && store.sbKey);
+const isConnected = () => usingSupabase() || !!(store.token && store.baseId);
+
+// Postgres columns are snake_case; the rest of this app speaks the field
+// names the schema declares. Listed rather than derived, because neither
+// direction is mechanical -- "Days on Market" title-cases to "Days On
+// Market", and ARV and BRRRR survive no casing rule at all. Mirrors
+// scripts/airtable.py SCHEMA; a name missing here is a value silently
+// dropped, which is exactly the bug this shape is meant to make obvious.
+const FIELD_NAMES = [
+  "Name", "Active", "Market", "City", "State", "Min Price", "Max Price",
+  "Min Beds", "Min Baths", "Min Sqft", "Zip Codes", "Property Types",
+  "Keywords", "Must Haves", "Strategy", "Property Class", "Min Units",
+  "Max Price Per Sqft", "Max All In", "Target Total Sqft",
+  "Min Baths After Reno", "Target Flip Profit", "Target Cash on Cash",
+  "Target One Percent", "Rehab Cost Per Sqft", "Notes",
+  "Address", "Status", "Price", "Beds", "Baths", "Sqft", "Lot Sqft",
+  "Price Per Sqft", "Value Signals", "Rehab Cost", "ARV", "Rent Estimate",
+  "Flip Profit", "Cash on Cash", "One Percent", "Flip Verdict",
+  "BRRRR Verdict", "Best Strategy", "Qualified", "Listing URL", "Photo URL",
+  "Property Type", "Units", "Found By", "Year Built", "Days on Market",
+  "Price Cut", "Previous Price", "Price Change Date", "Listing Status",
+  "Last Seen", "Source", "Date Added",
+  "Email",
+];
+const toColumn = name => name.trim().toLowerCase().replace(/[ -]/g, "_");
+const COLUMN_TO_FIELD = Object.fromEntries(FIELD_NAMES.map(n => [toColumn(n), n]));
+const SB_TABLE = { [TABLE_CRITERIA]: "search_criteria", [TABLE_HOUSES]: "houses" };
+
+const rowToRecord = row => {
+  const fields = {};
+  for (const [col, val] of Object.entries(row)) {
+    if (col === "id" || col === "updated_at" || val === null) continue;
+    fields[COLUMN_TO_FIELD[col] || col] = val;
+  }
+  return { id: row.id, fields };
+};
+const fieldsToRow = fields =>
+  Object.fromEntries(Object.entries(fields).map(([k, v]) => [toColumn(k), v]));
+
+async function supabase(method, table, { body, query } = {}) {
+  let url = `${store.sbUrl}/rest/v1/${SB_TABLE[table] || table}`;
+  if (query) url += "?" + query;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      apikey: store.sbKey,
+      Authorization: `Bearer ${store.sbKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Supabase rejected the key. Check it's the anon public key, "
+        + "and that the schema's row-level security policies were applied.");
+    }
+    if (res.status === 404) {
+      throw new Error(`No "${SB_TABLE[table] || table}" table in this project yet. `
+        + "Run supabase/schema.sql in the SQL editor.");
+    }
+    throw new Error(detail.message || detail.hint || `Supabase ${res.status}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
 
 async function airtable(method, table, { body, query } = {}) {
   if (!store.token || !store.baseId) throw new Error("Airtable not connected yet.");
@@ -135,6 +216,10 @@ async function airtable(method, table, { body, query } = {}) {
 }
 
 async function listAll(table) {
+  if (usingSupabase()) {
+    const rows = await supabase("GET", table, { query: "select=*" });
+    return rows.map(rowToRecord);
+  }
   // Follow pagination so a growing table isn't silently cut off at 100.
   let records = [], offset;
   do {
@@ -145,6 +230,18 @@ async function listAll(table) {
     offset = page.offset;
   } while (offset);
   return records;
+}
+
+// One row in, one row out, whichever backend is behind it. Every write in
+// this app is a single record, so these two are the whole surface.
+async function saveRecord(table, id, fields) {
+  if (usingSupabase()) {
+    return id
+      ? supabase("PATCH", table, { body: fieldsToRow(fields), query: `id=eq.${encodeURIComponent(id)}` })
+      : supabase("POST", table, { body: fieldsToRow(fields) });
+  }
+  const body = { records: [id ? { id, fields } : { fields }], typecast: true };
+  return airtable(id ? "PATCH" : "POST", table, { body });
 }
 
 // ---- state ----
@@ -738,8 +835,7 @@ async function saveCriteria(e) {
     fields[key] = input.type === "number" ? Number(raw) : raw;
   });
   try {
-    if (id) await airtable("PATCH", TABLE_CRITERIA, { body: { records: [{ id, fields }], typecast: true } });
-    else await airtable("POST", TABLE_CRITERIA, { body: { records: [{ fields }], typecast: true } });
+    await saveRecord(TABLE_CRITERIA, id, fields);
     $("criteria-dialog").close();
     setStatus("Saved.");
     await refresh();
@@ -750,9 +846,7 @@ async function toggleCriteria(id) {
   const rec = criteria.find(r => r.id === id);
   if (!rec) return;
   try {
-    await airtable("PATCH", TABLE_CRITERIA, {
-      body: { records: [{ id, fields: { Active: !rec.fields.Active } }], typecast: true },
-    });
+    await saveRecord(TABLE_CRITERIA, id, { Active: !rec.fields.Active });
     await refresh();
   } catch (err) { setStatus("Update failed: " + err.message, false); }
 }
@@ -810,7 +904,7 @@ async function saveHouse(e) {
     "Best Strategy": v.bestStrategy || "",
   };
   try {
-    await airtable("PATCH", TABLE_HOUSES, { body: { records: [{ id, fields }], typecast: true } });
+    await saveRecord(TABLE_HOUSES, id, fields);
     $("house-dialog").close();
     setStatus("Saved.");
     await refresh();
@@ -819,7 +913,7 @@ async function saveHouse(e) {
 
 // ---- load / navigation ----
 async function refresh() {
-  if (!store.token || !store.baseId) { showSetup(true); return; }
+  if (!isConnected()) { showSetup(true); return; }
   try {
     setStatus("Loading…");
     [criteria, houses] = await Promise.all([listAll(TABLE_CRITERIA), listAll(TABLE_HOUSES)]);
@@ -846,6 +940,17 @@ async function refresh() {
 function showSetup(show) {
   $("setup").style.display = show ? "block" : "none";
   $("app").style.display = show ? "none" : "block";
+  const what = $("connection-what");
+  // Which backend is actually serving this device. Worth stating outright:
+  // during a migration both sets of credentials can be saved at once, and
+  // guessing wrong about which one you are editing wastes an afternoon.
+  if (what) {
+    what.textContent = usingSupabase()
+      ? `Connected to Supabase at ${store.sbUrl}.`
+      : store.token
+        ? "Connected to Airtable — the old backend. Move to Supabase when you can."
+        : "Not connected.";
+  }
 }
 
 function setScreen(next) {
@@ -901,6 +1006,13 @@ async function findBases() {
 document.addEventListener("DOMContentLoaded", () => {
   $("setup-token").value = store.token;
   $("setup-base").value = store.baseId;
+  $("setup-sb-url").value = store.sbUrl;
+  $("setup-sb-key").value = store.sbKey;
+  $("setup-sb-save").addEventListener("click", async () => {
+    store.sbUrl = $("setup-sb-url").value.trim();
+    store.sbKey = $("setup-sb-key").value.trim();
+    await refresh();
+  });
   $("setup-save").addEventListener("click", async () => {
     store.token = $("setup-token").value.trim();
     store.baseId = $("setup-base").value.trim();
@@ -946,9 +1058,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("copy-token").addEventListener("click", () => copyOut("token", store.token));
   $("copy-base").addEventListener("click", () => copyOut("base ID", store.baseId));
   $("disconnect").addEventListener("click", () => {
-    if (!window.confirm("Disconnect this device? The saved token is removed from this browser — make sure it's saved somewhere (like the GitHub secret) first.")) return;
+    if (!window.confirm("Disconnect this device? The saved credentials are removed from this browser — make sure they're saved somewhere (like the GitHub secrets) first.")) return;
     store.token = "";
     store.baseId = "";
+    store.sbUrl = "";
+    store.sbKey = "";
     showSetup(true);
   });
 

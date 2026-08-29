@@ -1,0 +1,28 @@
+# Cheap correctness checks on every push. No API calls, no secrets, no spend --
+# this exists because the schema is declared in four files that cannot import
+# each other, and drift between them fails silently at runtime.
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Schema in sync across Python, SQL and the app
+        working-directory: scripts
+        run: python check_schema_sync.py
+
+      - name: Python compiles
+        run: python -m compileall -q scripts
+
+      - name: App parses
+        run: node --check docs/app.js

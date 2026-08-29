@@ -14,16 +14,45 @@
 </head>
 <body>
 
-<!-- Shown until an Airtable token + base are saved. -->
+<!-- Shown until a database is connected. Supabase is the one to use. -->
 <div class="wrap" id="setup" style="display:none;">
   <div class="eyebrow">Setup</div>
-  <h1>Connect Airtable</h1>
+  <h1>Connect the database</h1>
   <p class="sub">
-    Airtable holds the searches and the houses. Paste a Personal Access Token with
-    <code>data.records:read</code> and <code>data.records:write</code> on your base, plus the base ID.
-    Both are stored only in this browser and sent only to api.airtable.com.
+    Supabase (Postgres) holds the searches and the houses. Paste your project URL and
+    its anon public key — both are stored only in this browser and sent only to your
+    own Supabase project.
   </p>
   <div class="card">
+    <label>Project URL
+      <input type="text" id="setup-sb-url" placeholder="https://xxxx.supabase.co">
+    </label>
+    <label>Anon public key
+      <input type="password" id="setup-sb-key" placeholder="eyJ…">
+    </label>
+    <div class="card-actions">
+      <button class="primary" id="setup-sb-save">Connect</button>
+    </div>
+    <div id="status"></div>
+    <details>
+      <summary>Where do I get these?</summary>
+      <p>supabase.com → your project → <strong>Settings → API</strong>. The
+      <strong>Project URL</strong> and the <strong>anon public</strong> key are both on
+      that page.</p>
+      <p>First time: open the <strong>SQL editor</strong> and run
+      <code>supabase/schema.sql</code> from this repo. That builds the tables and the
+      access rules the app needs.</p>
+      <p>The anon key is safe in a browser — it is a public key, and row-level security
+      in the schema decides what it can actually touch.</p>
+    </details>
+  </div>
+
+  <details class="card">
+    <summary><strong>Still on Airtable?</strong></summary>
+    <p class="sub">
+      The old backend. Connect it here to keep working until the data is migrated —
+      once a Supabase project is connected above, the app uses that instead.
+    </p>
     <label>Airtable Personal Access Token
       <input type="password" id="setup-token" placeholder="pat…">
     </label>
@@ -31,17 +60,13 @@
       <input type="text" id="setup-base" placeholder="app…">
     </label>
     <div class="card-actions">
-      <button class="primary" id="setup-save">Connect</button>
+      <button class="secondary" id="setup-save" type="button">Connect Airtable</button>
       <button class="secondary" id="setup-find" type="button">Find my base</button>
     </div>
     <div id="setup-bases"></div>
-    <div id="status"></div>
-    <details>
-      <summary>Where do I get these?</summary>
-      <p><strong>Token:</strong> airtable.com/create/tokens → add the two record scopes above, grant access to your base.</p>
-      <p><strong>Base ID:</strong> open the base, the URL starts <code>airtable.com/app…</code> — that <code>app…</code> part is the ID.</p>
-    </details>
-  </div>
+  </details>
+</div>
+
 </div>
 
 <div id="app" style="display:none;">
@@ -93,10 +118,12 @@
 
     <div class="card" id="connection-card">
       <h2>Connection</h2>
+      <p class="sub" id="connection-what"></p>
       <p class="sub">
-        This device is connected to Airtable. The same token also needs to live in the
-        repo's GitHub secrets for the background search and email to run — copy it here,
-        then paste it at github.com → Settings → Secrets → Actions → <code>AIRTABLE_TOKEN</code>.
+        The background search and the emails run in GitHub Actions, so they need their
+        own copy of the credentials — at github.com → Settings → Secrets → Actions.
+        Supabase needs <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_KEY</code>
+        (the service key, not the anon key: the worker writes rows).
       </p>
       <div class="card-actions">
         <button class="secondary" id="copy-token" type="button">Copy token</button>
