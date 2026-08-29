@@ -449,3 +449,6 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 
 #key-test { margin-top: 12px; font-size: .84rem; line-height: 1.7; color: var(--sub); }
 #key-test div { padding: 2px 0; }
+
+/* The chips past the third: present, countable, not shouting. */
+.signal-more { background: transparent; border-style: dashed; }
