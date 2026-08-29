@@ -138,19 +138,15 @@
     </div>
   </div>
 
-  <!-- The lane switch sits at the bottom, directly above the nav, so the two
-       things you reach for most often are both under your thumb. Hidden on
-       the Searches screen, where it has nothing to switch. -->
-  <div id="lane-switch" class="lane-switch" role="tablist"
-       aria-label="Property type"></div>
-
-  <nav class="bottom-nav">
-    <button class="nav-btn active" id="nav-matches" type="button">
-      <span class="nav-icon">🏘️</span><span>Matches</span>
-    </button>
-    <button class="nav-btn" id="nav-criteria" type="button">
-      <span class="nav-icon">🎯</span><span>Searches</span>
-    </button>
+  <!-- One bar at the bottom, not two. The choice you make constantly is
+       which kind of match you are looking at, so that is the selector;
+       Searches is a place you visit occasionally, so it is a trailing
+       button rather than an equal half of a nav. -->
+  <nav class="dock">
+    <div id="lane-switch" class="lane-switch" role="tablist"
+         aria-label="Match type"></div>
+    <button class="dock-btn" id="nav-criteria" type="button"
+            title="Searches" aria-label="Searches">🎯</button>
   </nav>
 </div>
 
