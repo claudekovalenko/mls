@@ -122,6 +122,23 @@ def main():
     check("digest sends exactly the three that changed",
           picked, ["1 Dropped Ln", "4 Raised Ave", "5 Brand New Way"])
 
+    print("\nWhen the feed states a status outright:")
+    from search_worker import listing_status_from_feed as feed_status
+    for word, want in (("Active", "Active"), ("Pending", "Under Contract"),
+                       ("Active Under Contract", "Under Contract"),
+                       ("Contingent", "Under Contract"), ("Sold", "Off Market"),
+                       ("Withdrawn", "Off Market"), ("", None), ("Wibble", None)):
+        check(f"feed says {word!r}", feed_status(word), want)
+    # A status word alone is worth writing, even with no price move.
+    status_only = price_change_update(
+        {"price": 400000, "feedStatus": "Pending"},
+        {"id": "r9", "price": 400000, "listing_status": "Active"})
+    check("pending is recorded even when the price held",
+          status_only and status_only["fields"], {"Listing Status": "Under Contract"})
+    check("an unchanged, unremarkable house still writes nothing",
+          price_change_update({"price": 400000, "feedStatus": "Active"},
+                              {"id": "r9", "price": 400000, "listing_status": "Active"}), None)
+
     print("\nSame house, written two ways:")
     check("typed by hand matches the feed's format",
           address_key("1912 King Arthurs Ct Marietta GA 30062")

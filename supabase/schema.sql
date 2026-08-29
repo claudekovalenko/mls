@@ -94,7 +94,8 @@ create table if not exists houses (
   -- that stops coming back from a complete search has gone under contract,
   -- sold or been withdrawn. Flagged rather than deleted so the history
   -- survives and a relisting can flip back.
-  listing_status     text default 'Active',
+  listing_status     text default 'Active'
+                     check (listing_status in ('Active','Under Contract','Off Market')),
   last_seen          date,
   source             text,
   notes              text,

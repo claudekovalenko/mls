@@ -185,6 +185,11 @@ def fetch_rentcast(criteria, api_key, budget, coverage=None):
                 "daysOnMarket": _num(r.get("daysOnMarket")),
                 "priceCut": _price_cut(r.get("history")),
                 "hasAgent": bool(r.get("listingAgent") or r.get("listingOffice")),
+                # What the feed says about the listing, in its own words.
+                # Preferred over our own inference wherever it exists: a
+                # feed that reports "Pending" is telling us something we
+                # would otherwise only guess at from an absence next week.
+                "feedStatus": (r.get("mlsStatus") or r.get("status") or "").strip(),
             })
     # "No agent" only means FSBO if this feed names agents for anyone. If the
     # response carries none at all, the field is simply unpopulated and every
@@ -590,10 +595,38 @@ def build_house_fields(listing, criteria, verdict):
         # changes how much the rest of the row should be trusted.
         "Source": listing.get("source") or resolve_source(),
         "Notes": " · ".join(verdict["flipReasons"][:2]),
-        "Listing Status": "Active",
+        "Listing Status": listing_status_from_feed(listing.get("feedStatus")) or "Active",
         "Last Seen": date.today().isoformat(),
         "Date Added": date.today().isoformat(),
     }
+
+
+# What the feed's own status words mean for "can I still buy this?".
+# Wording varies by MLS, so these match on substrings rather than exact
+# values, and anything unrecognised is left alone rather than guessed at.
+UNDER_CONTRACT_WORDS = ("pending", "under contract", "contingent",
+                        "active under contract", "accepting backup")
+GONE_WORDS = ("sold", "closed", "withdrawn", "expired", "cancel", "off market",
+              "inactive", "delisted")
+
+
+def listing_status_from_feed(raw):
+    """The feed's status word -> Active, Under Contract, Off Market, or None.
+
+    None means "the feed said nothing useful", which is different from
+    "the feed said it is available" -- and the difference matters, because
+    only the first should leave our own inference in charge.
+    """
+    text = str(raw or "").strip().lower()
+    if not text:
+        return None
+    if any(w in text for w in UNDER_CONTRACT_WORDS):
+        return "Under Contract"
+    if any(w in text for w in GONE_WORDS):
+        return "Off Market"
+    if "active" in text or "for sale" in text or "coming soon" in text:
+        return "Active"
+    return None
 
 
 def address_key(value):
@@ -623,11 +656,20 @@ def price_change_update(listing, known):
     Previous Price is written from the price we held, not from the feed's own
     history, so the drop shown is the one that happened on our watch.
     """
+    fields = {}
+    # The feed's own word about availability, when it says one and it
+    # disagrees with what we hold. This is the difference between knowing a
+    # house went under contract this week and finding out next week because
+    # it stopped appearing.
+    reported = listing_status_from_feed(listing.get("feedStatus"))
+    if reported and reported != known.get("listing_status"):
+        fields["Listing Status"] = reported
+
     new_price = listing.get("price")
     old_price = known.get("price")
     if not new_price or not old_price or new_price == old_price:
-        return None
-    fields = {
+        return {"id": known["id"], "fields": fields} if fields and known["id"] else None
+    fields = {**fields,
         "Price": new_price,
         "Previous Price": old_price,
         "Price Change Date": date.today().isoformat(),
@@ -713,7 +755,8 @@ def run_search(at, criteria_record, existing, budget):
             continue
 
         new_rows.append(build_house_fields(listing, fields, verdict))
-        existing[key] = {"id": None, "price": listing.get("price")}
+        existing[key] = {"id": None, "price": listing.get("price"),
+                         "listing_status": None}
 
     new_rows.sort(key=lambda r: -len(str(r["Value Signals"]).split(", ")))
     print(f"  {name}: {len(new_rows)} new in {MIN_CATEGORIES}+ categories, "
@@ -758,7 +801,9 @@ def retire_missing(houses, roll_call):
             continue
         if key in seen:
             # Still listed. Record that we saw it, and undo a previous
-            # retirement if it came back on the market.
+            # retirement if it came back on the market. "Under Contract" is
+            # left alone: the feed said that in so many words, and an
+            # inference must not overwrite a statement.
             fields = {"Last Seen": today}
             if f.get("Listing Status") == "Off Market":
                 fields["Listing Status"] = "Active"
@@ -804,7 +849,8 @@ def main():
     existing = {}
     for rec in houses:
         f = rec.get("fields", {})
-        entry = {"id": rec.get("id"), "price": f.get("Price")}
+        entry = {"id": rec.get("id"), "price": f.get("Price"),
+                 "listing_status": f.get("Listing Status")}
         for candidate in (f.get("Address"), f.get("Listing URL")):
             if candidate:
                 existing[address_key(candidate)] = entry

@@ -163,6 +163,8 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   padding: 2px 9px; font-size: .64rem; font-weight: 800; letter-spacing: .04em;
 }
 .badge-off { background: var(--line); color: var(--sub); }
+/* Under contract is not the same as gone: somebody may still fall out. */
+.badge-pending { background: #f5e6d5; color: #a2500c; }
 
 .card-stats { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
 .card-stats > div { display: flex; flex-direction: column; }

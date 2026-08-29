@@ -737,9 +737,12 @@ def main():
             return False
         if skip and lane == ("multifamily" if "multifamily" in skip else "house"):
             return False
-        # A house you can no longer buy is not news. Under contract, sold or
-        # withdrawn houses drop out of the email entirely.
-        if f.get("Listing Status") == "Off Market":
+        # A house you can no longer buy is not news. Under contract, sold
+        # or withdrawn houses drop out of the email entirely -- including
+        # the ones the feed itself reported as pending, which is the whole
+        # reason for reading its status word rather than waiting a week for
+        # the listing to vanish.
+        if f.get("Listing Status") in ("Off Market", "Under Contract"):
             return False
         # Two ways in, and only two: it is newly listed, or its price moved.
         # Everything else is a house we already emailed about, unchanged --
