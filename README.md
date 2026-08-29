@@ -48,12 +48,18 @@ Add two repo secrets at github.com → Settings → Secrets → Actions:
 Every workflow picks Supabase up automatically once both exist; there is no
 switch to flip.
 
-### 3. Connect the app
+### 3. The app needs no setup
 
-Open the site and paste the project URL and anon key into the setup screen.
-They are kept in `localStorage` on that device and sent only to your own
-Supabase project. Nothing is committed to this repo and nothing is shared
-between devices — each phone or laptop connects once.
+The project URL and the publishable anon key ship in `docs/app.js`, so opening
+the site just works — on any phone, any laptop, after any reinstall. That is
+deliberate and it is what the anon key is for: it is public by design and
+grants nothing on its own, because the row-level security policies decide what
+it can reach. The key that bypasses those policies is the `service_role` key,
+which lives only in GitHub secrets.
+
+A device can still be pointed at a different project (a test copy) from the
+Searches tab → Connection → Disconnect. That is the only thing the setup
+screen is for.
 
 ### 4. Point the worker at a listing feed
 

@@ -14,39 +14,37 @@
 </head>
 <body>
 
-<!-- Shown until a database is connected. Supabase is the one to use. -->
+<!-- Not a gate. The database ships with the app; this screen only exists
+     for pointing a device at a different project. -->
 <div class="wrap" id="setup" style="display:none;">
-  <div class="eyebrow">Setup</div>
-  <h1>Connect the database</h1>
+  <div class="eyebrow">Advanced</div>
+  <h1>Use a different database</h1>
   <p class="sub">
-    Supabase (Postgres) holds the searches and the houses. Paste your project URL and
-    its anon public key — both are stored only in this browser and sent only to your
-    own Supabase project.
+    House Finder is already connected — you don't need anything here. This is only
+    for pointing this one device at a different Supabase project, such as a test copy.
   </p>
   <div class="card">
     <label>Project URL
       <input type="text" id="setup-sb-url" placeholder="https://xxxx.supabase.co">
     </label>
     <label>Anon public key
-      <input type="password" id="setup-sb-key" placeholder="eyJ…">
+      <input type="password" id="setup-sb-key" placeholder="sb_publishable_… or eyJ…">
     </label>
     <div class="card-actions">
-      <button class="primary" id="setup-sb-save">Connect</button>
+      <button class="primary" id="setup-sb-save">Use this project</button>
+      <button class="secondary" id="setup-cancel" type="button">Back</button>
     </div>
     <div id="status"></div>
     <details>
-      <summary>Where do I get these?</summary>
-      <p>supabase.com → your project → <strong>Settings → API</strong>. The
-      <strong>Project URL</strong> and the <strong>anon public</strong> key are both on
-      that page.</p>
-      <p>First time: open the <strong>SQL editor</strong> and run
-      <code>supabase/schema.sql</code> from this repo. That builds the tables and the
-      access rules the app needs.</p>
-      <p>The anon key is safe in a browser — it is a public key, and row-level security
-      in the schema decides what it can actually touch.</p>
+      <summary>Why is a key in the app at all?</summary>
+      <p>The anon key is a <strong>publishable</strong> key — it is designed to sit in
+      client code. It grants nothing by itself; the row-level security policies in
+      <code>supabase/schema.sql</code> decide what it can reach.</p>
+      <p>The key that bypasses those policies is the <strong>service_role</strong> key.
+      That one lives only in GitHub secrets, for the background search and the emails,
+      and never touches a browser.</p>
     </details>
   </div>
-
 </div>
 
 <div id="app" style="display:none;">
