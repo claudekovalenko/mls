@@ -316,6 +316,25 @@ DROP_SOFT = "#f5e6d5"
 RISE = "#5c6b69"        # a raise is worth knowing and worth not shouting about
 
 
+def lane_of(f):
+    """Which of the two digests a house belongs in.
+
+    Mirrors laneOf() in docs/app.js, and reads the house rather than the
+    search that found it. "Found By" would be the obvious key and is the
+    wrong one: it is a recently added field, so every house migrated from
+    the old database has it empty, and a split on an empty field silently
+    routes everything into one email. What a building *is* cannot go stale
+    that way.
+    """
+    ptype = str(f.get("Property Type") or "").lower()
+    found_by = str(f.get("Found By") or "").lower()
+    units = f.get("Units") or 0
+    if units >= 5 or "multifamily" in found_by or any(
+            m in ptype for m in ("multi", "residential income", "apartment", "plex")):
+        return "multifamily"
+    return "house"
+
+
 def _price_change_html(f):
     """The actual dollars off, since the last time we looked.
 
@@ -708,10 +727,10 @@ def main():
     cutoff = (date.today() - timedelta(days=days)).isoformat()
     def worth_sending(rec):
         f = rec.get("fields", {})
-        found_by = (f.get("Found By") or "").lower()
-        if only and only not in found_by:
+        lane = lane_of(f)
+        if only and lane != ("multifamily" if "multifamily" in only else "house"):
             return False
-        if skip and skip in found_by:
+        if skip and lane == ("multifamily" if "multifamily" in skip else "house"):
             return False
         # A house you can no longer buy is not news. Under contract, sold or
         # withdrawn houses drop out of the email entirely.
