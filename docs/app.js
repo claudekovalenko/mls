@@ -383,15 +383,63 @@ function renderLaneSwitch() {
         <span class="lane-icon" aria-hidden="true">${l.icon}</span>
       </button>`).join("");
   el.querySelectorAll("[data-lane]").forEach(b =>
-    b.addEventListener("click", () => {
-      currentLane = b.dataset.lane;
-      localStorage.setItem("lane", currentLane);
-      // Picking a match type means "show me those", so it also brings the
-      // list back if you were off on the Searches screen.
-      if (screen !== "matches") setScreen("matches");
-      renderLaneSwitch();
-      renderMatches();
-    }));
+    b.addEventListener("click", () => goToLane(b.dataset.lane)));
+}
+
+// Switching lanes, from a tap or a swipe.
+//
+// The scroll reset is not a flourish. Lanes hold wildly different numbers of
+// houses -- 45 against 0 -- so moving from a long one to a short one while
+// scrolled down collapses the page under you and the browser drops you
+// wherever the new, shorter document ends. That reads as the whole screen
+// lurching upward. Going back to the top makes the change deliberate
+// instead, and the top is where a fresh list starts anyway.
+function goToLane(id) {
+  if (!LANES.some(l => l.id === id)) return;
+  const changed = id !== currentLane;
+  currentLane = id;
+  localStorage.setItem("lane", currentLane);
+  // Picking a match type means "show me those", so it also brings the
+  // list back if you were off on the Searches screen.
+  if (screen !== "matches") setScreen("matches");
+  renderLaneSwitch();
+  renderMatches();
+  if (changed) {
+    window.scrollTo({ top: 0,
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+}
+
+function shiftLane(step) {
+  const i = LANES.findIndex(l => l.id === currentLane);
+  const next = LANES[i + step];
+  if (next) goToLane(next.id);
+}
+
+// Swipe left and right across the list to move between lanes, the way the
+// sliding thumb implies you can. Deliberately strict: the gesture has to be
+// mostly horizontal and long enough to be intentional, or every diagonal
+// scroll on a phone would change lane underneath you.
+const SWIPE_MIN_X = 60;      // px of travel before it counts
+const SWIPE_MAX_Y = 45;      // vertical drift allowed; more means you scrolled
+
+function enableLaneSwipe(el) {
+  let x0 = null, y0 = null;
+  el.addEventListener("touchstart", e => {
+    if (e.touches.length !== 1) { x0 = null; return; }
+    x0 = e.touches[0].clientX;
+    y0 = e.touches[0].clientY;
+  }, { passive: true });
+  el.addEventListener("touchend", e => {
+    if (x0 === null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) < SWIPE_MIN_X || Math.abs(dy) > SWIPE_MAX_Y) return;
+    // Swiping left moves to the next lane on the right, which is how every
+    // paged interface on a phone behaves.
+    shiftLane(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 // What the filters are doing right now, in a sentence. Collapsing the
@@ -1165,6 +1213,16 @@ document.addEventListener("DOMContentLoaded", () => {
       await navigator.clipboard.writeText(text);
       setStatus(`Copied ${visibleMatches().length} house(s) — paste into a message.`);
     } catch { window.prompt("Copy this:", text); }
+  });
+
+  enableLaneSwipe($("screen-matches"));
+
+  // Arrow keys do the same thing on a laptop.
+  document.addEventListener("keydown", e => {
+    if (screen !== "matches" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.key === "ArrowRight") shiftLane(1);
+    if (e.key === "ArrowLeft") shiftLane(-1);
   });
 
   $("filters-toggle").addEventListener("click", () => {
