@@ -233,8 +233,10 @@ let houses = [];
 // Single Family or Multifamily, so a third tab would have been permanently
 // empty and would have implied a search that does not exist.
 const LANES = [
-  { id: "multifamily", icon: "🏢", label: "Complex", hint: "multifamily complexes, 20 units and up" },
-  { id: "house",       icon: "🏠", label: "Home",    hint: "detached single family" },
+  { id: "multifamily", icon: "🏢", label: "Complex", plural: "complexes",
+    hint: "multifamily complexes, 20 units and up" },
+  { id: "house",       icon: "🏠", label: "Home", plural: "homes",
+    hint: "detached single family" },
 ];
 const DEFAULT_LANE = "house";
 // Which lane the Matches screen is showing. Remembered across reloads,
@@ -404,39 +406,16 @@ function goToLane(id) {
   if (screen !== "matches") setScreen("matches");
   renderLaneSwitch();
   renderMatches();
-  if (changed) {
-    window.scrollTo({ top: 0,
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }
+  // Instant, not smooth. Animating a 5,000px scroll means half a second of
+  // the entire page sliding past, which reads as the screen lurching --
+  // the thing this was meant to stop.
+  if (changed && window.scrollY) window.scrollTo(0, 0);
 }
 
 function shiftLane(step) {
   const i = LANES.findIndex(l => l.id === currentLane);
   const next = LANES[i + step];
   if (next) goToLane(next.id);
-}
-
-// Keeps the dock pinned to the bottom of what you can actually see.
-//
-// A fixed element sits at the bottom of the layout viewport, and on a phone
-// that is not where the screen ends: a page too short to scroll keeps the
-// browser's URL bar expanded, so the viewport is shorter and the dock rides
-// visibly higher than it does on a long, scrolled page. That is why it moved
-// when switching to an empty lane -- nothing about the bar changed, the
-// window did. visualViewport reports the real visible rectangle, so the dock
-// is positioned against that instead and stays put whatever the page length
-// or the browser chrome is doing.
-function trackViewport() {
-  const vv = window.visualViewport;
-  if (!vv) return;   // desktop and older browsers: layout viewport is correct
-  const apply = () => {
-    const lift = Math.max(0, document.documentElement.clientHeight
-                             - (vv.height + vv.offsetTop));
-    document.documentElement.style.setProperty("--viewport-lift", `${lift}px`);
-  };
-  vv.addEventListener("resize", apply);
-  vv.addEventListener("scroll", apply);
-  apply();
 }
 
 // Drag left and right across the list to move between lanes.
@@ -518,11 +497,15 @@ function renderFilterSummary(shown) {
   const sort = $("sort-by");
   const sortLabel = sort && sort.selectedIndex >= 0
     ? sort.options[sort.selectedIndex].text : "";
-  const lane = (LANES.find(l => l.id === currentLane) || {}).label || "";
+  const laneDef = LANES.find(l => l.id === currentLane) || {};
   const viewWord = { highlights: "Highlights", live: "Everything live",
                      off: "Off market" }[view];
-  const bits = [`${shown} ${lane.toLowerCase()}${shown === 1 ? "" : "s"}`,
-                viewWord.toLowerCase()];
+  // Named rather than derived: "complex" does not pluralise by adding an s,
+  // and "0 complexs" is the kind of thing that makes everything near it look
+  // unfinished.
+  const noun = shown === 1 ? (laneDef.label || "").toLowerCase()
+                           : (laneDef.plural || "");
+  const bits = [`${shown} ${noun}`, viewWord.toLowerCase()];
   if (market) bits.push(`in ${market}`);
   if (sortLabel) bits.push(`by ${sortLabel.toLowerCase()}`);
   el.textContent = bits.join(" · ");
@@ -534,7 +517,9 @@ function renderMatches() {
   const rows = visibleMatches();
 
   const empty = $("matches-empty");
-  empty.style.display = rows.length ? "none" : "block";
+  // "flex", not "block": the stylesheet centres this in its min-height,
+  // and an inline display would quietly override that.
+  empty.style.display = rows.length ? "none" : "flex";
   if (!rows.length) {
     // An empty Highlights lane means something different from an empty
     // database, and telling someone to go connect a feed they already
@@ -1279,7 +1264,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch { window.prompt("Copy this:", text); }
   });
 
-  trackViewport();
   enableLaneSwipe($("screen-matches"));
 
   // Arrow keys do the same thing on a laptop.
