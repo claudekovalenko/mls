@@ -37,7 +37,7 @@ html, body { background: var(--bg); color: var(--ink); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   margin: 0;
-  padding: 36px 18px calc(104px + env(safe-area-inset-bottom, 0px));
+  padding: 36px 18px calc(116px + env(safe-area-inset-bottom, 0px));
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -257,17 +257,13 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   position: fixed;
   isolation: isolate;
   left: 50%;
-  /* --viewport-lift is the gap between the layout bottom and the bottom of
-     what is actually visible, kept current by trackViewport(). Zero on a
-     desktop and on a scrolled phone page; a real number on a short page
-     where the browser keeps its chrome expanded. */
-  bottom: calc(max(18px, env(safe-area-inset-bottom, 0px)) + var(--viewport-lift, 0px));
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
   transform: translate3d(-50%, 0, 0);
   will-change: transform;
   display: flex; align-items: center; gap: 2px;
   width: auto;
-  padding: 4px;
-  border-radius: 16px;
+  padding: 5px;
+  border-radius: 22px;
   z-index: 50;
   /* Liquid glass, the way Apple does it: transparent enough that the list
      genuinely shows through, a strong blur with saturation lifted so the
@@ -314,10 +310,10 @@ details summary { cursor: pointer; font-weight: 700; color: var(--ink); }
 }
 
 .dock-btn {
-  flex: 0 0 auto; width: 42px; height: 42px;
+  flex: 0 0 auto; width: 50px; height: 50px;
   display: flex; align-items: center; justify-content: center;
-  background: none; border: none; border-radius: 12px;
-  font-size: 1.2rem; line-height: 1; color: var(--sub);
+  background: none; border: none; border-radius: 17px;
+  font-size: 1.35rem; line-height: 1; color: var(--sub);
   cursor: pointer;
   transition: background .18s ease;
 }
@@ -372,11 +368,11 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   position: relative;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(var(--lane-count, 2), 42px);
+  grid-template-columns: repeat(var(--lane-count, 2), 50px);
   gap: 0;
   margin: 0;
   padding: 0;
-  border-radius: 12px;
+  border-radius: 17px;
   overflow: hidden;
 }
 .lane-switch.idle .lane-thumb { opacity: 0; }
@@ -386,7 +382,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   top: 0; bottom: 0; left: 0;
   width: calc(100% / var(--lane-count, 2));
   transform: translateX(calc(var(--lane-index, 1) * 100%));
-  border-radius: 12px;
+  border-radius: 17px;
   /* The lens the selection slides under: brighter than the panel it sits in,
      with a highlight along its own top edge. */
   background: linear-gradient(180deg,
@@ -401,7 +397,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .lane-btn {
   position: relative;      /* above the thumb */
   z-index: 1;
-  width: 42px; height: 42px;
+  width: 50px; height: 50px;
   display: flex; align-items: center; justify-content: center;
   border: 0; background: none; cursor: pointer;
   font: inherit; line-height: 1;
@@ -409,9 +405,9 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   transition: opacity 0.2s ease;
 }
 .lane-btn.on { opacity: 1; }
-.lane-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
+.lane-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 17px; }
 
-.lane-icon { font-size: 20px; line-height: 1; }
+.lane-icon { font-size: 23px; line-height: 1; }
 
 /* A row typed in by hand has been checked by nobody -- worth a different
    colour from a row a feed wrote. */
@@ -455,3 +451,26 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 
 /* The chips past the third: present, countable, not shouting. */
 .signal-more { background: transparent; border-style: dashed; }
+
+/* Every lane fills at least a screen.
+   This is what actually holds the dock still. A fixed element is pinned to
+   the viewport, and on a phone the viewport is not a constant: a page too
+   short to scroll makes the browser keep its URL bar expanded, which makes
+   the visible area shorter, which lifts anything anchored to its bottom.
+   Switching from 45 houses to none collapsed the document from 18,000px to
+   844px and did exactly that. Give every lane a full screen of height and
+   the browser chrome never changes state, so there is nothing to compensate
+   for and nothing to chase. */
+#matches-list, #matches-empty {
+  min-height: calc(100svh - 240px);
+}
+/* An empty list must not also reserve a screen, or it stacks with the empty
+   message's own height and pushes the message below the fold. */
+#matches-list:empty { min-height: 0; }
+/* Centred in that space rather than sitting at the bottom of it, and clear
+   of the dock. */
+#matches-empty {
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 8px calc(96px + env(safe-area-inset-bottom, 0px));
+  max-width: 34ch; margin: 0 auto;
+}
