@@ -16,18 +16,18 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
 TARGETS = [
-    # HomePath (Fannie Mae REO). The site is an Angular app; these are the
-    # API shapes such apps commonly hang off the same host.
-    ("homepath search page", "https://www.homepath.com/homes-for-sale/GA/Marietta"),
-    ("homepath api guess 1",
-     "https://www.homepath.com/listing/api/search?city=Marietta&state=GA"),
-    ("homepath api guess 2",
-     "https://api.homepath.com/listings?city=Marietta&state=GA"),
-    # HomeSteps (Freddie Mac REO).
-    ("homesteps search page",
-     "https://www.homesteps.com/homesteps/homesearch?state=GA&city=Marietta"),
-    ("homesteps root", "https://www.homesteps.com/"),
+    # Round 2. www.homepath.com is only a shell that client-side redirects to
+    # homepath.fanniemae.com -- probe the real host, and pull its app bundle
+    # to read the API paths the front end actually calls.
+    ("homepath real host robots", "https://homepath.fanniemae.com/robots.txt"),
+    ("homepath real search page",
+     "https://homepath.fanniemae.com/homes-for-sale/GA/Marietta"),
+    # HomeSteps advertises /listing/search in its own structured data.
+    ("homesteps listing search",
+     "https://www.homesteps.com/listing/search?search=Marietta%20GA"),
 ]
+
+BUNDLE_HOST = "https://homepath.fanniemae.com"
 
 
 def fetch(url):
@@ -69,6 +69,20 @@ def main():
             if i >= 0:
                 print(f"  ...{marker!r} at {i}: {text[max(0, i - 60):i + 240]!r}")
         print("  head:", text[:400].replace("\n", " ")[:400])
+        # Pull the SPA's own JS bundles and read the API paths out of them.
+        if "fanniemae" in url and "html" in ctype:
+            import re
+            srcs = re.findall(r'src="(/[^"]+\.js)"', text)[:4]
+            for src in srcs:
+                try:
+                    _, _, js = fetch(BUNDLE_HOST + src)
+                except Exception as e:  # noqa: BLE001
+                    print(f"  bundle {src}: FAILED {e}")
+                    continue
+                jtext = js.decode("utf-8", errors="ignore")
+                hits = sorted(set(re.findall(
+                    r'["\'](/[a-zA-Z0-9_\-]*api[a-zA-Z0-9_/\-]*)["\']', jtext)))[:30]
+                print(f"  bundle {src}: {len(js)} bytes, api paths: {hits}")
     return 0
 
 
