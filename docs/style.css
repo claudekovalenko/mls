@@ -54,7 +54,14 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
-#app { height: 100%; display: flex; flex-direction: column; }
+/* dvh, not %.
+   On iOS, 100% of the body resolves against the *layout* viewport, which
+   includes the strip behind the URL bar -- so during the moment after load,
+   while Safari is still settling its chrome, the shell is taller than what
+   you can see and anything at its bottom starts off-screen and slides into
+   place. dvh is the dynamic viewport: the area actually visible right now.
+   The percentage stays first as a fallback for browsers without dvh. */
+#app { height: 100%; height: 100dvh; display: flex; flex-direction: column; }
 #scroller {
   flex: 1 1 auto;
   min-height: 0;            /* or the flex child refuses to shrink and scroll */
