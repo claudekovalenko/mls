@@ -752,6 +752,12 @@ function assessFit(f, c) {
     if (!sqft) checks.push(["sqft unlisted (counts as under cap)", true]);
     else if (ppsf) checks.push([`$${ppsf}/sqft vs $${c["Max Price Per Sqft"]} cap`, ppsf <= c["Max Price Per Sqft"]]);
   }
+  if (c["Min Units"]) {
+    const units = f.Units;
+    checks.push(units
+      ? [`${units} units vs ${c["Min Units"]}+ goal`, units >= c["Min Units"]]
+      : ["unit count unlisted", null]);
+  }
   const musts = String(c["Must Haves"] || "").toLowerCase();
   if (musts.includes("basement"))
     checks.push(["basement", cats.includes("basement") ? true : null]);
@@ -772,7 +778,13 @@ function assessFit(f, c) {
 }
 
 function fitSummary(f) {
-  const fits = criteria.filter(r => (r.fields || {}).Active).map(r => {
+  // A search is only ever judged against its own kind of building: a
+  // multifamily row must not call a single-family house a fit however many
+  // of its other boxes the house ticks, and vice versa.
+  const laneOfCrit = c => (c["Property Class"] === "Multifamily" || c["Min Units"])
+    ? "multifamily" : "house";
+  const fits = criteria.filter(r => (r.fields || {}).Active
+                                 && laneOfCrit(r.fields || {}) === laneOf(f)).map(r => {
     const c = r.fields || {};
     const checks = assessFit(f, c);
     const known = checks.filter(([, s]) => s !== null);
@@ -1184,6 +1196,8 @@ function houseCard({ id, f, v }) {
              target="_blank" rel="noopener">Zillow — photos &amp; remarks →</a>
           ${link ? `<a class="card-link" href="${esc(link)}" target="_blank"
              rel="noopener">Street view →</a>` : ""}
+          <a class="card-link" href="https://www.google.com/search?q=${encodeURIComponent(f.Address || "")}"
+             target="_blank" rel="noopener">Google it →</a>
         </div>
       </div>
     </article>`;
