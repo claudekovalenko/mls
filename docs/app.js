@@ -8,6 +8,8 @@
  * the worker scores listings server-side, this scores what you type live.
  */
 
+// Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
+const APP_VERSION = "v39";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -511,6 +513,9 @@ function renderFilterSummary(shown) {
   if (sortLabel) bits.push(`by ${sortLabel.toLowerCase()}`);
   const pulled = lastPulled();
   if (pulled) bits.push(`data pulled ${pulled}`);
+  // The version on screen, so "am I on the new build?" is a glance at this
+  // line rather than a guessing game about caches.
+  bits.push(APP_VERSION);
   el.textContent = bits.join(" · ");
 }
 

@@ -82,6 +82,18 @@ def main():
             problems.append(f"supabase/schema.sql {sql_name} has {orphan!r}, "
                             f"which no field maps to")
 
+    # The version the app shows must be the version the service worker
+    # caches, or "look at the summary line" stops answering "am I updated?".
+    app_js = (ROOT / "docs/app.js").read_text()
+    sw_js = (ROOT / "docs/sw.js").read_text()
+    app_v = re.search(r'APP_VERSION = "(v\d+)"', app_js)
+    sw_v = re.search(r'house-finder-(v\d+)', sw_js)
+    if not app_v or not sw_v or app_v.group(1) != sw_v.group(1):
+        problems.append(
+            f"version drift: app.js APP_VERSION "
+            f"{app_v.group(1) if app_v else '?'} vs sw.js CACHE "
+            f"{sw_v.group(1) if sw_v else '?'}")
+
     if problems:
         for p in problems:
             print(f"::error::{p}")
