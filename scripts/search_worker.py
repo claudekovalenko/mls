@@ -814,6 +814,30 @@ def price_change_update(listing, known):
     return {"id": known["id"], "fields": fields}
 
 
+# What a richer feed may fill in on a house another source found first.
+# Facts about the building only -- never price (that is change tracking's
+# job), never Source or Found By (provenance says who found it, not who
+# later described it best), and never anything a human may have typed.
+ENRICHABLE = {
+    "Beds": "beds", "Baths": "baths", "Sqft": "sqft", "Lot Sqft": "lotSqft",
+    "Year Built": "yearBuilt", "Days on Market": "daysOnMarket",
+    "Latitude": "latitude", "Longitude": "longitude", "Units": "units",
+    "Photo URL": "photoUrl", "Property Type": "propertyType",
+}
+
+
+def enrich_gaps(listing, stored):
+    """Fields the stored row is missing that this listing can supply."""
+    gaps = {}
+    for field, key in ENRICHABLE.items():
+        if stored.get(field) in (None, "") and listing.get(key) not in (None, ""):
+            gaps[field] = listing[key]
+    if (stored.get("Price Per Sqft") in (None, "")
+            and listing.get("price") and listing.get("sqft")):
+        gaps["Price Per Sqft"] = round(listing["price"] / listing["sqft"])
+    return gaps
+
+
 def run_search(at, criteria_record, existing, budget):
     fields = criteria_record["fields"]
     name = fields.get("Name") or fields.get("Market") or "(unnamed)"
@@ -853,11 +877,22 @@ def run_search(at, criteria_record, existing, budget):
         if not key:
             continue
         if key in existing:
-            # Known house: not a new listing, but possibly a new price.
+            # Known house: not a new listing, but possibly a new price --
+            # and possibly a fuller picture. A house that arrived from a
+            # sparse source (a foreclosure feed with no lot size, a row
+            # typed in by hand) keeps its provenance, and any richer feed
+            # that sees the same address this run fills in only the blanks.
             change = price_change_update(listing, existing[key])
+            gaps = enrich_gaps(listing, existing[key].get("fields") or {})
+            if change and gaps:
+                change["fields"].update(gaps)
+            elif gaps:
+                change = {"id": existing[key]["id"], "fields": gaps}
             if change:
                 updates.append(change)
                 existing[key]["price"] = listing.get("price")
+                if existing[key].get("fields") is not None:
+                    existing[key]["fields"].update(change["fields"])
             continue
 
         # ARV is left unknown rather than proxied by the list price. Setting
@@ -982,7 +1017,7 @@ def main():
     for rec in houses:
         f = rec.get("fields", {})
         entry = {"id": rec.get("id"), "price": f.get("Price"),
-                 "listing_status": f.get("Listing Status")}
+                 "listing_status": f.get("Listing Status"), "fields": f}
         for candidate in (f.get("Address"), f.get("Listing URL")):
             if candidate:
                 existing[address_key(candidate)] = entry
