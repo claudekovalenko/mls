@@ -509,7 +509,27 @@ function renderFilterSummary(shown) {
   const bits = [`${shown} ${noun}`, viewWord.toLowerCase()];
   if (market) bits.push(`in ${market}`);
   if (sortLabel) bits.push(`by ${sortLabel.toLowerCase()}`);
+  const pulled = lastPulled();
+  if (pulled) bits.push(`data pulled ${pulled}`);
   el.textContent = bits.join(" · ");
+}
+
+// When the listing feed was last actually read: the newest Last Seen the
+// worker stamped (Date Added as a fallback for rows that predate the stamp).
+// The email fires straight after every search run and this app reads the
+// same live table, so this one date is the freshness of both.
+function lastPulled() {
+  let latest = "";
+  for (const r of houses) {
+    const f = r.fields || {};
+    const d = String(f["Last Seen"] || f["Date Added"] || "").slice(0, 10);
+    if (d > latest) latest = d;
+  }
+  if (!latest) return "";
+  const days = Math.floor((Date.now() - new Date(latest + "T12:00:00")) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
 }
 
 function renderMatches() {

@@ -726,6 +726,18 @@ def _house_sort_key(rec):
     return (not f.get("Qualified"), -cats, -(f.get("Flip Profit") or -10**9))
 
 
+def _pulled_stamp(houses):
+    """When the feed was last actually read: the newest Last Seen the worker
+    stamped (Date Added for rows that predate the stamp). The same date the
+    app shows, because both read the same table."""
+    latest = ""
+    for rec in houses:
+        f = rec.get("fields", {})
+        d = str(f.get("Last Seen") or f.get("Date Added") or "")[:10]
+        latest = max(latest, d)
+    return latest or date.today().isoformat()
+
+
 def build_email(criteria_rows, new_houses):
     app_url = "https://claudekovalenko.github.io/mls/"
     today = date.today().strftime("%b %-d")
@@ -770,6 +782,7 @@ def build_email(criteria_rows, new_houses):
     <tr><td style="padding:26px 24px 20px;border-bottom:2px solid {INK};">
       <div style="color:{BRAND};font-size:11px;font-weight:700;letter-spacing:1.6px;
                   text-transform:uppercase;">House Finder &middot; Deal Sheet &middot; {today}</div>
+      <div style="color:{MUTED};font-size:11px;margin-top:4px;">Data pulled {_pulled_stamp(new_houses)}</div>
       <div style="font-family:{SERIF};color:{INK};font-size:30px;font-weight:700;
                   margin-top:8px;line-height:1.1;">{headline}</div>
       <div style="color:{MUTED};font-size:13px;margin-top:9px;line-height:1.55;">{sub}</div>
