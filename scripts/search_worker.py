@@ -38,7 +38,10 @@ import deals
 import rentcast_budget
 
 TIMEOUT = 30
-MAX_PER_SEARCH = 50
+# RentCast bills per request, not per result, and allows up to 500 rows in
+# one page -- so asking for 50 was paying full price for a tenth of the
+# answer. At 500 a whole city fits in one billed call.
+MAX_PER_SEARCH = 500
 
 
 def _get_json(url, headers):
