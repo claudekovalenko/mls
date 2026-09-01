@@ -158,6 +158,7 @@ WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 DECIDED_STATUSES = {"Under Contract", "Purchased", "Rejected"}
 
 SOURCE_LABELS = {"rentcast": "RentCast", "reso": "MLS / IDX", "search": "search",
+                 "homesteps": "HomeSteps foreclosure (Freddie Mac)",
                  "manual": "typed in by hand"}
 
 # Verdict colours for the per-strategy fit rows.

@@ -263,6 +263,27 @@ def main():
     check("a detached house is a home", lane_of({"Property Type": "Single Family"}), "house")
     check("an empty row is a home, not nothing", lane_of({}), "house")
 
+    print("\nHomeSteps cards parse into listings:")
+    import search_worker as sw
+    fix = ('<a id="node-1" href="/listingdetails/6295-phillips-pl-lithonia-ga-30058">'
+           '<span class="property-status-value">Active</span>'
+           '<div class="property-price">$184,900</div>'
+           '<div class="property-details">4 beds, 2 baths, 1,950 sq. ft.</div></a>'
+           '<script type="application/ld+json">{"name": "6295 Phillips Pl, Lithonia, GA 30058",'
+           ' "offers": {"price": "$184,900", "itemOffered": {"numberOfBedrooms": "4",'
+           ' "numberOfBathroomsTotal": "2"}}}</script>')
+    parsed = sw._homesteps_parse(fix)
+    check("one card parses to one listing", len(parsed), 1)
+    check("the price is a number, not a string", parsed[0]["price"], 184900.0)
+    check("sqft comes from the details line", parsed[0]["sqft"], 1950.0)
+    check("the feed status word travels", parsed[0]["feedStatus"], "Active")
+    sw._homesteps_cache = parsed
+    check("a Marietta search does not receive a Lithonia foreclosure",
+          len(sw.fetch_homesteps({"City": "Marietta"})), 0)
+    check("its own zip ring does receive it",
+          len(sw.fetch_homesteps({"Zip Codes": "30058, 30062"})), 1)
+    sw._homesteps_cache = None
+
     print("\nA search only judges its own kind of building:")
     from send_digest import fit_summary as fs
     mf_row = {"fields": {"Name": "Multifamily 5+", "Active": True,
