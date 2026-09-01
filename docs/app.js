@@ -1312,7 +1312,7 @@ function openHouse(id) {
       <strong>BRRRR — ${v.brrrrTier}</strong>
       <ul>${v.brrrrReasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </div>
-    ${listingLink(f) ? `<p><a href="${esc(listingLink(f))}" target="_blank" rel="noopener">Open on Zillow →</a></p>` : ""}`;
+    ${listingLink(f) ? `<p class="card-links"><a class="card-link primary-link" href="${esc(listingLink(f))}" target="_blank" rel="noopener">Open on Zillow — photos &amp; remarks →</a></p>` : ""}`;
   ["Price", "Rehab Cost", "ARV", "Rent Estimate"].forEach(k => {
     $("h-" + k.replace(/ /g, "-")).value = f[k] ?? "";
   });
