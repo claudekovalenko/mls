@@ -9,7 +9,11 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
+<<<<<<< HEAD
+const APP_VERSION = "v40";
+=======
 const APP_VERSION = "v39";
+>>>>>>> origin/main
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -921,17 +925,31 @@ function cardStats(f, v) {
 const SOURCE_LABELS = {
   rentcast: "RentCast", reso: "MLS / IDX", search: "Search",
 };
-function sourceBadge(f) {
-  const raw = String(f.Source || "").trim();
-  // Only claim a source when one was recorded. Rows written before the field
-  // existed have none, and "typed in by hand" asserts something untrue about
-  // where the numbers came from -- the opposite of what a provenance label is
-  // for. Same fix as send_digest.
-  if (!raw) return "";
-  if (raw === "manual") {
-    return `<span class="src src-hand" title="Typed in by hand — no feed has verified these numbers">typed in by hand</span>`;
-  }
-  return `<span class="src">found via ${esc(SOURCE_LABELS[raw] || raw)}</span>`;
+function daysSince(d) {
+  const ds = String(d || "").slice(0, 10);
+  if (!ds) return null;
+  const n = Math.floor((Date.now() - new Date(ds + "T12:00:00")) / 86400000);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// The full trail: which feed, which search, how long ago it surfaced, and
+// when the feed last confirmed it. One line, because provenance you have to
+// go looking for is provenance nobody reads.
+function provenanceLine(f) {
+  const bits = [];
+  const src = String(f.Source || "").trim();
+  const finder = String(f["Found By"] || "").trim();
+  if (src === "manual") bits.push("typed in by hand");
+  else if (src) bits.push(`found via ${SOURCE_LABELS[src] || src}`
+                        + (finder ? ` — “${finder.split("—")[0].trim()}”` : ""));
+  else if (finder) bits.push(`found by “${finder.split("—")[0].trim()}”`);
+  const added = daysSince(f["Date Added"]);
+  if (added != null) bits.push(added === 0 ? "found today"
+    : `found ${added} day${added === 1 ? "" : "s"} ago`);
+  const seen = daysSince(f["Last Seen"]);
+  if (seen != null && seen !== added) bits.push(seen === 0 ? "checked today"
+    : `checked ${seen} day${seen === 1 ? "" : "s"} ago`);
+  return bits.length ? `<div class="prov">${esc(bits.join(" · "))}</div>` : "";
 }
 
 // The move since the last run, in dollars. Mirrors send_digest._price_change_html:
@@ -1224,6 +1242,7 @@ function houseCard({ id, f, v }) {
           ${f.Status && f.Status !== "New" ? ` · ${esc(f.Status)}` : ""}
         </div>
         ${priceChangeChip(f)}
+        ${provenanceLine(f)}
         ${signalChips(f["Value Signals"], 3)}
         ${recommendationBlock(f, id)}
         ${fitBlock(f, true)}
