@@ -200,6 +200,39 @@ def main():
     check("no rehab means no breakeven, not a guess",
           recommend.breakeven_resale({"Price": 369000}), None)
 
+    print("\nApproach and next steps:")
+    big_lot = dict(underpriced, **{"Lot Sqft": 30492})
+    _, best_lot = fit_summary(big_lot, crit)
+    name, play, numbers = recommend.approach(big_lot, best_lot)
+    # The bug this caught: the play was chosen from the lot, so a house whose
+    # best fit was Flip was described as an ADU project.
+    check("the play matches the strategy named beside it",
+          "resale" in play.lower() if "flip" in name.lower() else True, True)
+    check("a big lot is mentioned as an option, not as the plan",
+          "would also take a second dwelling" in play, True)
+    check("the numbers name entry, work and exit", len(numbers), 3)
+
+    steps = recommend.next_steps(big_lot, recommend.SEE_IT, best_lot)
+    check("first step is testing the breakeven against real comps",
+          "comparable sales" in steps[0], True)
+    check("a stale listing gets a concrete opening offer",
+          any("opening offer" in t for t in steps), True)
+    check("a big lot triggers the zoning check before anything else",
+          any("zoning" in t for t in steps), True)
+
+    print("\nPicks only include things you can still buy:")
+    live = (underpriced, best_lot)
+    gone = (dict(underpriced, **{"Listing Status": "Off Market"}), best_lot)
+    pending = (dict(underpriced, **{"Listing Status": "Under Contract"}), best_lot)
+    chosen = recommend.picks([live, gone, pending])
+    check("one live house picked, the sold and pending ones dropped",
+          len(chosen), 1)
+    watch_only = ({"Price": 459900, "Rehab Cost": 19780, "Sqft": 989,
+                   "Price Per Sqft": 465, "Days on Market": 10,
+                   "Year Built": 2015, "Value Signals": ""}, None)
+    check("a house merely worth watching is not a pick",
+          len(recommend.picks([watch_only])), 0)
+
     print("\nLane routing, so the two emails stay separate:")
     check("a 24-unit block is a complex", lane_of({"Units": 24}), "multifamily")
     check("a detached house is a home", lane_of({"Property Type": "Single Family"}), "house")

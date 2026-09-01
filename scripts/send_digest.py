@@ -322,6 +322,58 @@ DROP_SOFT = "#f5e6d5"
 RISE = "#5c6b69"        # a raise is worth knowing and worth not shouting about
 
 
+def _picks_html(houses, criteria_rows):
+    """Where to start: the few houses worth acting on, with the play.
+
+    A digest of forty-five houses ranked by fit answers "which of these
+    match". This answers "what do I do on Saturday", which is the question
+    somebody actually opens the email with.
+    """
+    scored = []
+    for rec in houses:
+        f = rec.get("fields", {})
+        _, best = fit_summary(f, criteria_rows)
+        scored.append((f, best))
+    chosen = recommend.picks(scored, limit=3)
+    if not chosen:
+        return ""
+
+    blocks = []
+    for i, pick in enumerate(chosen, 1):
+        f, best = pick["fields"], pick["best"]
+        name, play, numbers = recommend.approach(f, best)
+        steps = recommend.next_steps(f, pick["action"], best)
+        step_html = "".join(
+            f'<tr><td style="padding:2px 0 2px 14px;font-size:12px;color:{MUTED};'
+            f'line-height:1.5;">{n}. {html.escape(t)}</td></tr>'
+            for n, t in enumerate(steps, 1))
+        blocks.append(
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'border="0" style="margin:0 0 12px;border:1px solid {LINE};'
+            f'background:#ffffff;"><tr><td style="padding:14px 16px;">'
+            f'<div style="font-size:11px;font-weight:700;letter-spacing:0.8px;'
+            f'color:{BRAND};">{i} &middot; {html.escape(pick["action"]).upper()}</div>'
+            f'<div style="font-family:{SERIF};font-size:17px;font-weight:700;'
+            f'color:{INK};margin-top:4px;">{html.escape(str(f.get("Address") or ""))}</div>'
+            f'<div style="font-size:12px;color:{MUTED};margin-top:5px;line-height:1.55;">'
+            f'<b style="color:{INK};">{html.escape(name)}.</b> {html.escape(play)}</div>'
+            f'<div style="font-size:12px;color:{SIGNAL};margin-top:6px;font-weight:600;">'
+            f'{" &middot; ".join(html.escape(n) for n in numbers)}</div>'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'border="0" style="margin-top:9px;"><tr><td style="padding:0 0 3px;'
+            f'font-size:10px;font-weight:700;letter-spacing:0.7px;color:{MUTED};">'
+            f'NEXT STEPS</td></tr>{step_html}</table>'
+            f'</td></tr></table>')
+
+    return (f'<tr><td style="padding:18px 18px 2px;">'
+            f'<div style="font-family:{SERIF};font-size:20px;font-weight:700;'
+            f'color:{INK};margin-bottom:3px;">Where to start</div>'
+            f'<div style="font-size:12px;color:{MUTED};margin-bottom:12px;'
+            f'line-height:1.55;">Still on the market, and the evidence supports '
+            f'doing something about them this week.</div>'
+            f'{"".join(blocks)}</td></tr>')
+
+
 def _recommendation_html(f, best):
     """The recommendation block: what to do, why, and what it cannot see."""
     action, reasons, caveats = recommend.recommend(f, best)
@@ -335,12 +387,26 @@ def _recommendation_html(f, best):
         f'<tr><td style="padding:1px 0 1px 12px;font-size:11px;color:{MUTED};'
         f'line-height:1.5;font-style:italic;">{html.escape(c)}</td></tr>'
         for c in caveats)
+    name, play, numbers = recommend.approach(f, best)
+    plan = (f'<tr><td style="padding:8px 12px 0;font-size:12px;color:{MUTED};'
+            f'line-height:1.55;"><b style="color:{INK};">{html.escape(name)}.</b> '
+            f'{html.escape(play)}</td></tr>'
+            f'<tr><td style="padding:5px 12px 0;font-size:12px;font-weight:600;'
+            f'color:{SIGNAL};">{" &middot; ".join(html.escape(n) for n in numbers)}</td></tr>')
+    steps = "".join(
+        f'<tr><td style="padding:2px 0 2px 12px;font-size:12px;color:{MUTED};'
+        f'line-height:1.5;">{n}. {html.escape(t)}</td></tr>'
+        for n, t in enumerate(recommend.next_steps(f, action, best), 1))
     return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             f'border="0" style="margin:2px 0 12px;background:{bg};">'
             f'<tr><td style="padding:10px 12px 4px;font-size:13px;font-weight:700;'
             f'color:{fg};">{html.escape(action)}</td></tr>'
             f'{why}'
-            f'<tr><td style="padding:6px 0 0 12px;font-size:10px;font-weight:700;'
+            f'{plan}'
+            f'<tr><td style="padding:8px 0 3px 12px;font-size:10px;font-weight:700;'
+            f'letter-spacing:0.7px;color:{MUTED};">NEXT STEPS</td></tr>'
+            f'{steps}'
+            f'<tr><td style="padding:8px 0 0 12px;font-size:10px;font-weight:700;'
             f'letter-spacing:0.6px;color:{MUTED};">WHAT THIS CANNOT SEE</td></tr>'
             f'{notes}'
             f'<tr><td style="height:10px;"></td></tr></table>')
@@ -615,11 +681,13 @@ def build_email(criteria_rows, new_houses):
         sub = ("Newly listed, or newly cheaper. Ranked by how many of your criteria "
                "each one provably falls into. Tap through for the full listing.")
         content = house_rows(new_houses, criteria_rows)
+        picks_html = _picks_html(new_houses, criteria_rows)
     else:
         subject = "House Finder: search criteria are live"
         headline = "No new matches today"
         sub = "The searches below ran and found nothing new. Here's what they're hunting for."
         content = ""
+        picks_html = ""
 
     return subject, f"""<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:{GROUND};">
@@ -637,7 +705,7 @@ def build_email(criteria_rows, new_houses):
                   margin-top:8px;line-height:1.1;">{headline}</div>
       <div style="color:{MUTED};font-size:13px;margin-top:9px;line-height:1.55;">{sub}</div>
     </td></tr>
-
+    {picks_html}
     <tr><td style="padding:20px 18px 4px;">
       {content}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">

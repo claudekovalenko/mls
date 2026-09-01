@@ -139,6 +139,159 @@ def recommend(fields, best_fit=None):
     return action, reasons, caveats
 
 
+# ---------------------------------------------------------------- approach
+
+def _acres(fields):
+    lot = _num(fields.get("Lot Sqft"))
+    return lot / 43560 if lot else None
+
+
+def approach(fields, best_fit=None):
+    """Which play this house is for, and the numbers that define it.
+
+    The strategy a house best fits is not the same question as how you would
+    actually run it. "BRRRR A" is a label; "the lot is big enough to put a
+    second dwelling on, so the value is in the land not the house" is a plan
+    you can act on or reject.
+    """
+    name = ((best_fit or {}).get("name") or "").split("—")[0].strip()
+    detail = ((best_fit or {}).get("name") or "")
+    price = _num(fields.get("Price"))
+    rehab = _num(fields.get("Rehab Cost"))
+    sqft = _num(fields.get("Sqft"))
+    acres = _acres(fields)
+    cats = str(fields.get("Value Signals") or "").lower()
+
+    numbers = []
+    if price is not None:
+        numbers.append(f"buy around ${price:,.0f}")
+    if rehab is not None:
+        per_sqft = f" (${rehab / sqft:,.0f}/sqft)" if sqft else ""
+        numbers.append(f"budget about ${rehab:,.0f} of work{per_sqft}")
+    breakeven = breakeven_resale(fields)
+    if breakeven is not None:
+        numbers.append(f"exit above ${breakeven:,.0f} to make anything")
+
+    # The play follows the strategy this house actually fits. Choosing it
+    # from the lot instead produced the obvious contradiction: a house whose
+    # best fit was Flip described as an ADU project, because the garden
+    # happened to be large. What the house physically offers becomes an
+    # aside, which is what it is -- a second option, not the plan.
+    lower = (name + " " + detail).lower()
+    if "adu" in lower or "brrrr a" in lower:
+        play = ("Add a second dwelling. The value is in the land rather than "
+                "the house, so the condition of the existing building matters "
+                "less than what the lot will take.")
+    elif "basement" in lower:
+        play = ("Convert the basement into a separate unit. Two rents from one "
+                "roof, and the square footage is already built and paid for.")
+    elif "flip" in lower:
+        play = ("Cosmetic renovation and resale. The margin comes from buying "
+                "under the street's going rate, so the entry price is the whole "
+                "game -- overpay at the front and no amount of work recovers it.")
+    else:
+        play = ("Hold and rent. Whether it works turns on rent against the "
+                "financing after the work, and no rent estimate has been "
+                "entered yet.")
+
+    # Options the house carries beyond its best-fitting strategy. Worth
+    # naming, never worth mistaking for the plan.
+    if "flip" in lower and acres and acres >= 0.34:
+        play += (f" The {acres:.2f}-acre lot would also take a second dwelling "
+                 f"if you would rather hold it than sell it.")
+    elif "flip" in lower and "basement" in cats:
+        play += (" There is a basement, so a conversion is an alternative to "
+                 "selling it on.")
+
+    return name or "No matching strategy", play, numbers
+
+
+# ------------------------------------------------------------- next steps
+
+def next_steps(fields, action=None, best_fit=None):
+    """The specific things to do about this house, in order.
+
+    Written to be finishable. "Do more research" is not a step; "pull the
+    last three sold on this street and check they clear $500,565" is.
+    """
+    steps = []
+    price = _num(fields.get("Price"))
+    dom = _num(fields.get("Days on Market"))
+    cut = _num(fields.get("Price Cut"))
+    detail = ((best_fit or {}).get("name") or "").lower()
+    cats = str(fields.get("Value Signals") or "").lower()
+    breakeven = breakeven_resale(fields)
+    acres = _acres(fields)
+
+    # The blind spot always comes first, because every other number depends
+    # on it and nothing here can supply it.
+    if breakeven is not None:
+        steps.append(f"Pull the last three comparable sales within half a mile "
+                     f"and check they clear ${breakeven:,.0f}. That single number "
+                     f"decides whether the rest of this is worth doing.")
+    else:
+        steps.append("Enter a rehab estimate in the app so there is a breakeven "
+                     "figure to test against.")
+
+    if not _num(fields.get("Sqft")):
+        steps.append("Ask the listing agent for the square footage -- it is "
+                     "missing from the feed, which is why this passed the "
+                     "price-per-foot test by default rather than on merit.")
+
+    if dom is not None and dom >= STALE_DAYS and price:
+        opening = price * 0.90
+        steps.append(f"It has sat {dom:.0f} days"
+                     + (f" and already come down {cut:.0f}%" if cut else "")
+                     + f". An opening offer near ${opening:,.0f} (10% under "
+                       f"asking) is defensible on the time alone.")
+
+    if "adu" in detail or (acres and acres >= 0.34):
+        steps.append("Check Cobb County zoning for an accessory dwelling on a "
+                     "lot this size before anything else -- if it is not "
+                     "permitted, the whole plan for this house is void.")
+    if "basement" in detail or "basement" in cats:
+        steps.append("Confirm on the visit that the basement is unfinished, has "
+                     "ceiling height, and can take a legal egress window. "
+                     "Without egress it is storage, not a unit.")
+
+    if action == SEE_IT:
+        steps.append("Book the viewing this week. Underpriced and dated does "
+                     "not stay on the market.")
+    elif action == NEGOTIATE:
+        steps.append("Ask the agent why it has not sold before offering. The "
+                     "answer is usually either the price or something you would "
+                     "want to know about the house.")
+    elif action == WATCH:
+        steps.append("No action yet. It reappears in the email the moment the "
+                     "price moves.")
+
+    return steps
+
+
+def picks(scored, limit=3):
+    """The few houses worth starting with.
+
+    scored: [(fields, best_fit)]. Ranked by the strength of the action first
+    and the fit second, so a house you should go and see outranks a better
+    match you should merely watch.
+    """
+    order = {SEE_IT: 0, NEGOTIATE: 1, WATCH: 2, SKIP: 3}
+    rows = []
+    for fields, best in scored:
+        # Only things that can still be bought. A pick you cannot act on is
+        # not a pick.
+        if fields.get("Listing Status") in ("Off Market", "Under Contract"):
+            continue
+        action, reasons, _ = recommend(fields, best)
+        if action in (WATCH, SKIP):
+            continue
+        rows.append({"fields": fields, "best": best, "action": action,
+                     "reasons": reasons,
+                     "rank": (order[action], -((best or {}).get("score") or 0))})
+    rows.sort(key=lambda r: r["rank"])
+    return rows[:limit]
+
+
 def headline(fields, best_fit=None):
     """One line: the action and its single strongest reason."""
     action, reasons, _ = recommend(fields, best_fit)

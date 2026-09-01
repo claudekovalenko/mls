@@ -964,15 +964,108 @@ function recommend(f, best) {
   return { action, reasons, caveats };
 }
 
+// Which play this house is for, and the numbers that define it.
+// Mirrors recommend.approach. The play follows the strategy the house fits,
+// not the shape of the lot -- picking it from the lot produced a house whose
+// best fit was Flip described as an ADU project.
+function approach(f, best) {
+  const name = ((best && best.name) || "").split("\u2014")[0].trim();
+  const detail = (best && best.name) || "";
+  const price = Number(f.Price), rehab = Number(f["Rehab Cost"]), sqft = Number(f.Sqft);
+  const lot = Number(f["Lot Sqft"]);
+  const acres = lot ? lot / 43560 : null;
+  const cats = String(f["Value Signals"] || "").toLowerCase();
+
+  const numbers = [];
+  if (price) numbers.push(`buy around ${money(price)}`);
+  if (rehab) numbers.push(`budget about ${money(rehab)} of work`
+                          + (sqft ? ` (${money(rehab / sqft)}/sqft)` : ""));
+  const be = breakevenResale(f);
+  if (be) numbers.push(`exit above ${money(be)} to make anything`);
+
+  const lower = (name + " " + detail).toLowerCase();
+  let play;
+  if (lower.includes("adu") || lower.includes("brrrr a"))
+    play = "Add a second dwelling. The value is in the land rather than the house, "
+         + "so the condition of the existing building matters less than what the lot will take.";
+  else if (lower.includes("basement"))
+    play = "Convert the basement into a separate unit. Two rents from one roof, "
+         + "and the square footage is already built and paid for.";
+  else if (lower.includes("flip"))
+    play = "Cosmetic renovation and resale. The margin comes from buying under the "
+         + "street's going rate, so the entry price is the whole game.";
+  else
+    play = "Hold and rent. Whether it works turns on rent against the financing "
+         + "after the work, and no rent estimate has been entered yet.";
+
+  if (lower.includes("flip") && acres && acres >= 0.34)
+    play += ` The ${acres.toFixed(2)}-acre lot would also take a second dwelling `
+          + `if you would rather hold it than sell it.`;
+  else if (lower.includes("flip") && cats.includes("basement"))
+    play += " There is a basement, so a conversion is an alternative to selling it on.";
+
+  return { name: name || "No matching strategy", play, numbers };
+}
+
+// The specific things to do, in order. Written to be finishable: "do more
+// research" is not a step; "pull three comps and check they clear $500,565" is.
+function nextSteps(f, action, best) {
+  const steps = [];
+  const price = Number(f.Price), dom = Number(f["Days on Market"]);
+  const cut = Number(f["Price Cut"]);
+  const detail = ((best && best.name) || "").toLowerCase();
+  const cats = String(f["Value Signals"] || "").toLowerCase();
+  const lot = Number(f["Lot Sqft"]);
+  const acres = lot ? lot / 43560 : null;
+  const be = breakevenResale(f);
+
+  steps.push(be
+    ? `Pull the last three comparable sales within half a mile and check they clear `
+      + `${money(be)}. That single number decides whether the rest of this is worth doing.`
+    : "Enter a rehab estimate here so there is a breakeven figure to test against.");
+
+  if (!Number(f.Sqft))
+    steps.push("Ask the listing agent for the square footage \u2014 it is missing from the "
+             + "feed, which is why this passed the price-per-foot test by default.");
+
+  if (dom >= REC_STALE_DAYS && price)
+    steps.push(`It has sat ${dom} days${cut ? ` and already come down ${cut}%` : ""}. `
+             + `An opening offer near ${money(price * 0.9)} (10% under asking) is `
+             + `defensible on the time alone.`);
+
+  if (detail.includes("adu") || (acres && acres >= 0.34))
+    steps.push("Check Cobb County zoning for an accessory dwelling on a lot this size "
+             + "before anything else \u2014 if it is not permitted, the plan for this house is void.");
+  if (detail.includes("basement") || cats.includes("basement"))
+    steps.push("Confirm on the visit that the basement is unfinished, has ceiling height, "
+             + "and can take a legal egress window. Without egress it is storage, not a unit.");
+
+  if (action === SEE_IT)
+    steps.push("Book the viewing this week. Underpriced and dated does not stay on the market.");
+  else if (action === NEGOTIATE)
+    steps.push("Ask the agent why it has not sold before offering. The answer is usually "
+             + "either the price or something you would want to know about the house.");
+  else if (action === WATCH)
+    steps.push("No action yet. It reappears the moment the price moves.");
+
+  return steps;
+}
+
 function recommendationBlock(f) {
   const { best } = fitSummary(f);
   const { action, reasons, caveats } = recommend(f, best);
   const cls = action === SEE_IT ? "rec-go"
             : action === NEGOTIATE ? "rec-offer"
             : action === WATCH ? "rec-watch" : "rec-skip";
+  const plan = approach(f, best);
+  const steps = nextSteps(f, action, best);
   return `<div class="rec ${cls}">
     <div class="rec-action">${esc(action)}</div>
     <ul class="rec-why">${reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+    <div class="rec-plan"><b>${esc(plan.name)}.</b> ${esc(plan.play)}</div>
+    <div class="rec-numbers">${plan.numbers.map(esc).join(" \u00b7 ")}</div>
+    <div class="rec-blind">Next steps</div>
+    <ol class="rec-steps">${steps.map(t => `<li>${esc(t)}</li>`).join("")}</ol>
     <div class="rec-blind">What this can't see</div>
     <ul class="rec-caveats">${caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
   </div>`;

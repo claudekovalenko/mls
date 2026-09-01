@@ -517,3 +517,9 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .rec-watch  .rec-action { color: var(--ink); }
 .rec-skip   { background: var(--bg); }
 .rec-skip   .rec-action { color: var(--sub); }
+
+.rec-plan { margin-top: 8px; font-size: .78rem; color: var(--sub); line-height: 1.5; }
+.rec-plan b { color: var(--ink); }
+.rec-numbers { margin-top: 5px; font-size: .76rem; font-weight: 700; color: #a2500c; }
+.rec-steps { margin: 5px 0 0; padding-left: 18px; }
+.rec-steps li { font-size: .78rem; color: var(--sub); line-height: 1.5; padding: 1px 0; }
