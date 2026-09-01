@@ -77,6 +77,12 @@ def main():
             print(f"  ajax endpoints: {ajax}")
             addr = re.findall(r"\b\d{2,5} [A-Z][A-Za-z .]+(?:Rd|St|Dr|Ln|Ct|Ave|Way|Cir|Blvd|Trl|Pl)\b", text)
             print(f"  address-shaped strings: {len(addr)} -> {addr[:10]}")
+            # One whole card, verbatim: the region around the first address is
+            # the template the parser will be written against.
+            if addr:
+                i = text.find(addr[0])
+                print("  CARD CONTEXT:")
+                print(text[max(0, i - 2200):i + 1400])
     return 0
 
 
