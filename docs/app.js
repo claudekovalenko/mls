@@ -896,6 +896,88 @@ function priceChangeChip(f) {
             <span class="was">was ${money(old)}</span></div>`;
 }
 
+// ---- recommendations (mirror of scripts/recommend.py) ----
+// A ranked list still leaves the deciding to you. This says what the
+// evidence supports and what it rests on, so you can disagree with the
+// specifics rather than taking or leaving a score.
+//
+// It only ever recommends a next step, never a purchase: nothing here knows
+// what the work really costs or what the house really resells for, and a
+// tool that said "buy this" while missing both would be worth less than none.
+const REC_BELOW_MARKET = 15, REC_STALE_DAYS = 90, REC_CUT = 5, REC_DATED = 1985;
+const SEE_IT = "Go and see it";
+const NEGOTIATE = "Worth an offer under asking";
+const WATCH = "Watch it";
+const SKIP = "Skip unless you know something the data doesn't";
+
+function breakevenResale(f) {
+  const price = Number(f.Price), rehab = Number(f["Rehab Cost"]);
+  if (!price || !rehab) return null;
+  return (price + rehab) / (1 - 0.08);
+}
+
+function recommend(f, best) {
+  const reasons = [], caveats = [];
+  const dom = Number(f["Days on Market"]) || null;
+  const cut = Number(f["Price Cut"]) || null;
+  const year = Number(f["Year Built"]) || null;
+  const discount = discountPct(f);
+  const fitScore = (best && best.score) || 0;
+  const fitName = ((best && best.name) || "").split("\u2014")[0].trim();
+
+  const underpriced = discount != null && discount >= REC_BELOW_MARKET;
+  const stale = dom != null && dom >= REC_STALE_DAYS;
+  const motivated = cut != null && cut >= REC_CUT;
+  const dated = year != null && year <= REC_DATED;
+
+  if (underpriced) reasons.push(`${discount}% under the going rate per square foot round there`);
+  if (stale) reasons.push(`sat ${dom} days when the area typically goes under contract in about three weeks`);
+  if (motivated) reasons.push(`the seller has already cut ${cut}%`);
+  if (dated && !underpriced && !motivated) reasons.push(`built ${year}, so likely original condition`);
+  if (fitScore >= 1 && fitName) reasons.push(`meets every measurable part of ${fitName}`);
+  else if (fitScore >= 0.75 && fitName) reasons.push(`meets most of ${fitName}`);
+
+  let action;
+  if ((underpriced || motivated) && fitScore >= 0.75) action = SEE_IT;
+  else if (stale && motivated) {
+    action = NEGOTIATE;
+    reasons.push("both together say the asking price is not holding");
+  }
+  else if (underpriced || (fitScore >= 1 && (dated || stale))) action = SEE_IT;
+  else if (fitScore >= 0.5 || dated || stale) action = WATCH;
+  else action = SKIP;
+
+  // Never a recommendation without a reason -- see recommend.py.
+  if (!reasons.length) {
+    reasons.push(fitScore && fitName
+      ? `clears part of ${fitName} but nothing else marks it out`
+      : "nothing in the data marks this out from the rest of the street");
+  }
+
+  const be = breakevenResale(f);
+  caveats.push(be
+    ? `needs to resell above ${money(be)} to break even, on a rehab estimate nobody has verified`
+    : "no rehab estimate yet, so there is no profit figure here");
+  if (f.ARV == null || f.ARV === "")
+    caveats.push("resale value is the one number this cannot see");
+
+  return { action, reasons, caveats };
+}
+
+function recommendationBlock(f) {
+  const { best } = fitSummary(f);
+  const { action, reasons, caveats } = recommend(f, best);
+  const cls = action === SEE_IT ? "rec-go"
+            : action === NEGOTIATE ? "rec-offer"
+            : action === WATCH ? "rec-watch" : "rec-skip";
+  return `<div class="rec ${cls}">
+    <div class="rec-action">${esc(action)}</div>
+    <ul class="rec-why">${reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+    <div class="rec-blind">What this can't see</div>
+    <ul class="rec-caveats">${caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+  </div>`;
+}
+
 function houseCard({ id, f, v }) {
   // The feed's own photo when it has one, a Street View still otherwise --
   // for a fixer hunt the kerb shot is close to the point, since a tired roof
@@ -936,6 +1018,7 @@ function houseCard({ id, f, v }) {
         </div>
         ${priceChangeChip(f)}
         ${signalChips(f["Value Signals"], 3)}
+        ${recommendationBlock(f)}
         ${fitBlock(f, true)}
         ${cardStats(f, v)}
         <div class="card-verdicts">
