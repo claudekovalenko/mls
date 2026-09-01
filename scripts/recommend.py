@@ -268,27 +268,83 @@ def next_steps(fields, action=None, best_fit=None):
     return steps
 
 
-def picks(scored, limit=3):
-    """The few houses worth starting with.
+# ---------------------------------------------------------------- strength
 
-    scored: [(fields, best_fit)]. Ranked by the strength of the action first
-    and the fit second, so a house you should go and see outranks a better
-    match you should merely watch.
+def strength(fields, best_fit=None):
+    """0-100: how much evidence has piled up on this house.
+
+    The actions alone stopped meaning anything the moment several houses
+    earned the same one -- twenty 'go and see it's is a list, not advice.
+    This grades within the verdict, from the same four facts the verdict
+    rests on, each capped so no single signal can saturate the score:
+
+      up to 35  discount against the area's going $/sqft (capped at 30%)
+      up to 25  how completely it fits its best strategy
+      up to 20  time on market (capped at 180 days)
+      up to 20  the seller's own price cut (capped at 20%)
+
+    Deterministic and explainable: two houses with the same number have the
+    same evidence, and you can see which fact moved the score.
     """
-    order = {SEE_IT: 0, NEGOTIATE: 1, WATCH: 2, SKIP: 3}
+    dom = _num(fields.get("Days on Market")) or 0
+    cut = _num(fields.get("Price Cut")) or 0
+    discount = discount_pct(fields) or 0
+    fit = max(0.0, min(1.0, (best_fit or {}).get("score") or 0))
+    return round(35 * min(discount, 30) / 30
+                 + 25 * fit
+                 + 20 * min(dom, 180) / 180
+                 + 20 * min(cut, 20) / 20)
+
+
+# ------------------------------------------------------------------ triage
+
+# How many houses may hold "go and see it" at once. Somebody has one
+# Saturday, not twenty -- a strong verdict that everything qualifies for
+# stops being a verdict at all.
+SEE_LIMIT = 3
+
+
+def triage(scored, see_limit=SEE_LIMIT):
+    """Final actions across the whole field, not per house in isolation.
+
+    scored: [(fields, best_fit)]. Each house is judged on its own evidence
+    first, then ranked against the others: only the see_limit strongest keep
+    "go and see it", and the rest are held back to Watch with that said in
+    so many words. Held-back houses are next in line by construction -- the
+    day a top one goes under contract, the strongest of them is promoted on
+    the next run without anyone doing anything.
+    """
     rows = []
     for fields, best in scored:
-        # Only things that can still be bought. A pick you cannot act on is
-        # not a pick.
-        if fields.get("Listing Status") in ("Off Market", "Under Contract"):
-            continue
-        action, reasons, _ = recommend(fields, best)
-        if action in (WATCH, SKIP):
-            continue
+        action, reasons, caveats = recommend(fields, best)
+        # A house that can no longer be bought gets no action at all,
+        # whatever its evidence says. A recommendation you cannot act on is
+        # noise wearing a verdict's clothes.
+        if (fields.get("Listing Status") in ("Off Market", "Under Contract")
+                or fields.get("Status") in ("Under Contract", "Purchased", "Rejected")):
+            action = SKIP
+            reasons = ["no longer available, whatever the numbers said"]
         rows.append({"fields": fields, "best": best, "action": action,
-                     "reasons": reasons,
-                     "rank": (order[action], -((best or {}).get("score") or 0))})
-    rows.sort(key=lambda r: r["rank"])
+                     "reasons": reasons, "caveats": caveats,
+                     "strength": strength(fields, best), "held_back": False})
+
+    sees = sorted((r for r in rows if r["action"] == SEE_IT),
+                  key=lambda r: -r["strength"])
+    for r in sees[see_limit:]:
+        r["action"] = WATCH
+        r["held_back"] = True
+        r["reasons"].append(
+            f"strong on its own, but only the {see_limit} strongest earn a "
+            f"viewing in any one week -- this one is next in line")
+    return rows
+
+
+def picks(scored, limit=SEE_LIMIT):
+    """The few houses worth starting with, strongest first."""
+    order = {SEE_IT: 0, NEGOTIATE: 1}
+    rows = [r for r in triage(scored, see_limit=limit)
+            if r["action"] in order]
+    rows.sort(key=lambda r: (order[r["action"]], -r["strength"]))
     return rows[:limit]
 
 

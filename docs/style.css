@@ -500,8 +500,28 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 }
 
 /* ---- recommendation ---- */
-.rec { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm); }
-.rec-action { font-size: .84rem; font-weight: 800; }
+.rec { margin-top: 12px; padding: 9px 12px; border-radius: var(--radius-sm); }
+.rec summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; list-style: none;
+}
+.rec summary::-webkit-details-marker { display: none; }
+/* A quiet affordance that there is more: the chevron flips when open. */
+.rec summary::after {
+  content: "\2304"; margin-left: auto; color: var(--sub);
+  font-size: .9rem; line-height: .5; transition: transform .15s ease;
+}
+.rec[open] summary::after { transform: rotate(180deg); }
+.rec-action { font-size: .84rem; font-weight: 800; white-space: nowrap; }
+.rec-strength {
+  font-size: .72rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  background: var(--ink); color: var(--card);
+  border-radius: 999px; padding: 1px 7px;
+}
+.rec-first {
+  font-size: .74rem; color: var(--sub); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
 .rec-why, .rec-caveats { margin: 5px 0 0; padding-left: 16px; }
 .rec-why li { font-size: .78rem; color: var(--sub); line-height: 1.5; }
 .rec-caveats li { font-size: .72rem; color: var(--sub); line-height: 1.45; font-style: italic; }
