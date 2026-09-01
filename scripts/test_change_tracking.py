@@ -263,6 +263,29 @@ def main():
     check("a detached house is a home", lane_of({"Property Type": "Single Family"}), "house")
     check("an empty row is a home, not nothing", lane_of({}), "house")
 
+    print("\nA search only judges its own kind of building:")
+    from send_digest import fit_summary as fs
+    mf_row = {"fields": {"Name": "Multifamily 5+", "Active": True,
+                         "Property Class": "Multifamily", "Min Units": 5,
+                         "Max Price": 5000000}}
+    flip_row = {"fields": {"Name": "Flip", "Active": True, "Strategy": "Flip",
+                           "Max Price": 500000}}
+    sfh = {"Property Type": "Single Family", "Price": 400000}
+    block = {"Property Type": "Multi-Family", "Units": 12, "Price": 2000000}
+    fits, best = fs(sfh, [mf_row, flip_row])
+    check("a single-family house is never scored by the multifamily search",
+          all(x["name"] != "Multifamily 5+" for x in fits), True)
+    check("...its best fit comes from a house search", best["name"], "Flip")
+    fits, best = fs(block, [mf_row, flip_row])
+    check("a 12-unit block is never scored by the flip search",
+          all(x["name"] != "Flip" for x in fits), True)
+    check("...and does fit the multifamily search", best["name"], "Multifamily 5+")
+    small = {"Property Type": "Multi-Family", "Units": 3, "Price": 800000}
+    fits, _ = fs(small, [mf_row, flip_row])
+    unit_checks = [s for x in fits for lab, s in x["checks"] if "units" in lab]
+    check("a triplex fails the 5+ unit check rather than passing silently",
+          unit_checks, [False])
+
     print()
     if failures:
         print(f"{len(failures)} FAILED: {failures}")

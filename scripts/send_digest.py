@@ -195,6 +195,15 @@ def assess_fit(f, crit):
         elif ppsf:
             checks.append((f"${ppsf:.0f}/sqft vs ${ppsf_cap:.0f} cap", ppsf <= ppsf_cap))
 
+    min_units = crit.get("Min Units")
+    if min_units:
+        units = f.get("Units")
+        if units:
+            checks.append((f"{units:g} units vs {min_units:g}+ goal",
+                           units >= min_units))
+        else:
+            checks.append(("unit count unlisted", None))
+
     musts = str(crit.get("Must Haves") or "").lower()
     if "basement" in musts:
         checks.append(("basement", True if "basement" in cats else None))
@@ -234,7 +243,17 @@ def fit_summary(f, criteria_rows):
     """
     fits = []
     for rec in criteria_rows:
-        name, strategy, checks = assess_fit(f, rec.get("fields", {}))
+        crit = rec.get("fields", {})
+        # A search is only ever judged against its own kind of building: a
+        # multifamily row must not call a single-family house a fit however
+        # many of its other boxes the house ticks, and vice versa.
+        crit_lane = ("multifamily"
+                     if (crit.get("Property Class") == "Multifamily"
+                         or crit.get("Min Units"))
+                     else "house")
+        if crit_lane != lane_of(f):
+            continue
+        name, strategy, checks = assess_fit(f, crit)
         known = [s for _, s in checks if s is not None]
         met = sum(1 for s in known if s)
         # A blown price cap zeroes the score: a strategy you cannot afford is
