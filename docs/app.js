@@ -920,6 +920,7 @@ function cardStats(f, v) {
 // that is the one whose numbers nobody has verified against a feed.
 const SOURCE_LABELS = {
   rentcast: "RentCast", reso: "MLS / IDX", search: "Search",
+  homesteps: "HomeSteps foreclosure (Freddie Mac)",
 };
 function daysSince(d) {
   const ds = String(d || "").slice(0, 10);

@@ -17,3 +17,14 @@ jobs:
       - name: Discover
         working-directory: scripts
         run: python discover_gse.py
+      - name: Live-test the HomeSteps adapter
+        working-directory: scripts
+        run: |
+          python - <<'PY'
+          from search_worker import _homesteps_fetch_all, fetch_homesteps
+          rows = _homesteps_fetch_all()
+          for l in rows[:5]:
+              print(" ", l["address"], "|", l["price"], "|", l["feedStatus"])
+          for city in ("Marietta", "Smyrna", "Kennesaw", "Acworth", "Powder Springs"):
+              print(city, "->", len(fetch_homesteps({"City": city})), "listing(s)")
+          PY

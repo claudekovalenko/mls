@@ -250,6 +250,122 @@ def resolve_source():
     return None
 
 
+# ------------------------------------------------------------------ HomeSteps
+
+# Freddie Mac's REO (foreclosure) inventory. Free, keyless, and rendered
+# server-side: each card on /listing/search carries a schema.org JSON-LD
+# block published expressly for machine consumption, so this parses that
+# rather than scraping layout. Verified against the live page 2026-09-01
+# (discover_gse.py run) -- if Freddie redesigns, the discovery workflow is
+# the tool to re-derive this from.
+HOMESTEPS_URL = "https://www.homesteps.com/listing/search?search=GA"
+HOMESTEPS_PAGES = 5   # politeness cap; GA inventory is ~2 pages today
+
+_homesteps_cache = None
+
+
+def _homesteps_fetch_all():
+    """Every GA listing HomeSteps shows, fetched once per run and cached."""
+    global _homesteps_cache
+    if _homesteps_cache is not None:
+        return _homesteps_cache
+    out = []
+    for page in range(HOMESTEPS_PAGES):
+        url = HOMESTEPS_URL + (f"&page={page}" if page else "")
+        try:
+            text = _get_text(url)
+        except Exception as e:  # noqa: BLE001 -- a free extra source must
+            # never take the paid search down with it.
+            print(f"    homesteps: page {page} failed ({e}); "
+                  f"continuing with what we have")
+            break
+        found = _homesteps_parse(text)
+        out.extend(found)
+        # A page with no cards is the end of the inventory, not an error.
+        if not found:
+            break
+    # The map pane repeats every card; one listing per detail URL.
+    seen, unique = set(), []
+    for l in out:
+        if l["url"] in seen:
+            continue
+        seen.add(l["url"])
+        unique.append(l)
+    _homesteps_cache = unique
+    print(f"    homesteps: {len(unique)} GA listing(s) on file")
+    return unique
+
+
+def _homesteps_parse(text):
+    """One card per <a id="node-..."> block: JSON-LD for the facts, the
+    details line for the sqft the JSON-LD lacks."""
+    out = []
+    parts = re.split(r'<a id="node-\d+"[^>]*href="(/listingdetails/[^"]+)"',
+                     text)[1:]
+    for href, body in _pairs(parts):
+        m = re.search(r'"name":\s*"([^"]+)"', body)
+        price = re.search(r'"price":\s*"\$([\d,]+)"', body)
+        beds = re.search(r'"numberOfBedrooms":\s*"([\d.]+)"', body)
+        baths = re.search(r'"numberOfBathroomsTotal":\s*"([\d.]+)"', body)
+        sqft = re.search(r'([\d,]+)\s*sq\.\s*ft\.', body)
+        status = re.search(r'property-status-value[^>]*>([^<]+)<', body)
+        photo = re.search(r'<img src="(https://[^"]+)"', body)
+        kind = re.search(r'"accommodationCategory":\s*"([^"]+)"', body)
+        if not (m and price):
+            continue
+        out.append({
+            "address": m.group(1),
+            "price": float(price.group(1).replace(",", "")),
+            "beds": float(beds.group(1)) if beds else None,
+            "baths": float(baths.group(1)) if baths else None,
+            "sqft": float(sqft.group(1).replace(",", "")) if sqft else None,
+            "lotSqft": None,
+            "propertyType": (kind.group(1) if kind else "Single Family")
+                .replace("Single-Family", "Single Family"),
+            "url": "https://www.homesteps.com" + href,
+            "photoUrl": photo.group(1) if photo else "",
+            "description": "foreclosure, Freddie Mac REO",
+            "source": "homesteps",
+            "units": None,
+            "feedStatus": status.group(1).strip() if status else "",
+        })
+    return out
+
+
+def _pairs(seq):
+    """[a, b, c, d] -> [(a, b), (c, d)]: re.split with one capture group
+    alternates captured hrefs and the text that follows each."""
+    return list(zip(seq[0::2], seq[1::2]))
+
+
+def _get_text(url):
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "text/html", "Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read()
+        if resp.headers.get("Content-Encoding") == "gzip":
+            import gzip
+            raw = gzip.decompress(raw)
+        return raw.decode("utf-8", errors="ignore")
+
+
+def fetch_homesteps(criteria):
+    """The GA-wide HomeSteps inventory, narrowed to this criteria row's
+    ground: its zip ring if it has one, otherwise its city."""
+    zips = set(parse_list_field(criteria.get("Zip Codes")))
+    city = (criteria.get("City") or "").strip().lower()
+    out = []
+    for l in _homesteps_fetch_all():
+        addr = l["address"]
+        zm = re.search(r"(\d{5})\s*$", addr)
+        in_zip = bool(zips and zm and zm.group(1) in zips)
+        in_city = bool(city and f", {city}," in addr.lower())
+        if in_zip or in_city:
+            out.append(dict(l))
+    return out
+
+
 def fetch_listings(criteria, budget, coverage=None):
     """Listings for one criteria row.
 
@@ -270,7 +386,14 @@ def fetch_listings(criteria, budget, coverage=None):
         api_key = os.environ.get("RENTCAST_API_KEY")
         if not api_key:
             raise RuntimeError("LISTINGS_API_TYPE=rentcast but RENTCAST_API_KEY is unset")
-        return fetch_rentcast(criteria, api_key, budget, coverage)
+        listings = fetch_rentcast(criteria, api_key, budget, coverage)
+        # Free extra net on top of the paid one: Freddie Mac foreclosures.
+        # Failure here must never sink the run, only shrink it.
+        try:
+            listings = (listings or []) + fetch_homesteps(criteria)
+        except Exception as e:  # noqa: BLE001
+            print(f"    homesteps: skipped ({e})")
+        return listings
     return None  # nothing configured
 
 
