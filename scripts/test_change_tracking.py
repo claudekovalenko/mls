@@ -220,6 +220,31 @@ def main():
     check("a big lot triggers the zoning check before anything else",
           any("zoning" in t for t in steps), True)
 
+    print("\nStrength and the viewing cap:")
+    mk = lambda disc, dom, cut, fit: (
+        {"Price": 350000, "Rehab Cost": 50000, "Sqft": 1800,
+         "Days on Market": dom, "Price Cut": cut, "Year Built": 1970,
+         "Value Signals": f"{disc}% under area $/sqft" if disc else "",
+         "Listing Status": "Active"},
+        {"score": fit, "name": "Flip — 30068"})
+    check("saturated evidence scores 100", recommend.strength(*mk(30, 200, 20, 1.0)), 100)
+    check("no evidence scores near zero", recommend.strength(*mk(0, 0, 0, 0)), 0)
+    check("more discount means more strength",
+          recommend.strength(*mk(25, 100, 0, 1.0))
+          > recommend.strength(*mk(16, 100, 0, 1.0)), True)
+
+    field = [mk(23, 131, 0, 1.0), mk(30, 200, 20, 1.0), mk(15, 95, 6, 1.0),
+             mk(16, 100, 5, 1.0), mk(18, 120, 8, 1.0)]
+    rows = recommend.triage(field)
+    sees = [r for r in rows if r["action"] == recommend.SEE_IT]
+    held = [r for r in rows if r["held_back"]]
+    check("at most three hold a viewing however strong the field",
+          len(sees), 3)
+    check("the strongest three are the ones that hold it",
+          min(r["strength"] for r in sees) >= max(r["strength"] for r in held), True)
+    check("a held-back house says so in its own reasons",
+          all("next in line" in r["reasons"][-1] for r in held), True)
+
     print("\nPicks only include things you can still buy:")
     live = (underpriced, best_lot)
     gone = (dict(underpriced, **{"Listing Status": "Off Market"}), best_lot)

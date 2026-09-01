@@ -276,7 +276,7 @@ function discountPct(f) {
 // its own entry, sorted by that strategy's fit score -- so "sort by BRRRR A"
 // literally reorders the list by how well each house fits that plan.
 function sortOptions() {
-  const opts = [["best", "Best overall"]];
+  const opts = [["best", "Hottest first"]];
   criteria.filter(r => (r.fields || {}).Active).forEach(r => {
     const name = (r.fields || {}).Name || "Search";
     opts.push(["fit:" + name, "Fit: " + name.split("—")[0].trim()]);
@@ -355,11 +355,11 @@ function visibleMatches() {
   else if (sortBy === "rent")
     rows.sort((a, b) => (b.v.metrics.cashOnCash ?? -Infinity) - (a.v.metrics.cashOnCash ?? -Infinity));
   else {
-    // Best overall: category count leads, because flip profit runs off a
-    // placeholder ARV until someone types a real one.
-    rows.sort((a, b) => (b.v.bestRank - a.v.bestRank)
-      || (catCount(b.f) - catCount(a.f))
-      || ((b.v.metrics.flipProfit ?? -Infinity) - (a.v.metrics.flipProfit ?? -Infinity)));
+    // Hottest first: the same strength number shown on every card, so the
+    // order of the list and the badge on the card cannot disagree.
+    const t = triageMap();
+    const heat = r => (t.get(r.id) || {}).strength ?? strengthOf(r.f, fitSummary(r.f).best);
+    rows.sort((a, b) => heat(b) - heat(a) || (catCount(b.f) - catCount(a.f)));
   }
   return rows;
 }
@@ -562,7 +562,7 @@ function renderMatches() {
     el.addEventListener("click", ev => {
       // A link inside the card is its own destination; without this, tapping
       // Zillow would also open the detail dialog behind the new tab.
-      if (ev.target.closest("a")) return;
+      if (ev.target.closest("a, details")) return;
       openHouse(el.dataset.houseId);
     }));
 
@@ -1051,24 +1051,85 @@ function nextSteps(f, action, best) {
   return steps;
 }
 
-function recommendationBlock(f) {
-  const { best } = fitSummary(f);
-  const { action, reasons, caveats } = recommend(f, best);
+// 0-100: how much evidence has piled up. Mirrors recommend.strength -- the
+// same four facts, the same caps, so the app and the email always show the
+// same number for the same house.
+function strengthOf(f, best) {
+  const dom = Number(f["Days on Market"]) || 0;
+  const cut = Number(f["Price Cut"]) || 0;
+  const discount = discountPct(f) || 0;
+  const fit = Math.max(0, Math.min(1, (best && best.score) || 0));
+  return Math.round(35 * Math.min(discount, 30) / 30
+                  + 25 * fit
+                  + 20 * Math.min(dom, 180) / 180
+                  + 20 * Math.min(cut, 20) / 20);
+}
+
+// Final actions across the whole list, not per house alone: only the three
+// strongest hold "go and see it" at once, because there is one Saturday.
+// Recomputed per render and cached by house id. Mirrors recommend.triage.
+const SEE_LIMIT = 3;
+let triageCache = null;
+
+function triageMap() {
+  if (triageCache) return triageCache;
+  const rows = houses.map(r => {
+    const f = r.fields || {};
+    const { best } = fitSummary(f);
+    const rec = recommend(f, best);
+    let action = rec.action, reasons = rec.reasons, heldBack = false;
+    if (["Off Market", "Under Contract"].includes(f["Listing Status"])
+        || DECIDED_STATUSES.includes(f.Status)) {
+      action = SKIP;
+      reasons = ["no longer available, whatever the numbers said"];
+    }
+    return { id: r.id, f, best, action, reasons, caveats: rec.caveats,
+             strength: strengthOf(f, best), heldBack };
+  });
+  const sees = rows.filter(r => r.action === SEE_IT)
+                   .sort((a, b) => b.strength - a.strength);
+  for (const r of sees.slice(SEE_LIMIT)) {
+    r.action = WATCH;
+    r.heldBack = true;
+    r.reasons.push(`strong on its own, but only the ${SEE_LIMIT} strongest earn `
+                 + `a viewing in any one week — this one is next in line`);
+  }
+  triageCache = new Map(rows.map(r => [r.id, r]));
+  return triageCache;
+}
+
+function recommendationBlock(f, id) {
+  const t = id != null ? triageMap().get(id) : null;
+  const best = t ? t.best : fitSummary(f).best;
+  const action = t ? t.action : recommend(f, best).action;
+  const reasons = t ? t.reasons : recommend(f, best).reasons;
+  const caveats = t ? t.caveats : recommend(f, best).caveats;
+  const power = t ? t.strength : strengthOf(f, best);
   const cls = action === SEE_IT ? "rec-go"
             : action === NEGOTIATE ? "rec-offer"
             : action === WATCH ? "rec-watch" : "rec-skip";
+  // The card shows one line: verdict, strength, the reason that matters.
+  // Everything else -- the full reasoning, the play, the steps, the caveats
+  // -- is a tap away behind a native <details>, so the list stays scannable
+  // and the depth is there for whoever wants it.
+  const headlineReason = (t && t.heldBack) ? reasons[reasons.length - 1]
+                                           : (reasons[0] || "");
   const plan = approach(f, best);
   const steps = nextSteps(f, action, best);
-  return `<div class="rec ${cls}">
-    <div class="rec-action">${esc(action)}</div>
+  return `<details class="rec ${cls}">
+    <summary>
+      <span class="rec-action">${esc(action)}</span>
+      <span class="rec-strength" title="Strength of the evidence, 0–100">${power}</span>
+      <span class="rec-first">${esc(headlineReason)}</span>
+    </summary>
     <ul class="rec-why">${reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     <div class="rec-plan"><b>${esc(plan.name)}.</b> ${esc(plan.play)}</div>
     <div class="rec-numbers">${plan.numbers.map(esc).join(" \u00b7 ")}</div>
     <div class="rec-blind">Next steps</div>
-    <ol class="rec-steps">${steps.map(t => `<li>${esc(t)}</li>`).join("")}</ol>
+    <ol class="rec-steps">${steps.map(t2 => `<li>${esc(t2)}</li>`).join("")}</ol>
     <div class="rec-blind">What this can't see</div>
     <ul class="rec-caveats">${caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
-  </div>`;
+  </details>`;
 }
 
 function houseCard({ id, f, v }) {
@@ -1111,7 +1172,7 @@ function houseCard({ id, f, v }) {
         </div>
         ${priceChangeChip(f)}
         ${signalChips(f["Value Signals"], 3)}
-        ${recommendationBlock(f)}
+        ${recommendationBlock(f, id)}
         ${fitBlock(f, true)}
         ${cardStats(f, v)}
         <div class="card-verdicts">
@@ -1300,6 +1361,7 @@ async function refresh() {
   try {
     setStatus("Loading…");
     [criteria, houses] = await Promise.all([listAll(TABLE_CRITERIA), listAll(TABLE_HOUSES)]);
+    triageCache = null;   // new data, new triage
     const markets = [...new Set(houses.map(r => r.fields?.Market).filter(Boolean))];
     $("filter-market").innerHTML = '<option value="">All markets</option>' +
       markets.map(m => `<option>${esc(m)}</option>`).join("");

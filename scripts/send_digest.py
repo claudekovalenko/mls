@@ -322,6 +322,29 @@ DROP_SOFT = "#f5e6d5"
 RISE = "#5c6b69"        # a raise is worth knowing and worth not shouting about
 
 
+def _triage_rows(houses, criteria_rows):
+    """recommend.triage over the whole email's houses, strongest first.
+
+    Computed once and shared, because the cap only means something if every
+    part of the email agrees on who holds it -- a house called a top pick in
+    one section and held back in another would read as a broken promise.
+    """
+    scored = []
+    for rec in houses:
+        f = rec.get("fields", {})
+        _, best = fit_summary(f, criteria_rows)
+        scored.append((f, best))
+    rows = recommend.triage(scored)
+    rows.sort(key=lambda r: -r["strength"])
+    return rows
+
+
+def _strength_chip(value):
+    return (f'<span style="background:{INK};color:#ffffff;border-radius:10px;'
+            f'padding:2px 8px;font-size:11px;font-weight:700;margin-left:8px;'
+            f'vertical-align:middle;">{value}</span>')
+
+
 def _picks_html(houses, criteria_rows):
     """Where to start: the few houses worth acting on, with the play.
 
@@ -329,12 +352,10 @@ def _picks_html(houses, criteria_rows):
     match". This answers "what do I do on Saturday", which is the question
     somebody actually opens the email with.
     """
-    scored = []
-    for rec in houses:
-        f = rec.get("fields", {})
-        _, best = fit_summary(f, criteria_rows)
-        scored.append((f, best))
-    chosen = recommend.picks(scored, limit=3)
+    rows = _triage_rows(houses, criteria_rows)
+    order = {recommend.SEE_IT: 0, recommend.NEGOTIATE: 1}
+    chosen = sorted((r for r in rows if r["action"] in order),
+                    key=lambda r: (order[r["action"]], -r["strength"]))[:3]
     if not chosen:
         return ""
 
@@ -374,9 +395,35 @@ def _picks_html(houses, criteria_rows):
             f'{"".join(blocks)}</td></tr>')
 
 
-def _recommendation_html(f, best):
-    """The recommendation block: what to do, why, and what it cannot see."""
-    action, reasons, caveats = recommend.recommend(f, best)
+def _recommendation_html(f, best, final=None):
+    """The recommendation block: what to do, why, and what it cannot see.
+
+    `final` is this house's triage row. Without it the block would re-judge
+    the house alone and could contradict the cap -- claiming a viewing the
+    triage already gave to somebody stronger.
+    """
+    if final is not None:
+        action, reasons, caveats = final["action"], final["reasons"], final["caveats"]
+    else:
+        action, reasons, caveats = recommend.recommend(f, best)
+
+    if action in (recommend.WATCH, recommend.SKIP):
+        # The full panel is for houses that earn action. Everything else
+        # gets its verdict in one line -- clean to scan, and the detail is a
+        # tap away in the app.
+        # For a held-back house the appended explanation is the whole story
+        # -- "23% under" without "next in line" reads as the system ignoring
+        # its own evidence.
+        if final is not None and final.get("held_back") and reasons:
+            first = reasons[-1]
+        else:
+            first = reasons[0] if reasons else ""
+        strength_txt = (f' &middot; strength {final["strength"]}'
+                        if final is not None else "")
+        return (f'<div style="margin:2px 0 12px;padding:8px 12px;background:{GROUND};'
+                f'font-size:12px;color:{MUTED};line-height:1.5;">'
+                f'<b style="color:{INK};">{html.escape(action)}</b>'
+                f'{strength_txt} &middot; {html.escape(first)}</div>')
     tone = {recommend.SEE_IT: (GOOD_FIT, GOOD_FIT_SOFT),
             recommend.NEGOTIATE: (SIGNAL, SIGNAL_SOFT)}.get(action, (MUTED, GROUND))
     fg, bg = tone
@@ -496,7 +543,7 @@ def _discount_bar(pct):
         </table>"""
 
 
-def _house_card(f, criteria_rows=()):
+def _house_card(f, criteria_rows=(), final=None):
     """One house, as a self-contained table so it survives every client."""
     cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
     link = f.get("Listing URL") or zillow_url(f.get("Address"))
@@ -537,7 +584,7 @@ def _house_card(f, criteria_rows=()):
     photo = _street_view(f.get("Address"))
     fits, best = fit_summary(f, criteria_rows)
     fit_html = _fit_rows_html(fits, best) if fits else ""
-    advice = _recommendation_html(f, best)
+    advice = _recommendation_html(f, best, final)
     best_badge = ""
     if best and best["score"] > 0:
         short = html.escape(best["name"].split("—")[0].strip())
@@ -579,8 +626,11 @@ def _house_card(f, criteria_rows=()):
 
 
 def house_rows(houses, criteria_rows=()):
-    return "".join(_house_card(rec.get("fields", {}), criteria_rows)
-                   for rec in sorted(houses, key=_house_sort_key))
+    # Hottest first, judged by the same triage the picks use, so the order
+    # of the list and the order of the advice never disagree.
+    rows = _triage_rows(houses, criteria_rows)
+    return "".join(_house_card(r["fields"], criteria_rows, final=r)
+                   for r in rows)
 
 
 SIGNALS_HTML = f"""
