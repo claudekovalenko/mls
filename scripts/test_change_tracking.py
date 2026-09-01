@@ -284,6 +284,25 @@ def main():
           len(sw.fetch_homesteps({"Zip Codes": "30058, 30062"})), 1)
     sw._homesteps_cache = None
 
+    print("\nA richer feed fills the blanks a sparse source left:")
+    from search_worker import enrich_gaps
+    stored = {"Address": "1 Foreclosure Way", "Price": 200000,
+              "Source": "homesteps", "Beds": 4, "Sqft": None, "Lot Sqft": None}
+    rich = {"price": 205000, "beds": 4, "baths": 2, "sqft": 1800,
+            "lotSqft": 9000, "yearBuilt": 1972}
+    gaps = enrich_gaps(rich, stored)
+    check("missing sqft is filled in", gaps.get("Sqft"), 1800)
+    check("missing lot is filled in", gaps.get("Lot Sqft"), 9000)
+    check("a bed count already on file is left alone", "Beds" in gaps, False)
+    check("price is never enrichment", "Price" in gaps, False)
+    check("provenance is never enrichment", "Source" in gaps, False)
+    check("price per sqft is derived once sqft exists",
+          gaps.get("Price Per Sqft"), round(205000 / 1800))
+    check("a complete row needs nothing",
+          enrich_gaps(rich, {**stored, **{"Sqft": 1800, "Lot Sqft": 9000,
+              "Baths": 2, "Year Built": 1972, "Price Per Sqft": 114}}),
+          {})
+
     print("\nA search only judges its own kind of building:")
     from send_digest import fit_summary as fs
     mf_row = {"fields": {"Name": "Multifamily 5+", "Active": True,
