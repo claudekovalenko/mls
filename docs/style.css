@@ -549,3 +549,19 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .rec-numbers { margin-top: 5px; font-size: .76rem; font-weight: 700; color: #a2500c; }
 .rec-steps { margin: 5px 0 0; padding-left: 18px; }
 .rec-steps li { font-size: .78rem; color: var(--sub); line-height: 1.5; padding: 1px 0; }
+
+/* ---- entrance ---- */
+/* The list doesn't pop in as a wall: each card rises and fades in a beat
+   after the one before it (delay set per card as --enter). Off for anyone
+   who has asked their phone for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .house-card, .market-heading, .banner {
+    animation: rise-in .5s cubic-bezier(.2, .7, .3, 1) both;
+    animation-delay: var(--enter, 0ms);
+  }
+  .screen-head { animation: rise-in .4s cubic-bezier(.2, .7, .3, 1) both; }
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(14px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+  }
+}
