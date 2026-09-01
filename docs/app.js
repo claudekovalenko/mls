@@ -9,7 +9,11 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
+<<<<<<< HEAD
 const APP_VERSION = "v40";
+=======
+const APP_VERSION = "v39";
+>>>>>>> origin/main
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
