@@ -34,12 +34,34 @@
 
 * { box-sizing: border-box; }
 html, body { background: var(--bg); color: var(--ink); }
+
+/* The app shell.
+   The document itself never scrolls -- an inner element does. This is what
+   finally holds the dock still. A scrolling *document* is what makes a
+   phone browser show and hide its URL bar, and every one of those changes
+   resizes the viewport that a fixed element is pinned to, so the bar rides
+   up and down and sits at different heights on lanes of different lengths.
+   Take away the document scroll and the browser chrome has no reason to
+   move, so neither does anything anchored to it. */
+html, body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   margin: 0;
-  padding: 36px 18px calc(116px + env(safe-area-inset-bottom, 0px));
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+}
+#app { height: 100%; display: flex; flex-direction: column; }
+#scroller {
+  flex: 1 1 auto;
+  min-height: 0;            /* or the flex child refuses to shrink and scroll */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 36px 18px calc(116px + env(safe-area-inset-bottom, 0px));
 }
 .wrap { max-width: 780px; margin: 0 auto; }
 
@@ -461,12 +483,7 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
    844px and did exactly that. Give every lane a full screen of height and
    the browser chrome never changes state, so there is nothing to compensate
    for and nothing to chase. */
-#matches-list, #matches-empty {
-  min-height: calc(100svh - 240px);
-}
-/* An empty list must not also reserve a screen, or it stacks with the empty
-   message's own height and pushes the message below the fold. */
-#matches-list:empty { min-height: 0; }
+#matches-empty { min-height: 46vh; }
 /* Centred in that space rather than sitting at the bottom of it, and clear
    of the dock. */
 #matches-empty {

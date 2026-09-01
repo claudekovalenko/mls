@@ -406,10 +406,11 @@ function goToLane(id) {
   if (screen !== "matches") setScreen("matches");
   renderLaneSwitch();
   renderMatches();
-  // Instant, not smooth. Animating a 5,000px scroll means half a second of
-  // the entire page sliding past, which reads as the screen lurching --
-  // the thing this was meant to stop.
-  if (changed && window.scrollY) window.scrollTo(0, 0);
+  // Instant, not smooth. Animating a long scroll means half a second of the
+  // whole list sliding past, which reads as the screen lurching -- the thing
+  // this was meant to stop.
+  const sc = $("scroller");
+  if (changed && sc && sc.scrollTop) sc.scrollTop = 0;
 }
 
 function shiftLane(step) {

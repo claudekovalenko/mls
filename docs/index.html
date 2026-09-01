@@ -17,6 +17,11 @@
 <!-- Visible from the markup. Nothing hides this, and no script has to
      run for the app to be on screen. -->
 <div id="app">
+  <!-- Everything that scrolls lives in here, and the document itself never
+       does. That is what keeps the dock still: a page that scrolls makes the
+       phone's browser show and hide its URL bar, which resizes the viewport
+       the dock is pinned to. No document scroll, no resize, no moving bar. -->
+  <div id="scroller">
   <div class="wrap"><div id="app-status"></div></div>
 
   <!-- Matches -->
@@ -132,6 +137,8 @@
       <div id="key-test"></div>
     </div>
   </div>
+
+  </div><!-- /scroller -->
 
   <!-- One bar at the bottom, not two. The choice you make constantly is
        which kind of match you are looking at, so that is the selector;
