@@ -558,6 +558,11 @@ function renderMatches() {
       </section>`;
   }).join("");
 
+  // Staggered entrance: each card rises in a beat after the one before it,
+  // capped so a long list doesn't keep the bottom half invisible for seconds.
+  wrap.querySelectorAll(".house-card").forEach((el, i) =>
+    el.style.setProperty("--enter", `${Math.min(i, 10) * 60}ms`));
+
   wrap.querySelectorAll("[data-house-id]").forEach(el =>
     el.addEventListener("click", ev => {
       // A link inside the card is its own destination; without this, tapping
