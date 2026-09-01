@@ -41,6 +41,14 @@ HOSTS = [
     # FSBO, which is explicitly in the brief and absent from MLS feeds.
     "https://www.forsalebyowner.com",
     "https://fsbo.com",
+    # Third round: government and lender-owned inventory. These sites exist
+    # to move houses -- their listings are published to be found, several
+    # publish open data outright, and none of them appear in MLS feeds.
+    "https://www.hudhomestore.gov",
+    "https://www.homepath.com",
+    "https://www.homesteps.com",
+    "https://www.treasury.gov",
+    "https://data.cobbcountyga.gov",
 ]
 
 # Paths we'd need if we were to pull search results from each site.
@@ -57,6 +65,11 @@ PROBE_PATHS = {
     "https://www.hubzu.com": ["/search", "/property"],
     "https://www.forsalebyowner.com": ["/search", "/listing"],
     "https://fsbo.com": ["/listings", "/search"],
+    "https://www.hudhomestore.gov": ["/Listing/PropertySearch", "/api"],
+    "https://www.homepath.com": ["/homes-for-sale", "/api"],
+    "https://www.homesteps.com": ["/homesteps/homesearch", "/search"],
+    "https://www.treasury.gov": ["/auctions/treasury/rp"],
+    "https://data.cobbcountyga.gov": ["/", "/browse"],
 }
 
 
