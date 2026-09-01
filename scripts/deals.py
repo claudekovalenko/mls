@@ -86,9 +86,18 @@ def compute_metrics(price, rehab_cost, arv, rent_estimate):
     return m
 
 
-def qualify_flip(price, m):
+def _missing_inputs(price, rehab, arv):
+    """Name only what is actually missing -- a card that shows a price must
+    never be told it needs one."""
+    gaps = [n for n, v in (("a price", price), ("a rehab cost", rehab),
+                           ("a resale value (ARV)", arv)) if v is None]
+    return ("Needs " + (" and ".join(gaps) or "nothing")
+            + " — type it in and this recalculates")
+
+
+def qualify_flip(price, m, rehab=None, arv=None):
     if m["flipProfit"] is None:
-        return "NO DATA", ["Needs price, rehab cost, and ARV"]
+        return "NO DATA", [_missing_inputs(price, rehab, arv)]
     reasons = []
     meets70 = price is not None and m["maxOffer70"] is not None and price <= m["maxOffer70"]
     reasons.append("Clears the 70% rule" if meets70 else "Over the 70%-rule max offer")
@@ -107,9 +116,9 @@ def qualify_flip(price, m):
     return tier, reasons
 
 
-def qualify_brrrr(m):
+def qualify_brrrr(m, price=None, rehab=None, arv=None):
     if m["cashLeftInDeal"] is None:
-        return "NO DATA", ["Needs price, rehab cost, and ARV"]
+        return "NO DATA", [_missing_inputs(price, rehab, arv)]
     if m["brrrrCashflow"] is None:
         return "NO DATA", ["Needs a rent estimate to judge cashflow"]
     reasons = []
@@ -137,8 +146,8 @@ def qualify(price, rehab_cost, arv, rent_estimate, targets=None):
     criteria row: {flipProfit, cashOnCash, onePercent} -- a house only counts as
     Qualified if it clears every target that was actually set."""
     m = compute_metrics(price, rehab_cost, arv, rent_estimate)
-    flip_tier, flip_reasons = qualify_flip(price, m)
-    brrrr_tier, brrrr_reasons = qualify_brrrr(m)
+    flip_tier, flip_reasons = qualify_flip(price, m, rehab_cost, arv)
+    brrrr_tier, brrrr_reasons = qualify_brrrr(m, price, rehab_cost, arv)
 
     flip_rank, brrrr_rank = TIER_RANK[flip_tier], TIER_RANK[brrrr_tier]
     best_strategy = None

@@ -1,7 +1,7 @@
 // Caches only the static app shell. Database API calls are never cached --
 // house data must always be live, or the app would quietly show stale prices
 // and verdicts with no way for the user to tell.
-const CACHE = "house-finder-v41";
+const CACHE = "house-finder-v42";
 const SHELL = ["index.html", "app.js", "style.css", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
