@@ -565,3 +565,6 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
     to   { opacity: 1; transform: none; }
   }
 }
+
+/* Where a house came from and how fresh it is: one quiet line on the card. */
+.prov { margin-top: 6px; font-size: .72rem; color: var(--sub); }

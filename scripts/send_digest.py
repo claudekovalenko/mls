@@ -600,8 +600,31 @@ def _house_card(f, criteria_rows=(), final=None):
     # hand" asserts something untrue about where the numbers came from --
     # which is exactly the thing a provenance line is supposed to settle.
     source = str(f.get("Source") or "").strip()
+    finder = str(f.get("Found By") or "").split("—")[0].strip()
     if source:
-        stats.append("found via " + SOURCE_LABELS.get(source, source))
+        stats.append("found via " + SOURCE_LABELS.get(source, source)
+                     + (f" — {finder}" if finder else ""))
+    elif finder:
+        stats.append(f"found by {finder}")
+
+    def _days_ago(value, verb):
+        ds = str(value or "")[:10]
+        if not ds:
+            return None
+        try:
+            n = (date.today() - date.fromisoformat(ds)).days
+        except ValueError:
+            return None
+        if n < 0:
+            return None
+        return f"{verb} today" if n == 0 else \
+            f"{verb} {n} day{'' if n == 1 else 's'} ago"
+    added = _days_ago(f.get("Date Added"), "found")
+    if added:
+        stats.append(added)
+    seen = _days_ago(f.get("Last Seen"), "checked")
+    if seen and (not added or seen != added.replace("found", "checked", 1)):
+        stats.append(seen)
 
     star = ('<span style="background:#fef3c7;color:#92400e;border-radius:10px;'
             'padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;">'
