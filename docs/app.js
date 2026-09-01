@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v41";
+const APP_VERSION = "v42";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -59,11 +59,21 @@ function computeMetrics(price, rehab, arv, rent) {
   return m;
 }
 
+// Name only what is actually missing. "Needs price, rehab cost, and ARV"
+// under a card that plainly shows a price reads as the app not looking.
+function missingInputs(price, rehab, arv) {
+  const gaps = [];
+  if (price == null) gaps.push("a price");
+  if (rehab == null) gaps.push("a rehab cost");
+  if (arv == null) gaps.push("a resale value (ARV)");
+  return "Needs " + (gaps.join(" and ") || "nothing") + " — type it in below and this recalculates";
+}
+
 function qualify(price, rehab, arv, rent) {
   const m = computeMetrics(price, rehab, arv, rent);
   let flipTier, flipReasons = [];
   if (m.flipProfit == null) {
-    flipTier = "NO DATA"; flipReasons = ["Needs price, rehab cost, and ARV"];
+    flipTier = "NO DATA"; flipReasons = [missingInputs(price, rehab, arv)];
   } else {
     const meets70 = price != null && m.maxOffer70 != null && price <= m.maxOffer70;
     flipReasons.push(meets70 ? "Clears the 70% rule" : "Over the 70%-rule max offer");
@@ -76,7 +86,7 @@ function qualify(price, rehab, arv, rent) {
   }
 
   let brrrrTier, brrrrReasons = [];
-  if (m.cashLeftInDeal == null) { brrrrTier = "NO DATA"; brrrrReasons = ["Needs price, rehab cost, and ARV"]; }
+  if (m.cashLeftInDeal == null) { brrrrTier = "NO DATA"; brrrrReasons = [missingInputs(price, rehab, arv)]; }
   else if (m.brrrrCashflow == null) { brrrrTier = "NO DATA"; brrrrReasons = ["Needs a rent estimate"]; }
   else {
     brrrrReasons.push(m.cashLeftInDeal <= 0 ? "All capital recycled on refi" : `${money(m.cashLeftInDeal)} left in the deal`);
@@ -1377,12 +1387,18 @@ function openHouse(id) {
     <div class="card-sub">${money(f.Price)} · ${f.Beds ?? "?"}bd/${f.Baths ?? "?"}ba${f.Sqft ? ` · ${Number(f.Sqft).toLocaleString()} sqft` : ""}</div>
     ${signalChips(f["Value Signals"])}
     ${fitBlock(f)}
-    <div class="verdict-block">
+    ${(v.flipTier === "NO DATA" && v.brrrrTier === "NO DATA"
+       && v.flipReasons.join() === v.brrrrReasons.join())
+      ? `<div class="verdict-block">
+      <strong>Flip &amp; BRRRR — NO DATA</strong>
+      <ul>${v.flipReasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+    </div>`
+      : `<div class="verdict-block">
       <strong>Flip — ${v.flipTier}</strong>
       <ul>${v.flipReasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
       <strong>BRRRR — ${v.brrrrTier}</strong>
       <ul>${v.brrrrReasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
-    </div>
+    </div>`}
     ${listingLink(f) ? `<p class="card-links"><a class="card-link primary-link" href="${esc(listingLink(f))}" target="_blank" rel="noopener">Open on Zillow — photos &amp; remarks →</a></p>` : ""}`;
   ["Price", "Rehab Cost", "ARV", "Rent Estimate"].forEach(k => {
     $("h-" + k.replace(/ /g, "-")).value = f[k] ?? "";
