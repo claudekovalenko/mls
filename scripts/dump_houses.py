@@ -13,7 +13,7 @@ Notes stay in the database -- only the scored fields are printed.
 import json
 import sys
 
-from db import connect, TABLE_HOUSES
+from db import connect, TABLE_CRITERIA, TABLE_HOUSES
 
 FIELDS = ("Address", "Status", "Price", "Beds", "Baths", "Sqft", "Lot Sqft",
           "Price Per Sqft", "Value Signals", "Flip Verdict", "BRRRR Verdict",
@@ -35,6 +35,14 @@ def main():
     print(json.dumps(rows, indent=1))
     print("HOUSES_JSON_END")
     print(f"{len(rows)} house(s).")
+
+    # The criteria rows too: they decide what gets searched and what each
+    # weekly run costs, so widening the net starts with reading them here.
+    crit = [rec.get("fields", {}) for rec in at.list_records(TABLE_CRITERIA)]
+    print("CRITERIA_JSON_BEGIN")
+    print(json.dumps(crit, indent=1, default=str))
+    print("CRITERIA_JSON_END")
+    print(f"{len(crit)} criteria row(s).")
     return 0
 
 
