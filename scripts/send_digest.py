@@ -262,6 +262,18 @@ def fit_summary(f, criteria_rows):
         score = 0 if over_cap else ((met / len(known)) if known else 0)
         fits.append({"name": name, "strategy": strategy, "checks": checks,
                      "met": met, "known": len(known), "score": score})
+    # The five city-wide flip searches share one spec and differ only in
+    # geography, which a fit check cannot see -- so they score every house
+    # identically and would print as five identical rows. Collapse rows
+    # whose shown name and checks match; one verdict per spec, not per city.
+    seen, unique = set(), []
+    for x in fits:
+        key = (x["name"].split("—")[0].strip(), repr(x["checks"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(x)
+    fits = unique
     best = max(fits, key=lambda x: (x["score"], x["met"])) if fits else None
     return fits, best
 
