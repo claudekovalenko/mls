@@ -285,6 +285,13 @@ def main():
     unit_checks = [s for x in fits for lab, s in x["checks"] if "units" in lab]
     check("a triplex fails the 5+ unit check rather than passing silently",
           unit_checks, [False])
+    clones = [{"fields": {"Name": f"Flip — {city} (Ryan)", "Active": True,
+                          "Strategy": "Flip", "Max Price": 500000,
+                          "Max Price Per Sqft": 175}}
+              for city in ("Marietta", "Smyrna", "Kennesaw", "Acworth")]
+    fits, _ = fs(sfh, clones)
+    check("four identical city searches collapse to one fit row",
+          len(fits), 1)
 
     print()
     if failures:

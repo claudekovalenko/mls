@@ -820,10 +820,21 @@ function fitSummary(f) {
     return { name: c.Name || "Search", checks, met, known: known.length,
              score: overCap ? 0 : (known.length ? met / known.length : 0) };
   });
-  const best = fits.length
-    ? fits.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.met > a.met)) ? b : a)
+  // The five city-wide flip searches share one spec and differ only in
+  // geography, which a fit check cannot see -- so they score every house
+  // identically and would print as five identical rows. Collapse rows whose
+  // shown name and checks match; one verdict per spec, not per city.
+  const seen = new Set();
+  const unique = fits.filter(x => {
+    const key = x.name.split("—")[0].trim() + "|" + JSON.stringify(x.checks);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const best = unique.length
+    ? unique.reduce((a, b) => (b.score > a.score || (b.score === a.score && b.met > a.met)) ? b : a)
     : null;
-  return { fits, best };
+  return { fits: unique, best };
 }
 
 // bestOnly is the card: one line saying which plan this house is for and
