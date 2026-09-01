@@ -25,6 +25,7 @@ Credentials still have to be secrets, and only these two:
 """
 import html
 import os
+import recommend
 import smtplib
 import sys
 import urllib.parse
@@ -321,6 +322,30 @@ DROP_SOFT = "#f5e6d5"
 RISE = "#5c6b69"        # a raise is worth knowing and worth not shouting about
 
 
+def _recommendation_html(f, best):
+    """The recommendation block: what to do, why, and what it cannot see."""
+    action, reasons, caveats = recommend.recommend(f, best)
+    tone = {recommend.SEE_IT: (GOOD_FIT, GOOD_FIT_SOFT),
+            recommend.NEGOTIATE: (SIGNAL, SIGNAL_SOFT)}.get(action, (MUTED, GROUND))
+    fg, bg = tone
+    why = "".join(
+        f'<tr><td style="padding:1px 0 1px 12px;font-size:12px;color:{MUTED};'
+        f'line-height:1.5;">&bull; {html.escape(r)}</td></tr>' for r in reasons)
+    notes = "".join(
+        f'<tr><td style="padding:1px 0 1px 12px;font-size:11px;color:{MUTED};'
+        f'line-height:1.5;font-style:italic;">{html.escape(c)}</td></tr>'
+        for c in caveats)
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'border="0" style="margin:2px 0 12px;background:{bg};">'
+            f'<tr><td style="padding:10px 12px 4px;font-size:13px;font-weight:700;'
+            f'color:{fg};">{html.escape(action)}</td></tr>'
+            f'{why}'
+            f'<tr><td style="padding:6px 0 0 12px;font-size:10px;font-weight:700;'
+            f'letter-spacing:0.6px;color:{MUTED};">WHAT THIS CANNOT SEE</td></tr>'
+            f'{notes}'
+            f'<tr><td style="height:10px;"></td></tr></table>')
+
+
 def lane_of(f):
     """Which of the two digests a house belongs in.
 
@@ -446,6 +471,7 @@ def _house_card(f, criteria_rows=()):
     photo = _street_view(f.get("Address"))
     fits, best = fit_summary(f, criteria_rows)
     fit_html = _fit_rows_html(fits, best) if fits else ""
+    advice = _recommendation_html(f, best)
     best_badge = ""
     if best and best["score"] > 0:
         short = html.escape(best["name"].split("—")[0].strip())
@@ -479,6 +505,7 @@ def _house_card(f, criteria_rows=()):
         <div style="font-size:13px;color:{MUTED};line-height:1.5;">{html.escape(' · '.join(stats))}</div>
         {bar}
         <div style="margin:11px 0 10px;">{chips}</div>
+        {advice}
         {fit_html}
         {button}
       </td></tr>

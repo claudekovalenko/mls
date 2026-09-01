@@ -162,6 +162,44 @@ def main():
     check("different houses stay different",
           address_key("1912 King Arthurs Ct") == address_key("1913 King Arthurs Ct"), False)
 
+    print("\nRecommendations:")
+    import recommend
+    from send_digest import fit_summary
+    crit = [{"fields": {"Name": "Flip — 30068", "Active": True,
+                        "Max Price": 500000, "Max Price Per Sqft": 175,
+                        "Strategy": "Flip"}}]
+    def advise(f):
+        _, best = fit_summary(f, crit)
+        return recommend.recommend(f, best)
+
+    underpriced = {"Price": 369000, "Rehab Cost": 91520, "Sqft": 2288,
+                   "Price Per Sqft": 161, "Days on Market": 131, "Year Built": 1972,
+                   "Value Signals": "under $175/sqft, 23% under area $/sqft"}
+    stale_cut = {"Price": 404900, "Rehab Cost": 65040, "Sqft": 1626,
+                 "Price Per Sqft": 249, "Days on Market": 157, "Price Cut": 19,
+                 "Year Built": 1966, "Value Signals": "built 1966"}
+    ordinary = {"Price": 459900, "Rehab Cost": 19780, "Sqft": 989,
+                "Price Per Sqft": 465, "Days on Market": 10, "Year Built": 2015,
+                "Value Signals": ""}
+
+    check("underpriced and fitting -> go and see it",
+          advise(underpriced)[0], recommend.SEE_IT)
+    check("stale with a real cut -> worth an offer",
+          advise(stale_cut)[0], recommend.NEGOTIATE)
+    check("nothing remarkable -> not a strong action",
+          advise(ordinary)[0] in (recommend.WATCH, recommend.SKIP), True)
+    # The rule that matters more than the actions themselves.
+    for label, house in (("underpriced", underpriced), ("stale", stale_cut),
+                         ("ordinary", ordinary)):
+        action, why, caveats = advise(house)
+        check(f"{label}: never a recommendation without a reason", bool(why), True)
+        check(f"{label}: always says what it cannot see", bool(caveats), True)
+    check("breakeven is price plus rehab over the selling margin",
+          round(recommend.breakeven_resale({"Price": 369000, "Rehab Cost": 91520})),
+          500565)
+    check("no rehab means no breakeven, not a guess",
+          recommend.breakeven_resale({"Price": 369000}), None)
+
     print("\nLane routing, so the two emails stay separate:")
     check("a 24-unit block is a complex", lane_of({"Units": 24}), "multifamily")
     check("a detached house is a home", lane_of({"Property Type": "Single Family"}), "house")
