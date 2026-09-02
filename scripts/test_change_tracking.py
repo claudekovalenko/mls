@@ -277,6 +277,14 @@ def main():
     check("the price is a number, not a string", parsed[0]["price"], 184900.0)
     check("sqft comes from the details line", parsed[0]["sqft"], 1950.0)
     check("the feed status word travels", parsed[0]["feedStatus"], "Active")
+    geo_fix = ('<div data-lat="33.69195" data-lng="-84.537156" typeof="Place">'
+               '<div class="location-content">'
+               '<a id="node-1" href="/listingdetails/6295-phillips-pl-lithonia-ga-30058">'
+               '<div class="property-price">$184,900</div></a></div></div>' + fix)
+    with_geo = sw._homesteps_parse(geo_fix)
+    check("the map pane's coordinates attach to the listing",
+          (with_geo[0]["latitude"], with_geo[0]["longitude"]),
+          (33.69195, -84.537156))
     sw._homesteps_cache = parsed
     check("a Marietta search does not receive a Lithonia foreclosure",
           len(sw.fetch_homesteps({"City": "Marietta"})), 0)

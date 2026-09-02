@@ -299,6 +299,12 @@ def _homesteps_fetch_all():
 def _homesteps_parse(text):
     """One card per <a id="node-..."> block: JSON-LD for the facts, the
     details line for the sqft the JSON-LD lacks."""
+    # The page's map pane publishes each listing's coordinates beside a link
+    # to the same detail URL the card uses -- so a foreclosure arrives on our
+    # own map already pinned instead of waiting for another feed to place it.
+    coords = {href: (float(lat), float(lng)) for lat, lng, href in re.findall(
+        r'data-lat="([\d.\-]+)" data-lng="([\d.\-]+)"[\s\S]{0,600}?'
+        r'href="(/listingdetails/[^"]+)"', text)}
     out = []
     parts = re.split(r'<a id="node-\d+"[^>]*href="(/listingdetails/[^"]+)"',
                      text)[1:]
@@ -328,6 +334,8 @@ def _homesteps_parse(text):
             "source": "homesteps",
             "units": None,
             "feedStatus": status.group(1).strip() if status else "",
+            "latitude": coords.get(href, (None, None))[0],
+            "longitude": coords.get(href, (None, None))[1],
         })
     return out
 

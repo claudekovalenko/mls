@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v42";
+const APP_VERSION = "v43";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -547,6 +547,91 @@ function lastPulled() {
   return `${days} days ago`;
 }
 
+// ---- map view ----
+// Leaflet over OpenStreetMap tiles: free, keyless, and every pinned match on
+// one screen -- the question a list can't answer is where they sit relative
+// to each other. Pins are colored by the triage verdict and open the house.
+let viewMode = "list";
+try { viewMode = localStorage.getItem("hf-view-mode") || "list"; } catch {}
+let map = null, markerLayer = null;
+
+const PIN_COLORS = { go: "#0f766e", offer: "#a2500c", watch: "#5c6b69", skip: "#b3261e" };
+
+function pinColor(t) {
+  if (!t) return PIN_COLORS.watch;
+  return t.action === SEE_IT ? PIN_COLORS.go
+       : t.action === NEGOTIATE ? PIN_COLORS.offer
+       : t.action === SKIP ? PIN_COLORS.skip : PIN_COLORS.watch;
+}
+
+function ensureMap() {
+  if (map || typeof L === "undefined") return map;
+  map = L.map("map", { zoomControl: true, attributionControl: true });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+  }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+  map.setView([33.9526, -84.5499], 11);  // Marietta until pins say otherwise
+  return map;
+}
+
+function renderMap(rows) {
+  const wrapEl = $("map-wrap");
+  if (!wrapEl || wrapEl.hidden) return;
+  if (!ensureMap()) {
+    $("map-note").textContent = "The map library didn't load — check the connection and reopen.";
+    return;
+  }
+  markerLayer.clearLayers();
+  const t = triageMap();
+  const pins = [];
+  for (const r of rows) {
+    const f = r.f, lat = Number(f.Latitude), lon = Number(f.Longitude);
+    if (!lat || !lon) continue;
+    const tri = t.get(r.id);
+    const marker = L.circleMarker([lat, lon], {
+      radius: 9, color: "#ffffff", weight: 2,
+      fillColor: pinColor(tri), fillOpacity: 0.92,
+    });
+    const strength = tri ? ` &middot; ${tri.strength}` : "";
+    marker.bindPopup(
+      `<b>${esc(f.Address || "")}</b><br>${money(f.Price)}${strength}` +
+      `<br><a href="#" data-map-open="${esc(r.id)}">Open the card &rarr;</a>`);
+    marker.addTo(markerLayer);
+    pins.push([lat, lon]);
+  }
+  if (pins.length) map.fitBounds(pins, { padding: [30, 30], maxZoom: 15 });
+  const missing = rows.length - pins.length;
+  $("map-note").textContent = pins.length
+    ? (missing ? `${pins.length} pinned · ${missing} waiting on coordinates — the weekly search fills them in` : `${pins.length} pinned`)
+    : "No coordinates on file yet — the next weekly search adds them, and every new find arrives pinned.";
+  // The map was possibly resized by a mode switch while hidden.
+  setTimeout(() => map.invalidateSize(), 60);
+}
+
+function setViewMode(mode) {
+  viewMode = mode;
+  try { localStorage.setItem("hf-view-mode", mode); } catch {}
+  document.querySelectorAll("[data-view-mode]").forEach(b =>
+    b.setAttribute("aria-selected", String(b.dataset.viewMode === mode)));
+  const mapWrap = $("map-wrap"), list = $("matches-list");
+  mapWrap.hidden = mode === "list";
+  mapWrap.classList.toggle("map-full", mode === "map");
+  list.hidden = mode === "map";
+  renderMatches();
+}
+
+document.querySelectorAll("[data-view-mode]").forEach(b =>
+  b.addEventListener("click", () => setViewMode(b.dataset.viewMode)));
+
+// A popup link opens the same dialog a card tap does.
+document.addEventListener("click", ev => {
+  const a = ev.target.closest("[data-map-open]");
+  if (!a) return;
+  ev.preventDefault();
+  openHouse(a.dataset.mapOpen);
+});
+
 function renderMatches() {
   renderLaneSwitch();
   const wrap = $("matches-list");
@@ -607,6 +692,7 @@ function renderMatches() {
     }));
 
   renderFilterSummary(rows.length);
+  renderMap(rows);
 
   // Photos arrive after the list does, so nothing waits on them.
   hydratePhotos(rows);
@@ -1377,7 +1463,8 @@ async function toggleCriteria(id) {
 
 // ---- house detail ----
 function openHouse(id) {
-  const rec = houses.find(r => r.id === id);
+  // Ids travel through the DOM as strings; the database hands out numbers.
+  const rec = houses.find(r => String(r.id) === String(id));
   if (!rec) return;
   const f = rec.fields || {};
   const v = houseVerdict(f);
@@ -1616,3 +1703,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 });
+
+// Restore the last view mode (List is default and needs no work).
+if (viewMode !== "list") setViewMode(viewMode);
