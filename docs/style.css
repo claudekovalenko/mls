@@ -568,3 +568,27 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 
 /* Where a house came from and how fresh it is: one quiet line on the card. */
 .prov { margin-top: 6px; font-size: .72rem; color: var(--sub); }
+
+/* ---- map view ---- */
+.view-switch {
+  display: inline-flex; gap: 0; margin: 0 0 14px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); padding: 3px;
+}
+.view-switch button {
+  border: 0; background: transparent; color: var(--sub);
+  font-size: .8rem; font-weight: 700; padding: 7px 16px; border-radius: 999px;
+}
+.view-switch button[aria-selected="true"] { background: var(--accent); color: #fff; }
+#map-wrap { margin: 0 0 16px; }
+#map {
+  height: 42vh; min-height: 260px;
+  border-radius: var(--radius); border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+/* Map-only: give it the screen. */
+#map-wrap.map-full #map { height: calc(100dvh - 320px); min-height: 380px; }
+#map-note { margin: 8px 0 0; }
+/* Leaflet popups follow the app's palette. */
+.leaflet-popup-content { font-family: inherit; font-size: .82rem; line-height: 1.5; }
+.leaflet-popup-content a { font-weight: 700; }

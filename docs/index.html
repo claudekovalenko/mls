@@ -44,6 +44,19 @@
          the fact that something is filtered. -->
     <p class="sub" id="filter-summary"></p>
 
+    <!-- List, map, or both. The map is every pinned match at once, which is
+         the one question a list can't answer: where they sit relative to
+         each other. -->
+    <div class="view-switch" role="tablist" aria-label="View">
+      <button type="button" data-view-mode="list" aria-selected="true">List</button>
+      <button type="button" data-view-mode="split" aria-selected="false">Split</button>
+      <button type="button" data-view-mode="map" aria-selected="false">Map</button>
+    </div>
+    <div id="map-wrap" hidden>
+      <div id="map"></div>
+      <p class="sub small" id="map-note"></p>
+    </div>
+
     <div class="filters" id="filters" hidden>
       <label>Show
         <select id="filter-view">
@@ -193,6 +206,8 @@
   </form>
 </dialog>
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
