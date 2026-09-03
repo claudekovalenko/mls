@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v43";
+const APP_VERSION = "v44";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -553,7 +553,31 @@ function lastPulled() {
 // to each other. Pins are colored by the triage verdict and open the house.
 let viewMode = "list";
 try { viewMode = localStorage.getItem("hf-view-mode") || "list"; } catch {}
-let map = null, markerLayer = null;
+let map = null, markerLayer = null, areaLayer = null;
+
+// Ryan's two hand-drawn hunting grounds (Aug 2026), traced from the notes on
+// the criteria rows. Approximate on purpose -- these are shaded reminders of
+// where the searches point, not survey lines.
+//
+// FLIP: Marietta and East Cobb -- north to Blackwells, east along 120 to the
+// Chattahoochee, south to the I-75/I-285 Cumberland interchange, west back
+// through Marietta.
+// BRRRR (rentals): the same shape but tighter -- its southern line stops at
+// Hwy 3/41 just below Marietta instead of running down to Cumberland.
+const SEARCH_AREAS = [
+  {
+    name: "Flips", color: "#a2500c",
+    ring: [[34.030, -84.560], [34.035, -84.495], [33.985, -84.435],
+           [33.930, -84.425], [33.875, -84.450], [33.860, -84.510],
+           [33.905, -84.580], [33.985, -84.585]],
+  },
+  {
+    name: "Rentals (BRRRR)", color: "#0f766e",
+    ring: [[34.030, -84.560], [34.035, -84.495], [33.985, -84.435],
+           [33.930, -84.440], [33.905, -84.500], [33.905, -84.580],
+           [33.985, -84.585]],
+  },
+];
 
 const PIN_COLORS = { go: "#0f766e", offer: "#a2500c", watch: "#5c6b69", skip: "#b3261e" };
 
@@ -571,6 +595,23 @@ function ensureMap() {
     maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
   }).addTo(map);
   markerLayer = L.layerGroup().addTo(map);
+  areaLayer = L.layerGroup().addTo(map);
+  for (const a of SEARCH_AREAS) {
+    L.polygon(a.ring, {
+      color: a.color, weight: 2, dashArray: "6 5",
+      fillColor: a.color, fillOpacity: 0.07, interactive: false,
+    }).addTo(areaLayer);
+  }
+  // A small legend so the two shaded shapes explain themselves.
+  const legend = L.control({ position: "bottomleft" });
+  legend.onAdd = () => {
+    const div = document.createElement("div");
+    div.className = "map-legend";
+    div.innerHTML = SEARCH_AREAS.map(a =>
+      `<span><i style="background:${a.color}"></i>${a.name} area</span>`).join("");
+    return div;
+  };
+  legend.addTo(map);
   map.setView([33.9526, -84.5499], 11);  // Marietta until pins say otherwise
   return map;
 }
@@ -600,7 +641,9 @@ function renderMap(rows) {
     marker.addTo(markerLayer);
     pins.push([lat, lon]);
   }
-  if (pins.length) map.fitBounds(pins, { padding: [30, 30], maxZoom: 15 });
+  if (pins.length) {
+    map.fitBounds(pins.concat(SEARCH_AREAS[0].ring), { padding: [24, 24], maxZoom: 14 });
+  }
   const missing = rows.length - pins.length;
   $("map-note").textContent = pins.length
     ? (missing ? `${pins.length} pinned · ${missing} waiting on coordinates — the weekly search fills them in` : `${pins.length} pinned`)
