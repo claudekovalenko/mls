@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v46";
+const APP_VERSION = "v47";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -573,10 +573,15 @@ const SEARCH_AREAS = [
            [33.905, -84.580], [33.985, -84.585]],
   },
   {
+    // Traced from Ryan's hand-drawn loop (Apple Maps screenshot, Sep 2026):
+    // west edge just past Marietta square, north under Blackwells, east
+    // along 120 toward the river, southern dip at the I-75/US-41 crossing
+    // above Fair Oaks.
     name: "Rentals (BRRRR)", color: "#0f766e",
-    ring: [[34.030, -84.560], [34.035, -84.495], [33.985, -84.435],
-           [33.930, -84.440], [33.905, -84.500], [33.905, -84.580],
-           [33.985, -84.585]],
+    ring: [[33.985, -84.578], [34.008, -84.568], [34.026, -84.538],
+           [34.030, -84.506], [34.012, -84.468], [34.006, -84.428],
+           [33.978, -84.413], [33.946, -84.424], [33.934, -84.468],
+           [33.919, -84.505], [33.924, -84.542], [33.950, -84.572]],
   },
 ];
 
