@@ -627,3 +627,13 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 }
 .pin-badge small { font-size: .5rem; font-weight: 800; opacity: .9; margin-top: 1px; }
 .map-legend .dot { border-radius: 50%; opacity: 1; }
+
+/* The verdict written under every pin, readable without a tap. */
+.pin-badge-wrap { display: flex; flex-direction: column; align-items: center; }
+.pin-badge { margin: 0 auto; }
+.pin-word {
+  margin-top: 2px; padding: 1px 7px; border-radius: 999px;
+  color: #ffffff; font-size: .56rem; font-weight: 800; white-space: nowrap;
+  border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  letter-spacing: .02em;
+}
