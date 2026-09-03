@@ -614,3 +614,16 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   font-variant-numeric: tabular-nums;
 }
 .pin-fit { color: var(--sub); margin: 2px 0 6px; }
+
+/* Score-badge pins: the strength number on the marker itself. */
+.pin-badge-wrap { background: transparent; border: 0; }
+.pin-badge {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid #ffffff; box-shadow: 0 1px 5px rgba(0,0,0,.35);
+  color: #ffffff; font-weight: 800; font-size: .74rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.pin-badge small { font-size: .5rem; font-weight: 800; opacity: .9; margin-top: 1px; }
+.map-legend .dot { border-radius: 50%; opacity: 1; }
