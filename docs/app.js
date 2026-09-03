@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v45";
+const APP_VERSION = "v46";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -345,7 +345,8 @@ function visibleMatches() {
   if (view === "off") rows = rows.filter(r => !isLive(r.f));
   else {
     rows = rows.filter(r => isLive(r.f));
-    if (view === "highlights") rows = rows.filter(r => isHighlighted(r.f, r.v));
+    if (view === "highlights") rows = rows.filter(r =>
+      isHighlighted(r.f, r.v) && inSearchArea(r.f) !== false);
   }
 
   const desc = get => (a, b) => (get(b.f) ?? -Infinity) - (get(a.f) ?? -Infinity);
@@ -581,6 +582,25 @@ const SEARCH_AREAS = [
 
 const PIN_COLORS = { go: "#0f766e", offer: "#a2500c", watch: "#5c6b69", skip: "#b3261e" };
 
+// Ray-cast point-in-polygon: does this point sit inside the ring?
+function pointInRing(lat, lon, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [yi, xi] = ring[i], [yj, xj] = ring[j];
+    if ((yi > lat) !== (yj > lat)
+        && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// true = inside a drawn hunting ground, false = provably outside,
+// null = no coordinates yet, so nobody can say.
+function inSearchArea(f) {
+  const lat = Number(f.Latitude), lon = Number(f.Longitude);
+  if (!lat || !lon) return null;
+  return SEARCH_AREAS.some(a => pointInRing(lat, lon, a.ring));
+}
+
 function pinColor(t) {
   if (!t) return PIN_COLORS.watch;
   return t.action === SEE_IT ? PIN_COLORS.go
@@ -626,9 +646,13 @@ function renderMap(rows) {
   markerLayer.clearLayers();
   const t = triageMap();
   const pins = [];
+  let outside = 0;
   for (const r of rows) {
     const f = r.f, lat = Number(f.Latitude), lon = Number(f.Longitude);
     if (!lat || !lon) continue;
+    // The map only shows the hunting grounds. A find outside the drawn
+    // areas stays in "Everything live" but does not earn a pin.
+    if (inSearchArea(f) === false) { outside++; continue; }
     const tri = t.get(r.id);
     const marker = L.circleMarker([lat, lon], {
       radius: 9, color: "#ffffff", weight: 2,
@@ -659,10 +683,13 @@ function renderMap(rows) {
   if (pins.length) {
     map.fitBounds(pins.concat(SEARCH_AREAS[0].ring), { padding: [24, 24], maxZoom: 14 });
   }
-  const missing = rows.length - pins.length;
+  const missing = rows.length - pins.length - outside;
+  const bits = [`${pins.length} pinned`];
+  if (outside) bits.push(`${outside} outside the drawn areas`);
+  if (missing > 0) bits.push(`${missing} waiting on coordinates`);
   $("map-note").textContent = pins.length
-    ? (missing ? `${pins.length} pinned · ${missing} waiting on coordinates — the weekly search fills them in` : `${pins.length} pinned`)
-    : "No coordinates on file yet — the next weekly search adds them, and every new find arrives pinned.";
+    ? bits.join(" · ")
+    : "No pins inside the drawn areas yet — the weekly search fills coordinates in.";
   // The map was possibly resized by a mode switch while hidden.
   setTimeout(() => map.invalidateSize(), 60);
 }
