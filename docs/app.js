@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v49";
+const APP_VERSION = "v50";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -679,12 +679,20 @@ function renderMap(rows) {
                  : stratWord.includes("brrrr") ? "B"
                  : stratWord.includes("multifamily") ? "M" : "";
     const power0 = tri ? tri.strength : strengthOf(f, bestFit);
+    // The word is on the map, not behind a tap: score in the middle of the
+    // dot, the verdict written right under it, so the important ones stand
+    // out while just panning around.
+    const word = !tri ? ""
+      : tri.action === SEE_IT ? "Go see it"
+      : tri.action === NEGOTIATE ? "Make offer"
+      : tri.action === WATCH ? "Watch" : "Skip";
     const marker = L.marker([lat, lon], {
       icon: L.divIcon({
         className: "pin-badge-wrap",
         html: `<div class="pin-badge" style="background:${pinColor(tri)}">` +
-              `${power0}${letter ? `<small>${letter}</small>` : ""}</div>`,
-        iconSize: [34, 38], iconAnchor: [17, 19],
+              `${power0}${letter ? `<small>${letter}</small>` : ""}</div>` +
+              (word ? `<div class="pin-word" style="background:${pinColor(tri)}">${word}</div>` : ""),
+        iconSize: [58, 52], iconAnchor: [29, 22],
       }),
     });
     // The popup is a miniature verdict: what to do, how strong the
