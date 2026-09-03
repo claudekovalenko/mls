@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v44";
+const APP_VERSION = "v45";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -634,10 +634,25 @@ function renderMap(rows) {
       radius: 9, color: "#ffffff", weight: 2,
       fillColor: pinColor(tri), fillOpacity: 0.92,
     });
-    const strength = tri ? ` &middot; ${tri.strength}` : "";
+    // The popup is a miniature verdict: what to do, how strong the
+    // evidence is (0-100), and which strategy this house is for -- enough
+    // to decide whether the full card is worth opening.
+    const best = tri ? tri.best : fitSummary(f).best;
+    const action = tri ? tri.action : null;
+    const power = tri ? tri.strength : strengthOf(f, best);
+    const fitLine = best && best.score > 0
+      ? `Best fit: <b>${esc(best.name.split("\u2014")[0].trim())}</b>` +
+        ` \u00b7 ${best.met}/${best.known} checks`
+      : "Fits no search yet";
     marker.bindPopup(
-      `<b>${esc(f.Address || "")}</b><br>${money(f.Price)}${strength}` +
-      `<br><a href="#" data-map-open="${esc(r.id)}">Open the card &rarr;</a>`);
+      `<div class="pin-pop">` +
+      `<b>${esc(f.Address || "")}</b>` +
+      `<div>${money(f.Price)}${f.Sqft ? ` \u00b7 ${Number(f.Sqft).toLocaleString()} sqft` : ""}</div>` +
+      (action ? `<div class="pin-action" style="color:${pinColor(tri)}">${esc(action)}` +
+                `<span class="pin-strength">${power}</span></div>` : "") +
+      `<div class="pin-fit">${fitLine}</div>` +
+      `<a href="#" data-map-open="${esc(r.id)}">Open the card &rarr;</a>` +
+      `</div>`);
     marker.addTo(markerLayer);
     pins.push([lat, lon]);
   }
