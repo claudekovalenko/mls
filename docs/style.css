@@ -592,7 +592,6 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 /* Leaflet popups follow the app's palette. */
 .leaflet-popup-content { font-family: inherit; font-size: .82rem; line-height: 1.5; }
 .leaflet-popup-content a { font-weight: 700; }
-<<<<<<< HEAD
 
 .map-legend {
   background: var(--card); border: 1px solid var(--line);
@@ -604,5 +603,3 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 .map-legend i {
   width: 12px; height: 12px; border-radius: 3px; opacity: .55; display: inline-block;
 }
-=======
->>>>>>> origin/main
