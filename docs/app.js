@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v47";
+const APP_VERSION = "v48";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -567,10 +567,17 @@ let map = null, markerLayer = null, areaLayer = null;
 // Hwy 3/41 just below Marietta instead of running down to Cumberland.
 const SEARCH_AREAS = [
   {
+    // Traced from Ryan's hand-drawn loop (Apple Maps screenshot, Sep 2026):
+    // wider than the rentals loop -- north above Blackwells toward
+    // Woodstock, east near the Chattahoochee, south-east down to the
+    // I-75/I-285 Cumberland interchange, then back north-west along US-41
+    // past Fair Oaks and up the west side of Marietta.
     name: "Flips", color: "#a2500c",
-    ring: [[34.030, -84.560], [34.035, -84.495], [33.985, -84.435],
-           [33.930, -84.425], [33.875, -84.450], [33.860, -84.510],
-           [33.905, -84.580], [33.985, -84.585]],
+    ring: [[34.010, -84.575], [34.045, -84.545], [34.062, -84.500],
+           [34.065, -84.455], [34.048, -84.405], [34.010, -84.380],
+           [33.965, -84.385], [33.925, -84.415], [33.892, -84.450],
+           [33.878, -84.470], [33.895, -84.505], [33.915, -84.535],
+           [33.940, -84.560], [33.970, -84.572]],
   },
   {
     // Traced from Ryan's hand-drawn loop (Apple Maps screenshot, Sep 2026):
