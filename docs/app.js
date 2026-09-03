@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v48";
+const APP_VERSION = "v49";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -640,7 +640,11 @@ function ensureMap() {
     const div = document.createElement("div");
     div.className = "map-legend";
     div.innerHTML = SEARCH_AREAS.map(a =>
-      `<span><i style="background:${a.color}"></i>${a.name} area</span>`).join("");
+      `<span><i style="background:${a.color}"></i>${a.name} area</span>`).join("")
+      + `<span><i class="dot" style="background:${PIN_COLORS.go}"></i>Go and see it</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.offer}"></i>Worth an offer</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.watch}"></i>Watch</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.skip}"></i>Not worth going after</span>`;
     return div;
   };
   legend.addTo(map);
@@ -666,9 +670,22 @@ function renderMap(rows) {
     // areas stays in "Everything live" but does not earn a pin.
     if (inSearchArea(f) === false) { outside++; continue; }
     const tri = t.get(r.id);
-    const marker = L.circleMarker([lat, lon], {
-      radius: 9, color: "#ffffff", weight: 2,
-      fillColor: pinColor(tri), fillOpacity: 0.92,
+    // The pin itself is the verdict: the 0-100 strength on its face, a small
+    // letter for the strategy it fits (F flip, B BRRRR, M multifamily), and
+    // the color saying whether it is worth going after at all.
+    const bestFit = tri ? tri.best : fitSummary(f).best;
+    const stratWord = ((bestFit && bestFit.score > 0 && bestFit.name) || "").toLowerCase();
+    const letter = stratWord.includes("flip") ? "F"
+                 : stratWord.includes("brrrr") ? "B"
+                 : stratWord.includes("multifamily") ? "M" : "";
+    const power0 = tri ? tri.strength : strengthOf(f, bestFit);
+    const marker = L.marker([lat, lon], {
+      icon: L.divIcon({
+        className: "pin-badge-wrap",
+        html: `<div class="pin-badge" style="background:${pinColor(tri)}">` +
+              `${power0}${letter ? `<small>${letter}</small>` : ""}</div>`,
+        iconSize: [34, 38], iconAnchor: [17, 19],
+      }),
     });
     // The popup is a miniature verdict: what to do, how strong the
     // evidence is (0-100), and which strategy this house is for -- enough
