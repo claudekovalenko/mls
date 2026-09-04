@@ -439,7 +439,7 @@ def _recommendation_html(f, best, final=None):
     else:
         action, reasons, caveats = recommend.recommend(f, best)
 
-    if action in (recommend.WATCH, recommend.SKIP):
+    if action in (recommend.WATCH, recommend.SKIP, recommend.NEXT_UP):
         # The full panel is for houses that earn action. Everything else
         # gets its verdict in one line -- clean to scan, and the detail is a
         # tap away in the app.
