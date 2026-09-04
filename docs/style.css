@@ -537,8 +537,10 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
 }
 .rec-go     { background: #dcf2e3; }
 .rec-go     .rec-action { color: #166534; }
-.rec-offer  { background: #f5e6d5; }
-.rec-offer  .rec-action { color: #a2500c; }
+.rec-offer  { background: #fdf0d5; }
+.rec-offer  .rec-action { color: #b45309; }
+.rec-next   { background: #e0f2fe; }
+.rec-next   .rec-action { color: #0369a1; }
 .rec-watch  { background: var(--bg); }
 .rec-watch  .rec-action { color: var(--ink); }
 .rec-skip   { background: var(--bg); }

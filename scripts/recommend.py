@@ -27,6 +27,22 @@ SEE_IT = "Go and see it"
 NEGOTIATE = "Worth an offer under asking"
 WATCH = "Watch it"
 SKIP = "Skip unless you know something the data doesn't"
+NEXT_UP = "Next in line"   # strong enough to see, but the week's three are taken
+
+# The score decides the word. One scale everywhere, so a 62 can never read
+# as less important than a 38 -- which is exactly what happened when the
+# word came from rules and the number from a composite.
+GO_BAND, OFFER_BAND, WATCH_BAND = 60, 40, 20
+
+
+def band_action(score):
+    if score >= GO_BAND:
+        return SEE_IT
+    if score >= OFFER_BAND:
+        return NEGOTIATE
+    if score >= WATCH_BAND:
+        return WATCH
+    return SKIP
 
 
 def _num(value):
@@ -316,7 +332,12 @@ def triage(scored, see_limit=SEE_LIMIT):
     """
     rows = []
     for fields, best in scored:
-        action, reasons, caveats = recommend(fields, best)
+        _, reasons, caveats = recommend(fields, best)
+        power = strength(fields, best)
+        # The word follows the number. The rule-based recommend() still
+        # supplies the reasons -- the *why* -- but the verdict itself comes
+        # from the same 0-100 score the pin and the chip show.
+        action = band_action(power)
         # A house that can no longer be bought gets no action at all,
         # whatever its evidence says. A recommendation you cannot act on is
         # noise wearing a verdict's clothes.
@@ -326,12 +347,12 @@ def triage(scored, see_limit=SEE_LIMIT):
             reasons = ["no longer available, whatever the numbers said"]
         rows.append({"fields": fields, "best": best, "action": action,
                      "reasons": reasons, "caveats": caveats,
-                     "strength": strength(fields, best), "held_back": False})
+                     "strength": power, "held_back": False})
 
     sees = sorted((r for r in rows if r["action"] == SEE_IT),
                   key=lambda r: -r["strength"])
     for r in sees[see_limit:]:
-        r["action"] = WATCH
+        r["action"] = NEXT_UP
         r["held_back"] = True
         r["reasons"].append(
             f"strong on its own, but only the {see_limit} strongest earn a "

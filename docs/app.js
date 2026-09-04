@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v50";
+const APP_VERSION = "v51";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -592,7 +592,8 @@ const SEARCH_AREAS = [
   },
 ];
 
-const PIN_COLORS = { go: "#0f766e", offer: "#a2500c", watch: "#5c6b69", skip: "#b3261e" };
+const PIN_COLORS = { go: "#0f766e", next: "#0369a1", offer: "#d97706",
+                     watch: "#6b7280", skip: "#b3261e" };
 
 // Ray-cast point-in-polygon: does this point sit inside the ring?
 function pointInRing(lat, lon, ring) {
@@ -616,6 +617,7 @@ function inSearchArea(f) {
 function pinColor(t) {
   if (!t) return PIN_COLORS.watch;
   return t.action === SEE_IT ? PIN_COLORS.go
+       : t.action === NEXT_UP ? PIN_COLORS.next
        : t.action === NEGOTIATE ? PIN_COLORS.offer
        : t.action === SKIP ? PIN_COLORS.skip : PIN_COLORS.watch;
 }
@@ -641,10 +643,11 @@ function ensureMap() {
     div.className = "map-legend";
     div.innerHTML = SEARCH_AREAS.map(a =>
       `<span><i style="background:${a.color}"></i>${a.name} area</span>`).join("")
-      + `<span><i class="dot" style="background:${PIN_COLORS.go}"></i>Go and see it</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.offer}"></i>Worth an offer</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.watch}"></i>Watch</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.skip}"></i>Not worth going after</span>`;
+      + `<span><i class="dot" style="background:${PIN_COLORS.go}"></i>${GO_BAND}+ Go see it (top 3)</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.next}"></i>${GO_BAND}+ Next in line</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.offer}"></i>${OFFER_BAND}–${GO_BAND - 1} Make offer</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.watch}"></i>${WATCH_BAND}–${OFFER_BAND - 1} Watch</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.skip}"></i>under ${WATCH_BAND} Skip</span>`;
     return div;
   };
   legend.addTo(map);
@@ -684,6 +687,7 @@ function renderMap(rows) {
     // out while just panning around.
     const word = !tri ? ""
       : tri.action === SEE_IT ? "Go see it"
+      : tri.action === NEXT_UP ? "Next in line"
       : tri.action === NEGOTIATE ? "Make offer"
       : tri.action === WATCH ? "Watch" : "Skip";
     const marker = L.marker([lat, lon], {
@@ -1357,25 +1361,36 @@ function strengthOf(f, best) {
 const SEE_LIMIT = 3;
 let triageCache = null;
 
+// The score decides the word -- one scale everywhere, so a 62 can never
+// read as less important than a 38. Mirrors recommend.band_action.
+const GO_BAND = 60, OFFER_BAND = 40, WATCH_BAND = 20;
+const NEXT_UP = "Next in line";
+function bandAction(score) {
+  return score >= GO_BAND ? SEE_IT
+       : score >= OFFER_BAND ? NEGOTIATE
+       : score >= WATCH_BAND ? WATCH : SKIP;
+}
+
 function triageMap() {
   if (triageCache) return triageCache;
   const rows = houses.map(r => {
     const f = r.fields || {};
     const { best } = fitSummary(f);
     const rec = recommend(f, best);
-    let action = rec.action, reasons = rec.reasons, heldBack = false;
+    const power = strengthOf(f, best);
+    let action = bandAction(power), reasons = rec.reasons, heldBack = false;
     if (["Off Market", "Under Contract"].includes(f["Listing Status"])
         || DECIDED_STATUSES.includes(f.Status)) {
       action = SKIP;
       reasons = ["no longer available, whatever the numbers said"];
     }
     return { id: r.id, f, best, action, reasons, caveats: rec.caveats,
-             strength: strengthOf(f, best), heldBack };
+             strength: power, heldBack };
   });
   const sees = rows.filter(r => r.action === SEE_IT)
                    .sort((a, b) => b.strength - a.strength);
   for (const r of sees.slice(SEE_LIMIT)) {
-    r.action = WATCH;
+    r.action = NEXT_UP;
     r.heldBack = true;
     r.reasons.push(`strong on its own, but only the ${SEE_LIMIT} strongest earn `
                  + `a viewing in any one week — this one is next in line`);
@@ -1392,6 +1407,7 @@ function recommendationBlock(f, id) {
   const caveats = t ? t.caveats : recommend(f, best).caveats;
   const power = t ? t.strength : strengthOf(f, best);
   const cls = action === SEE_IT ? "rec-go"
+            : action === NEXT_UP ? "rec-next"
             : action === NEGOTIATE ? "rec-offer"
             : action === WATCH ? "rec-watch" : "rec-skip";
   // The card shows one line: verdict, strength, the reason that matters.

@@ -244,6 +244,21 @@ def main():
           min(r["strength"] for r in sees) >= max(r["strength"] for r in held), True)
     check("a held-back house says so in its own reasons",
           all("next in line" in r["reasons"][-1] for r in held), True)
+    check("a held-back house is labelled Next in line, not Watch",
+          all(r["action"] == recommend.NEXT_UP for r in held), True)
+    # The number decides the word: a stronger house never carries a weaker
+    # verdict than a weaker house does.
+    rank = {recommend.SEE_IT: 4, recommend.NEXT_UP: 4, recommend.NEGOTIATE: 3,
+            recommend.WATCH: 2, recommend.SKIP: 1}
+    mixed = recommend.triage([mk(30, 200, 20, 1.0), mk(10, 95, 6, 0.5),
+                              mk(0, 30, 0, 0.5), mk(0, 0, 0, 0)])
+    ordered = sorted(mixed, key=lambda r: -r["strength"])
+    check("verdicts never get better as the score gets worse",
+          all(rank[a["action"]] >= rank[b["action"]]
+              for a, b in zip(ordered, ordered[1:])), True)
+    check("the score bands are the ones the legend promises",
+          [recommend.band_action(x) for x in (75, 50, 30, 5)],
+          [recommend.SEE_IT, recommend.NEGOTIATE, recommend.WATCH, recommend.SKIP])
 
     print("\nPicks only include things you can still buy:")
     live = (underpriced, best_lot)
