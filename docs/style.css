@@ -639,3 +639,5 @@ dialog::backdrop { background: rgba(8, 18, 17, .5); }
   border: 1.5px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,.3);
   letter-spacing: .02em;
 }
+
+.map-legend .dot.small { width: 8px; height: 8px; margin: 0 2px; }

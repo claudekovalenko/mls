@@ -23,11 +23,14 @@ REAL_PRICE_CUT = 5         # % off asking that indicates a motivated seller
 DATED_YEAR = 1985          # original-condition stock
 
 # The four things worth doing about a house, strongest first.
-SEE_IT = "Go and see it"
-NEGOTIATE = "Worth an offer under asking"
-WATCH = "Watch it"
-SKIP = "Skip unless you know something the data doesn't"
+# One ladder, one meaning: how much of your attention a house deserves.
+# Higher score, higher rung, always. Tactics ("offer 10% under") belong in
+# the next steps, after you have seen it -- never in the verdict itself.
+SEE_IT = "Go see it"
 NEXT_UP = "Next in line"   # strong enough to see, but the week's three are taken
+NEGOTIATE = "Worth a look"  # variable name kept; the word is about attention now
+WATCH = "Watch"
+SKIP = "Skip"
 
 # The score decides the word. One scale everywhere, so a 62 can never read
 # as less important than a 38 -- which is exactly what happened when the
