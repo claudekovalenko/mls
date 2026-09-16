@@ -273,6 +273,12 @@ def main():
     check("a house merely worth watching is not a pick",
           len(recommend.picks([watch_only])), 0)
 
+    print("\nPrivate markets stay out of the Atlanta emails:")
+    from send_digest import is_private
+    check("an Orange County house is private", is_private({"Market": "Orange County"}), True)
+    check("an Atlanta house is not", is_private({"Market": "Atlanta"}), False)
+    check("a house with no market is not", is_private({}), False)
+
     print("\nLane routing, so the two emails stay separate:")
     check("a 24-unit block is a complex", lane_of({"Units": 24}), "multifamily")
     check("a detached house is a home", lane_of({"Property Type": "Single Family"}), "house")

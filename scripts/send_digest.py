@@ -157,6 +157,16 @@ WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 # email worth getting.
 DECIDED_STATUSES = {"Under Contract", "Purchased", "Rejected"}
 
+# Markets that belong to someone else's hunt. They live in the same table
+# and run through the same worker, but never reach the Atlanta emails and
+# never show in the app until unlocked there. Mirrors PRIVATE_MARKETS in
+# docs/app.js.
+PRIVATE_MARKETS = {"Orange County"}
+
+
+def is_private(f):
+    return (f.get("Market") or "") in PRIVATE_MARKETS
+
 SOURCE_LABELS = {"rentcast": "RentCast", "reso": "MLS / IDX", "search": "search",
                  "homesteps": "HomeSteps foreclosure (Freddie Mac)",
                  "manual": "typed in by hand"}
@@ -948,8 +958,13 @@ def main():
 
     days = int(os.environ.get("DIGEST_DAYS", "1"))
     cutoff = (date.today() - timedelta(days=days)).isoformat()
+    criteria_rows = [r for r in criteria_rows
+                     if not is_private(r.get("fields", {}))]
+
     def worth_sending(rec):
         f = rec.get("fields", {})
+        if is_private(f):
+            return False
         lane = lane_of(f)
         if only and lane != ("multifamily" if "multifamily" in only else "house"):
             return False

@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v51";
+const APP_VERSION = "v52";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -236,6 +236,48 @@ async function saveRecord(table, id, fields) {
 // ---- state ----
 let criteria = [];
 let houses = [];
+// Everything the database returned, before the privacy gate. `criteria`
+// and `houses` above are what the rest of the app is allowed to see.
+let allCriteria = [];
+let allHouses = [];
+
+// Markets that belong to someone else's hunt, and the code that opens each.
+// This is a curtain, not a vault: the app reads a public table, so the rows
+// are reachable by anyone who goes looking. It keeps them out of sight of
+// the main audience, which is what was asked. Mirrors send_digest.PRIVATE_MARKETS.
+const PRIVATE_MARKETS = { "Orange County": "ivan" };
+
+function unlockedMarkets() {
+  try { return new Set(JSON.parse(localStorage.getItem("hf-unlocked") || "[]")); }
+  catch { return new Set(); }
+}
+function marketVisible(market) {
+  return !(market in PRIVATE_MARKETS) || unlockedMarkets().has(market);
+}
+// Apply the gate to what was loaded, and rebuild anything derived from it.
+function applyVisibility() {
+  criteria = allCriteria.filter(r => marketVisible((r.fields || {}).Market || ""));
+  houses = allHouses.filter(r => marketVisible((r.fields || {}).Market || ""));
+  triageCache = null;
+  const markets = [...new Set(houses.map(r => r.fields?.Market).filter(Boolean))];
+  const sel = $("filter-market");
+  if (sel) {
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">All markets</option>' +
+      markets.map(m => `<option>${esc(m)}</option>`).join("");
+    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  }
+}
+function unlockMarket(code) {
+  const hit = Object.entries(PRIVATE_MARKETS).find(([, c]) => c === code.trim().toLowerCase());
+  if (!hit) return null;
+  const set = unlockedMarkets(); set.add(hit[0]);
+  try { localStorage.setItem("hf-unlocked", JSON.stringify([...set])); } catch {}
+  return hit[0];
+}
+function lockMarkets() {
+  try { localStorage.removeItem("hf-unlocked"); } catch {}
+}
 // The three lanes. Declared here rather than beside laneOf() further down,
 // because currentLane below reads them while this file is still executing --
 // a `const` in the wrong order is a load-time crash, not a late failure.
@@ -567,6 +609,7 @@ let map = null, markerLayer = null, areaLayer = null;
 // Hwy 3/41 just below Marietta instead of running down to Cumberland.
 const SEARCH_AREAS = [
   {
+    market: "Atlanta",
     // Traced from Ryan's hand-drawn loop (Apple Maps screenshot, Sep 2026):
     // wider than the rentals loop -- north above Blackwells toward
     // Woodstock, east near the Chattahoochee, south-east down to the
@@ -584,6 +627,7 @@ const SEARCH_AREAS = [
     // west edge just past Marietta square, north under Blackwells, east
     // along 120 toward the river, southern dip at the I-75/US-41 crossing
     // above Fair Oaks.
+    market: "Atlanta",
     name: "Rentals (BRRRR)", color: "#0f766e",
     ring: [[33.985, -84.578], [34.008, -84.568], [34.026, -84.538],
            [34.030, -84.506], [34.012, -84.468], [34.006, -84.428],
@@ -611,7 +655,12 @@ function pointInRing(lat, lon, ring) {
 function inSearchArea(f) {
   const lat = Number(f.Latitude), lon = Number(f.Longitude);
   if (!lat || !lon) return null;
-  return SEARCH_AREAS.some(a => pointInRing(lat, lon, a.ring));
+  // Only markets with drawn hunting grounds are gated by them. A market
+  // without a drawing (Orange County today) is already scoped by its city
+  // searches, so nothing there is "outside".
+  const areas = SEARCH_AREAS.filter(a => a.market === (f.Market || "Atlanta"));
+  if (!areas.length) return null;
+  return areas.some(a => pointInRing(lat, lon, a.ring));
 }
 
 function pinColor(t) {
@@ -625,8 +674,11 @@ function pinColor(t) {
 function ensureMap() {
   if (map || typeof L === "undefined") return map;
   map = L.map("map", { zoomControl: true, attributionControl: true });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+  // Voyager is a quiet basemap: roads and names, none of the clutter that
+  // made the standard tiles feel gritty under a field of badges.
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    maxZoom: 19, subdomains: "abcd",
+    attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
   }).addTo(map);
   markerLayer = L.layerGroup().addTo(map);
   areaLayer = L.layerGroup().addTo(map);
@@ -643,11 +695,11 @@ function ensureMap() {
     div.className = "map-legend";
     div.innerHTML = SEARCH_AREAS.map(a =>
       `<span><i style="background:${a.color}"></i>${a.name} area</span>`).join("")
-      + `<span><i class="dot" style="background:${PIN_COLORS.go}"></i>${GO_BAND}+ Go see it (top 3)</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.next}"></i>${GO_BAND}+ Next in line</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.offer}"></i>${OFFER_BAND}–${GO_BAND - 1} Make offer</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.watch}"></i>${WATCH_BAND}–${OFFER_BAND - 1} Watch</span>`
-      + `<span><i class="dot" style="background:${PIN_COLORS.skip}"></i>under ${WATCH_BAND} Skip</span>`;
+      + `<span><i class="dot" style="background:${PIN_COLORS.go}"></i>${GO_BAND}%+ Go see it (top 3)</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.next}"></i>${GO_BAND}%+ Next in line</span>`
+      + `<span><i class="dot" style="background:${PIN_COLORS.offer}"></i>${OFFER_BAND}–${GO_BAND - 1}% Worth a look</span>`
+      + `<span><i class="dot small" style="background:${PIN_COLORS.watch}"></i>${WATCH_BAND}–${OFFER_BAND - 1}% Watch (small dot)</span>`
+      + `<span>under ${WATCH_BAND}% not shown</span>`;
     return div;
   };
   legend.addTo(map);
@@ -665,7 +717,7 @@ function renderMap(rows) {
   markerLayer.clearLayers();
   const t = triageMap();
   const pins = [];
-  let outside = 0;
+  let outside = 0, quiet = 0;
   for (const r of rows) {
     const f = r.f, lat = Number(f.Latitude), lon = Number(f.Longitude);
     if (!lat || !lon) continue;
@@ -673,6 +725,20 @@ function renderMap(rows) {
     // areas stays in "Everything live" but does not earn a pin.
     if (inSearchArea(f) === false) { outside++; continue; }
     const tri = t.get(r.id);
+    // A map is for the houses worth your attention. Skips are left off it
+    // entirely and Watches are a quiet dot; only Worth a look and above get
+    // a badge with the score on its face.
+    if (tri && tri.action === SKIP) { quiet++; continue; }
+    if (tri && tri.action === WATCH) {
+      L.circleMarker([lat, lon], { radius: 5, color: "#ffffff", weight: 1.5,
+        fillColor: PIN_COLORS.watch, fillOpacity: 0.85 })
+        .bindPopup(`<div class="pin-pop"><b>${esc(f.Address || "")}</b>` +
+                   `<div>${money(f.Price)} \u00b7 Watch \u00b7 ${tri.strength}%</div>` +
+                   `<a href="#" data-map-open="${esc(r.id)}">Open the card &rarr;</a></div>`)
+        .addTo(markerLayer);
+      pins.push([lat, lon]);
+      continue;
+    }
     // The pin itself is the verdict: the 0-100 strength on its face, a small
     // letter for the strategy it fits (F flip, B BRRRR, M multifamily), and
     // the color saying whether it is worth going after at all.
@@ -688,13 +754,13 @@ function renderMap(rows) {
     const word = !tri ? ""
       : tri.action === SEE_IT ? "Go see it"
       : tri.action === NEXT_UP ? "Next in line"
-      : tri.action === NEGOTIATE ? "Make offer"
+      : tri.action === NEGOTIATE ? "Worth a look"
       : tri.action === WATCH ? "Watch" : "Skip";
     const marker = L.marker([lat, lon], {
       icon: L.divIcon({
         className: "pin-badge-wrap",
         html: `<div class="pin-badge" style="background:${pinColor(tri)}">` +
-              `${power0}${letter ? `<small>${letter}</small>` : ""}</div>` +
+              `${power0}%${letter ? `<small>${letter}</small>` : ""}</div>` +
               (word ? `<div class="pin-word" style="background:${pinColor(tri)}">${word}</div>` : ""),
         iconSize: [58, 52], iconAnchor: [29, 22],
       }),
@@ -714,7 +780,7 @@ function renderMap(rows) {
       `<b>${esc(f.Address || "")}</b>` +
       `<div>${money(f.Price)}${f.Sqft ? ` \u00b7 ${Number(f.Sqft).toLocaleString()} sqft` : ""}</div>` +
       (action ? `<div class="pin-action" style="color:${pinColor(tri)}">${esc(action)}` +
-                `<span class="pin-strength">${power}</span></div>` : "") +
+                `<span class="pin-strength">${power}%</span></div>` : "") +
       `<div class="pin-fit">${fitLine}</div>` +
       `<a href="#" data-map-open="${esc(r.id)}">Open the card &rarr;</a>` +
       `</div>`);
@@ -722,10 +788,15 @@ function renderMap(rows) {
     pins.push([lat, lon]);
   }
   if (pins.length) {
-    map.fitBounds(pins.concat(SEARCH_AREAS[0].ring), { padding: [24, 24], maxZoom: 14 });
+    // Frame the pins; pull the drawn areas in too when the pins are inside
+    // them, so the shapes stay on screen.
+    const atlanta = pins.every(([la, lo]) => la > 33.5 && la < 34.5 && lo < -84);
+    map.fitBounds(atlanta ? pins.concat(SEARCH_AREAS[0].ring) : pins,
+                  { padding: [24, 24], maxZoom: 14 });
   }
-  const missing = rows.length - pins.length - outside;
+  const missing = rows.length - pins.length - outside - quiet;
   const bits = [`${pins.length} pinned`];
+  if (quiet) bits.push(`${quiet} under ${WATCH_BAND}% left off`);
   if (outside) bits.push(`${outside} outside the drawn areas`);
   if (missing > 0) bits.push(`${missing} waiting on coordinates`);
   $("map-note").textContent = pins.length
@@ -1195,10 +1266,12 @@ function priceChangeChip(f) {
 // what the work really costs or what the house really resells for, and a
 // tool that said "buy this" while missing both would be worth less than none.
 const REC_BELOW_MARKET = 15, REC_STALE_DAYS = 90, REC_CUT = 5, REC_DATED = 1985;
-const SEE_IT = "Go and see it";
-const NEGOTIATE = "Worth an offer under asking";
-const WATCH = "Watch it";
-const SKIP = "Skip unless you know something the data doesn't";
+// One ladder, one meaning: how much attention a house deserves. Higher
+// score, higher rung, always. Mirrors recommend.py.
+const SEE_IT = "Go see it";
+const NEGOTIATE = "Worth a look";   // variable name kept; the word is about attention
+const WATCH = "Watch";
+const SKIP = "Skip";
 
 function breakevenResale(f) {
   const price = Number(f.Price), rehab = Number(f["Rehab Cost"]);
@@ -1672,11 +1745,8 @@ async function saveHouse(e) {
 async function refresh() {
   try {
     setStatus("Loading…");
-    [criteria, houses] = await Promise.all([listAll(TABLE_CRITERIA), listAll(TABLE_HOUSES)]);
-    triageCache = null;   // new data, new triage
-    const markets = [...new Set(houses.map(r => r.fields?.Market).filter(Boolean))];
-    $("filter-market").innerHTML = '<option value="">All markets</option>' +
-      markets.map(m => `<option>${esc(m)}</option>`).join("");
+    [allCriteria, allHouses] = await Promise.all([listAll(TABLE_CRITERIA), listAll(TABLE_HOUSES)]);
+    applyVisibility();   // sets criteria/houses, clears the triage cache, rebuilds markets
     // Rebuilt on every load so a strategy added to a search becomes a sort
     // option on the next refresh. The current choice survives the rebuild.
     const sortSel = $("sort-by");
@@ -1844,3 +1914,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Restore the last view mode (List is default and needs no work).
 if (viewMode !== "list") setViewMode(viewMode);
+
+// Private areas: a code opens someone else's market on this device only.
+(() => {
+  const input = $("private-code"), status = $("private-status");
+  if (!input) return;
+  const show = () => {
+    const open = [...unlockedMarkets()];
+    status.textContent = open.length
+      ? `Unlocked on this device: ${open.join(", ")}.`
+      : "Nothing unlocked on this device.";
+  };
+  $("private-unlock").addEventListener("click", () => {
+    const market = unlockMarket(input.value);
+    if (!market) { status.textContent = "That code doesn't open anything."; return; }
+    input.value = "";
+    applyVisibility(); renderCriteria(); renderMatches(); show();
+  });
+  $("private-lock").addEventListener("click", () => {
+    lockMarkets(); applyVisibility(); renderCriteria(); renderMatches(); show();
+  });
+  show();
+})();
