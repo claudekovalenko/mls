@@ -273,6 +273,19 @@ def main():
     check("a house merely worth watching is not a pick",
           len(recommend.picks([watch_only])), 0)
 
+    print("\nMultifamily searches ask for buildings, and keep them:")
+    from search_worker import rentcast_params, signal_floor, MIN_CATEGORIES
+    mf = {"City": "Marietta", "State": "GA", "Max Price": 5000000,
+          "Property Class": "Multifamily", "Min Units": 5}
+    sf = {"City": "Marietta", "State": "GA", "Max Price": 500000}
+    check("a multifamily search asks RentCast for Multi-Family",
+          rentcast_params(mf).get("propertyType"), "Multi-Family")
+    check("a house search asks for no type (the class gate sorts it)",
+          "propertyType" in rentcast_params(sf), False)
+    check("a building needs no house-style value signals to be stored",
+          signal_floor(mf), 0)
+    check("a house still needs the usual two", signal_floor(sf), MIN_CATEGORIES)
+
     print("\nPrivate markets stay out of the Atlanta emails:")
     from send_digest import is_private
     check("an Orange County house is private", is_private({"Market": "Orange County"}), True)

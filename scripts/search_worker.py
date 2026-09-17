@@ -125,6 +125,48 @@ def fetch_reso(criteria, base_url, api_key):
 
 # ------------------------------------------------------------------ RentCast
 
+def is_multifamily_search(criteria):
+    return (criteria.get("Property Class") or "").strip().lower().startswith("multi")
+
+
+def rentcast_params(criteria, zip_code=None):
+    """The query for one RentCast call.
+
+    A multifamily search asks for Multi-Family up front. A city-wide query
+    is capped at one 500-row page and Marietta alone has more houses than
+    that on the market, so without the type filter the page fills with
+    single-family homes and the buildings never make it onto it -- which is
+    exactly how two multifamily searches ran for weeks and found four.
+    """
+    params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
+    if zip_code:
+        params["zipCode"] = zip_code
+    elif criteria.get("City"):
+        params["city"] = criteria["City"]
+    if criteria.get("State"):
+        params["state"] = criteria["State"]
+    if criteria.get("Min Price") is not None:
+        params["minPrice"] = int(criteria["Min Price"])
+    if criteria.get("Max Price") is not None:
+        params["maxPrice"] = int(criteria["Max Price"])
+    if criteria.get("Min Beds") is not None:
+        params["bedrooms"] = int(criteria["Min Beds"])
+    if is_multifamily_search(criteria):
+        params["propertyType"] = "Multi-Family"
+    return params
+
+
+def signal_floor(criteria):
+    """How many value signals a listing needs before it is worth storing.
+
+    Houses need MIN_CATEGORIES: a plain house at market price is noise. A
+    building is different -- the value signals (basement, ADU room, fixer
+    wording, dated year) describe houses, and a 12-unit block that clears
+    the class and unit gates is worth seeing on its own.
+    """
+    return 0 if is_multifamily_search(criteria) else MIN_CATEGORIES
+
+
 def fetch_rentcast(criteria, api_key, budget, coverage=None):
     # RentCast takes one zip per request, so a zip ring costs one call each --
     # the 16-zip "30068 + 10 mi" row is 16 billed requests every single run.
@@ -140,20 +182,7 @@ def fetch_rentcast(criteria, api_key, budget, coverage=None):
             if coverage is not None:
                 coverage["complete"] = False
             break
-        params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
-        if zip_code:
-            params["zipCode"] = zip_code
-        elif criteria.get("City"):
-            params["city"] = criteria["City"]
-        if criteria.get("State"):
-            params["state"] = criteria["State"]
-        if criteria.get("Min Price") is not None:
-            params["minPrice"] = int(criteria["Min Price"])
-        if criteria.get("Max Price") is not None:
-            params["maxPrice"] = int(criteria["Max Price"])
-        if criteria.get("Min Beds") is not None:
-            params["bedrooms"] = int(criteria["Min Beds"])
-
+        params = rentcast_params(criteria, zip_code)
         url = "https://api.rentcast.io/v1/listings/sale?" + urllib.parse.urlencode(params)
         # Counted before the request: a request that errors after reaching
         # RentCast is still billed, so counting on success would overspend.
@@ -920,7 +949,7 @@ def run_search(at, criteria_record, existing, budget):
         # the math says so on its own. The categories carry the weight here:
         # ARV is a placeholder equal to list price, so the math cannot yet be
         # right about a mispriced house -- which is exactly the house we want.
-        if len(listing["_signals"]) < MIN_CATEGORIES \
+        if len(listing["_signals"]) < signal_floor(fields) \
                 and not verdict["qualified"] and verdict["bestRank"] < 1:
             continue
         # A real PASS -- one computed from numbers a human actually entered --
@@ -934,7 +963,7 @@ def run_search(at, criteria_record, existing, budget):
                          "listing_status": None}
 
     new_rows.sort(key=lambda r: -len(str(r["Value Signals"]).split(", ")))
-    print(f"  {name}: {len(new_rows)} new in {MIN_CATEGORIES}+ categories, "
+    print(f"  {name}: {len(new_rows)} new in {signal_floor(fields)}+ categories, "
           f"{len(updates)} price change(s)")
     # The roll call is only usable as evidence of absence if the search
     # actually saw its whole slice this run.
@@ -1010,6 +1039,11 @@ def main():
     print(f"Listing source: {source}")
 
     criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
+    only = os.environ.get("SEARCH_ONLY", "").strip().lower()
+    if only:
+        criteria_rows = [r for r in criteria_rows
+                         if only in (r.get("fields", {}).get("Name") or "").lower()]
+        print(f"SEARCH_ONLY={only!r}: {len(criteria_rows)} matching search(es)")
     if not criteria_rows:
         print("::warning::No Active rows in Search Criteria -- nothing to search.")
         return 0
