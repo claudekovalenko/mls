@@ -23,6 +23,10 @@ on:
         description: "Spend prepaid credit if the free monthly allowance is used up (costs money)"
         type: boolean
         default: false
+      only:
+        description: "Run only searches whose name contains this (e.g. Multifamily). Blank = all."
+        type: string
+        default: ""
 
 # One run at a time. Concurrent runs would each spend against the budget and
 # race on the counter commit, so the recorded spend would understate reality.
@@ -54,6 +58,7 @@ jobs:
           # spending prepaid credit is a decision a human makes per run by
           # ticking allow_paid -- not something a cron job does at 7am.
           ALLOW_PAID_CREDIT: ${{ inputs.allow_paid && '1' || '0' }}
+          SEARCH_ONLY: ${{ inputs.only }}
         run: python search_worker.py
       - name: Commit RentCast spend counter
         # The runner is ephemeral, so an uncommitted counter means the next run
