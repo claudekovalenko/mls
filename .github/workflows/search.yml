@@ -59,6 +59,9 @@ jobs:
           # ticking allow_paid -- not something a cron job does at 7am.
           ALLOW_PAID_CREDIT: ${{ inputs.allow_paid && '1' || '0' }}
           SEARCH_ONLY: ${{ inputs.only }}
+          # A person pressing Run workflow gets a small, capped run for
+          # trying a fix. Only the schedule gets a full pass.
+          RUN_KIND: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'scheduled' }}
         run: python search_worker.py
       - name: Commit RentCast spend counter
         # The runner is ephemeral, so an uncommitted counter means the next run

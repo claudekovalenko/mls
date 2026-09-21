@@ -1020,6 +1020,23 @@ def retire_missing(houses, roll_call):
     return updates
 
 
+def scheduled_slice(rows, week=None):
+    """Half the searches this week, the other half next week.
+
+    A full pass costs about a call per search, and at eleven searches a
+    weekly pass sits right at the free allowance with nothing to spare.
+    Alternating halves halves the spend -- roughly 26 calls a month -- and
+    every search is still refreshed every two weeks. Stable by name, so a
+    search stays on the same week from month to month.
+    """
+    week = date.today().isocalendar()[1] if week is None else week
+    ordered = sorted(rows, key=lambda r: (r.get("fields", {}).get("Name") or ""))
+    keep = [r for i, r in enumerate(ordered) if i % 2 == week % 2]
+    deferred = [(r.get("fields", {}).get("Name") or "?")
+                for i, r in enumerate(ordered) if i % 2 != week % 2]
+    return keep, deferred
+
+
 def main():
     try:
         at = connect()
@@ -1044,6 +1061,11 @@ def main():
         criteria_rows = [r for r in criteria_rows
                          if only in (r.get("fields", {}).get("Name") or "").lower()]
         print(f"SEARCH_ONLY={only!r}: {len(criteria_rows)} matching search(es)")
+    elif os.environ.get("RUN_KIND", "scheduled") != "manual":
+        criteria_rows, deferred = scheduled_slice(criteria_rows)
+        if deferred:
+            print(f"Rotation: {len(criteria_rows)} search(es) this week, "
+                  f"{len(deferred)} next week -- {', '.join(deferred)}")
     if not criteria_rows:
         print("::warning::No Active rows in Search Criteria -- nothing to search.")
         return 0

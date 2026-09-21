@@ -273,6 +273,36 @@ def main():
     check("a house merely worth watching is not a pick",
           len(recommend.picks([watch_only])), 0)
 
+    print("\nThe free allowance is paced, and manual runs are small:")
+    import rentcast_budget as rb
+    from datetime import date as _d
+    mk_budget = lambda used, manual, day: rb.Budget(
+        {"month": _d(2026, 9, day).strftime("%Y-%m"), "monthlyCalls": used, "totalCalls": 100},
+        allow_paid=False, manual=manual, today=_d(2026, 9, day))
+    check("on the 1st only a headroom's worth is allowed",
+          rb.pace_allowance(_d(2026, 9, 1)), int(50 * 1 / 30) + rb.PACE_HEADROOM)
+    check("by the 30th the whole allowance is allowed", rb.pace_allowance(_d(2026, 9, 30)), 50)
+    check("a scheduled run on the 8th with 30 used is held back by pacing",
+          mk_budget(30, False, 8).can_spend(), False)
+    check("a scheduled run on the 8th with 12 used may proceed",
+          mk_budget(12, False, 8).can_spend(), True)
+    check("a manual run may make at most three calls",
+          mk_budget(10, True, 20).run_limit(), rb.MANUAL_RUN_LIMIT)
+    check("a manual run never dips into the schedule's reserve",
+          mk_budget(50 - rb.SCHEDULE_RESERVE, True, 28).can_spend(), False)
+    check("a scheduled run may use the reserve",
+          mk_budget(50 - rb.SCHEDULE_RESERVE, False, 28).can_spend(), True)
+    check("nothing is spendable once the month is used up",
+          mk_budget(50, False, 30).can_spend(), False)
+    from search_worker import scheduled_slice
+    rows = [{"fields": {"Name": n}} for n in "ABCDEFGHIJK"]
+    even, _ = scheduled_slice(rows, week=38)
+    odd, _ = scheduled_slice(rows, week=39)
+    check("alternate weeks cover every search between them",
+          sorted(r["fields"]["Name"] for r in even + odd), list("ABCDEFGHIJK"))
+    check("no search runs in both weeks",
+          set(r["fields"]["Name"] for r in even) & set(r["fields"]["Name"] for r in odd), set())
+
     print("\nMultifamily searches ask for buildings, and keep them:")
     from search_worker import rentcast_params, signal_floor, MIN_CATEGORIES
     mf = {"City": "Marietta", "State": "GA", "Max Price": 5000000,
