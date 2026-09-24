@@ -30,3 +30,17 @@ jobs:
 
       - name: App parses
         run: node --check docs/app.js
+
+      - name: Email digest survives messy data and routes markets correctly
+        working-directory: scripts
+        env:
+          DIGEST_OUT: ${{ runner.temp }}/digest-preview
+        run: python test_digest.py
+
+      - name: Upload the rendered email previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: email-previews
+          path: ${{ runner.temp }}/digest-preview
+          if-no-files-found: ignore

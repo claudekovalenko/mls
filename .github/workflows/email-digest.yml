@@ -17,6 +17,18 @@ on:
         description: "Send even with no new houses (announces the criteria)"
         type: boolean
         default: false
+      preview_to:
+        description: "Send ONLY to this address (a test). Blank = the normal recipients."
+        type: string
+        default: ""
+      markets:
+        description: "With preview_to: which markets, e.g. Orange County, Los Angeles. Blank = Atlanta."
+        type: string
+        default: ""
+      dry_run:
+        description: "Render the emails as a downloadable artifact and send nothing"
+        type: boolean
+        default: false
       days:
         description: "Include houses added in the last N days (default 1)"
         type: string
@@ -37,7 +49,10 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_TO: ${{ inputs.preview_to || secrets.EMAIL_TO }}
+          DIGEST_MARKETS: ${{ inputs.markets }}
+          DIGEST_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          DIGEST_OUT: ${{ runner.temp }}/digest-preview
           FORCE_SEND: ${{ inputs.force && '1' || '0' }}
           DIGEST_DAYS: ${{ inputs.days || '1' }}
           # The multifamily digest owns those listings; this email must not
@@ -46,3 +61,9 @@ jobs:
           # Optional. When set, each card leads with a Street View curb photo.
           GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
         run: python send_digest.py
+      - name: Upload rendered emails (dry run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: homes-email-preview
+          path: ${{ runner.temp }}/digest-preview

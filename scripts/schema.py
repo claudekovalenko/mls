@@ -26,6 +26,12 @@ SCHEMA = {
         ("Min Baths", "number"),
         ("Min Sqft", "number"),
         ("Zip Codes", "singleLineText"),       # comma-separated; how "within 10 mi" is expressed
+        # A circle instead of a city: one API call covers Anaheim, Buena Park
+        # and everything between, where a zip ring costs a call per zip.
+        # All three must be set; any one blank falls back to City.
+        ("Latitude", "number"),
+        ("Longitude", "number"),
+        ("Radius Miles", "number"),
         ("Property Types", "singleLineText"),  # comma-separated
         ("Keywords", "singleLineText"),        # comma-separated, any-match
         ("Must Haves", "singleLineText"),      # comma-separated, ALL required; "/" = alternatives
@@ -113,6 +119,11 @@ SCHEMA = {
         ("Email", "singleLineText"),
         ("Name", "singleLineText"),
         ("Active", "checkbox"),
+        # Which markets this person is emailed about, comma-separated.
+        # Blank means every market that is not private -- which is what
+        # every row meant before this column existed. A private market
+        # (Orange County, Los Angeles) reaches only people who name it.
+        ("Markets", "singleLineText"),
         ("Notes", "multilineText"),
     ],
 }
@@ -140,7 +151,7 @@ NUMBER_PRECISION = {
     "Target Cash on Cash": 1, "Target One Percent": 2,
     # Six decimals is roughly 0.1m. At zero, every house in Marietta would
     # round onto the same point.
-    "Latitude": 6, "Longitude": 6,
+    "Latitude": 6, "Longitude": 6, "Radius Miles": 1,
 }
 
 
@@ -167,7 +178,7 @@ NUMBER_PRECISION = {
     "Target Cash on Cash": 1, "Target One Percent": 2,
     # Six decimals is roughly 0.1m. At zero, every house in Marietta would
     # round onto the same point.
-    "Latitude": 6, "Longitude": 6,
+    "Latitude": 6, "Longitude": 6, "Radius Miles": 1,
 }
 
 

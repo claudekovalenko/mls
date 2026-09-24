@@ -129,31 +129,105 @@ def is_multifamily_search(criteria):
     return (criteria.get("Property Class") or "").strip().lower().startswith("multi")
 
 
+# RentCast's own words for each kind of building. "Multi-Family" is a 2-4
+# unit building and "Apartment" is 5+ units -- asking for only the first is
+# why the complex searches kept coming back nearly empty: every duplex was on
+# the page and no apartment building ever was. Multiple values are
+# pipe-separated (RentCast query engine, Aug 2025).
+RENTCAST_TYPES = {
+    "single": "Single Family",
+    "multi": "Multi-Family|Apartment",
+    "condo": "Condo|Townhouse",
+}
+
+
+def _range(lo, hi, top):
+    """RentCast's min:max range syntax. Both ends are always written, since
+    an open end is not documented and a malformed range silently matches
+    nothing, which looks exactly like a quiet week."""
+    lo = int(lo) if lo is not None else 0
+    hi = int(hi) if hi is not None else top
+    return f"{lo}:{hi}"
+
+
 def rentcast_params(criteria, zip_code=None):
     """The query for one RentCast call.
 
-    A multifamily search asks for Multi-Family up front. A city-wide query
-    is capped at one 500-row page and Marietta alone has more houses than
-    that on the market, so without the type filter the page fills with
-    single-family homes and the buildings never make it onto it -- which is
-    exactly how two multifamily searches ran for weeks and found four.
+    Price and bedrooms go in RentCast's range syntax. The older minPrice /
+    maxPrice names are not parameters RentCast reads, so for months every
+    call came back unfiltered by price and a city's 500-row page filled with
+    houses far over budget -- the in-budget ones past the cut-off were never
+    seen. "bedrooms=3" is an exact match, not a minimum, for the same reason.
+
+    The building type is asked for up front, for every class. A city-wide
+    page is capped at 500 rows, and without the filter it fills with condos
+    and townhomes the class gate then throws away.
+
+    A radius search (Latitude, Longitude, Radius Miles on the row) replaces
+    the city: one call covers Anaheim, Buena Park and everything between,
+    where a zip ring would cost a call per zip.
     """
     params = {"status": "Active", "limit": str(MAX_PER_SEARCH)}
-    if zip_code:
+    if is_radius_search(criteria):
+        params["latitude"] = f"{float(criteria['Latitude']):.6f}"
+        params["longitude"] = f"{float(criteria['Longitude']):.6f}"
+        params["radius"] = f"{float(criteria['Radius Miles']):g}"
+    elif zip_code:
         params["zipCode"] = zip_code
     elif criteria.get("City"):
         params["city"] = criteria["City"]
-    if criteria.get("State"):
+    if criteria.get("State") and not is_radius_search(criteria):
         params["state"] = criteria["State"]
-    if criteria.get("Min Price") is not None:
-        params["minPrice"] = int(criteria["Min Price"])
-    if criteria.get("Max Price") is not None:
-        params["maxPrice"] = int(criteria["Max Price"])
+    lo, hi = criteria.get("_fetch_price", (criteria.get("Min Price"),
+                                           criteria.get("Max Price")))
+    if lo is not None or hi is not None:
+        params["price"] = _range(lo, hi, 100_000_000)
     if criteria.get("Min Beds") is not None:
-        params["bedrooms"] = int(criteria["Min Beds"])
-    if is_multifamily_search(criteria):
-        params["propertyType"] = "Multi-Family"
+        params["bedrooms"] = _range(criteria["Min Beds"], None, 50)
+    klass = (criteria.get("Property Class") or "Single Family").strip().lower()
+    for prefix, types in RENTCAST_TYPES.items():
+        if klass.startswith(prefix):
+            params["propertyType"] = types
     return params
+
+
+def is_radius_search(criteria):
+    return all(criteria.get(k) not in (None, "")
+               for k in ("Latitude", "Longitude", "Radius Miles"))
+
+
+def fetch_key(criteria):
+    """What makes two rows' RentCast calls interchangeable: everything but
+    price, which each row re-applies locally. The three Marietta house
+    searches differ only in their price cap, so they share one call."""
+    params = rentcast_params({k: v for k, v in criteria.items()
+                              if k not in ("Min Price", "Max Price", "_fetch_price")})
+    return urllib.parse.urlencode(sorted(params.items()))
+
+
+def plan_shared_fetches(rows):
+    """Widen each group of interchangeable rows to one price range.
+
+    Mutates each row's fields with _fetch_price, the union of the group's
+    ranges, so whichever row runs first fetches enough for all of them.
+    Returns the number of calls saved, for the log.
+    """
+    groups = {}
+    for rec in rows:
+        f = rec.get("fields", {})
+        if parse_list_field(f.get("Zip Codes")):
+            continue  # zip rings are fetched zip by zip; left alone
+        groups.setdefault(fetch_key(f), []).append(f)
+    saved = 0
+    for members in groups.values():
+        los = [m.get("Min Price") for m in members]
+        his = [m.get("Max Price") for m in members]
+        lo = None if any(v is None for v in los) else min(los)
+        hi = None if any(v is None for v in his) else max(his)
+        for m in members:
+            m["_fetch_price"] = (lo, hi)
+        saved += len(members) - 1
+    return saved
 
 
 def signal_floor(criteria):
@@ -167,13 +241,29 @@ def signal_floor(criteria):
     return 0 if is_multifamily_search(criteria) else MIN_CATEGORIES
 
 
+# Responses already paid for this run, keyed by the exact query. A second row
+# asking the same question reads the answer instead of buying it again.
+_rentcast_cache = {}
+
+
 def fetch_rentcast(criteria, api_key, budget, coverage=None):
     # RentCast takes one zip per request, so a zip ring costs one call each --
     # the 16-zip "30068 + 10 mi" row is 16 billed requests every single run.
     # Every one of them goes through the budget gate before it is issued.
-    zips = parse_list_field(criteria.get("Zip Codes")) or [None]
+    zips = ([None] if is_radius_search(criteria)
+            else parse_list_field(criteria.get("Zip Codes")) or [None])
     out = []
     for zip_code in zips:
+        params = rentcast_params(criteria, zip_code)
+        cache_key = urllib.parse.urlencode(sorted(params.items()))
+        if cache_key in _rentcast_cache:
+            records, truncated = _rentcast_cache[cache_key]
+            print(f"    shared: reusing this run's call for "
+                  f"{zip_code or criteria.get('City') or 'this area'} (no charge)")
+            if coverage is not None and truncated:
+                coverage["complete"] = False
+            out.extend(_rentcast_listing(r) for r in records)
+            continue
         if not budget.can_spend():
             print(f"    budget gate: stopping after {len(out)} listing(s); "
                   f"remaining zips deferred to the next run")
@@ -182,7 +272,6 @@ def fetch_rentcast(criteria, api_key, budget, coverage=None):
             if coverage is not None:
                 coverage["complete"] = False
             break
-        params = rentcast_params(criteria, zip_code)
         url = "https://api.rentcast.io/v1/listings/sale?" + urllib.parse.urlencode(params)
         # Counted before the request: a request that errors after reaching
         # RentCast is still billed, so counting on success would overspend.
@@ -192,41 +281,14 @@ def fetch_rentcast(criteria, api_key, budget, coverage=None):
         # A response filled to the limit is a page, not a complete answer:
         # the houses past the cut-off are missing because we stopped asking,
         # not because they sold.
-        if coverage is not None and len(records) >= MAX_PER_SEARCH:
+        truncated = len(records) >= MAX_PER_SEARCH
+        if truncated:
+            print(f"    WARNING: {len(records)} rows is a full page -- this area "
+                  f"has more listings than one call returns; narrow it")
+        if coverage is not None and truncated:
             coverage["complete"] = False
-
-        for r in records:
-            out.append({
-                "address": r.get("formattedAddress") or r.get("addressLine1") or "",
-                "price": _num(r.get("price")),
-                "beds": _num(r.get("bedrooms")),
-                "baths": _num(r.get("bathrooms")),
-                "sqft": _num(r.get("squareFootage")),
-                "lotSqft": _num(r.get("lotSize")),
-                "propertyType": r.get("propertyType") or "",
-                "url": "",
-                "photoUrl": "",
-                "description": r.get("description") or "",
-                "source": "rentcast",
-                "units": _num(r.get("unitCount")) or _num(r.get("units")),
-                # The brief's qualitative half -- dated, poorly marketed,
-                # motivated seller, FSBO -- has no listing remarks to read in
-                # this feed, but these four fields stand in for all of it and
-                # were being thrown away.
-                "yearBuilt": _num(r.get("yearBuilt")),
-                "daysOnMarket": _num(r.get("daysOnMarket")),
-                "priceCut": _price_cut(r.get("history")),
-                "hasAgent": bool(r.get("listingAgent") or r.get("listingOffice")),
-                # What the feed says about the listing, in its own words.
-                # Preferred over our own inference wherever it exists: a
-                # feed that reports "Pending" is telling us something we
-                # would otherwise only guess at from an absence next week.
-                "feedStatus": (r.get("mlsStatus") or r.get("status") or "").strip(),
-                # Kept for street-level imagery, which is looked up by
-                # coordinate rather than by address.
-                "latitude": _num(r.get("latitude")),
-                "longitude": _num(r.get("longitude")),
-            })
+        _rentcast_cache[cache_key] = (records, truncated)
+        out.extend(_rentcast_listing(r) for r in records)
     # "No agent" only means FSBO if this feed names agents for anyone. If the
     # response carries none at all, the field is simply unpopulated and every
     # house would otherwise be flagged FSBO.
@@ -234,6 +296,41 @@ def fetch_rentcast(criteria, api_key, budget, coverage=None):
     for item in out:
         item["_agentsSeen"] = agents_seen
     return out
+
+
+def _rentcast_listing(r):
+    """One RentCast record in the shape every adapter returns."""
+    return {
+        "address": r.get("formattedAddress") or r.get("addressLine1") or "",
+        "price": _num(r.get("price")),
+        "beds": _num(r.get("bedrooms")),
+        "baths": _num(r.get("bathrooms")),
+        "sqft": _num(r.get("squareFootage")),
+        "lotSqft": _num(r.get("lotSize")),
+        "propertyType": r.get("propertyType") or "",
+        "url": "",
+        "photoUrl": "",
+        "description": r.get("description") or "",
+        "source": "rentcast",
+        "units": _num(r.get("unitCount")) or _num(r.get("units")),
+        # The brief's qualitative half -- dated, poorly marketed,
+        # motivated seller, FSBO -- has no listing remarks to read in
+        # this feed, but these four fields stand in for all of it and
+        # were being thrown away.
+        "yearBuilt": _num(r.get("yearBuilt")),
+        "daysOnMarket": _num(r.get("daysOnMarket")),
+        "priceCut": _price_cut(r.get("history")),
+        "hasAgent": bool(r.get("listingAgent") or r.get("listingOffice")),
+        # What the feed says about the listing, in its own words.
+        # Preferred over our own inference wherever it exists: a
+        # feed that reports "Pending" is telling us something we
+        # would otherwise only guess at from an absence next week.
+        "feedStatus": (r.get("mlsStatus") or r.get("status") or "").strip(),
+        # Kept for street-level imagery, which is looked up by
+        # coordinate rather than by address.
+        "latitude": _num(r.get("latitude")),
+        "longitude": _num(r.get("longitude")),
+    }
 
 
 def _price_cut(history):
@@ -287,20 +384,24 @@ def resolve_source():
 # rather than scraping layout. Verified against the live page 2026-09-01
 # (discover_gse.py run) -- if Freddie redesigns, the discovery workflow is
 # the tool to re-derive this from.
-HOMESTEPS_URL = "https://www.homesteps.com/listing/search?search=GA"
+HOMESTEPS_URL = "https://www.homesteps.com/listing/search?search={state}"
 HOMESTEPS_PAGES = 5   # politeness cap; GA inventory is ~2 pages today
 
-_homesteps_cache = None
+_homesteps_cache = {}
 
 
-def _homesteps_fetch_all():
-    """Every GA listing HomeSteps shows, fetched once per run and cached."""
-    global _homesteps_cache
-    if _homesteps_cache is not None:
-        return _homesteps_cache
+def _homesteps_fetch_all(state="GA"):
+    """Every listing HomeSteps shows for one state, fetched once per run.
+
+    Free and uncounted, so it is the one source that still runs when the
+    RentCast allowance is spent for the month."""
+    state = (state or "GA").strip().upper()
+    if state in _homesteps_cache:
+        return _homesteps_cache[state]
     out = []
     for page in range(HOMESTEPS_PAGES):
-        url = HOMESTEPS_URL + (f"&page={page}" if page else "")
+        url = (HOMESTEPS_URL.format(state=urllib.parse.quote(state))
+               + (f"&page={page}" if page else ""))
         try:
             text = _get_text(url)
         except Exception as e:  # noqa: BLE001 -- a free extra source must
@@ -320,8 +421,8 @@ def _homesteps_fetch_all():
             continue
         seen.add(l["url"])
         unique.append(l)
-    _homesteps_cache = unique
-    print(f"    homesteps: {len(unique)} GA listing(s) on file")
+    _homesteps_cache[state] = unique
+    print(f"    homesteps: {len(unique)} {state} listing(s) on file")
     return unique
 
 
@@ -387,13 +488,30 @@ def _get_text(url):
         return raw.decode("utf-8", errors="ignore")
 
 
+def miles_between(lat1, lng1, lat2, lng2):
+    """Great-circle distance in miles."""
+    import math
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 3958.8 * 2 * math.asin(math.sqrt(a))
+
+
 def fetch_homesteps(criteria):
-    """The GA-wide HomeSteps inventory, narrowed to this criteria row's
-    ground: its zip ring if it has one, otherwise its city."""
+    """The state-wide HomeSteps inventory, narrowed to this criteria row's
+    ground: its radius if it has one, else its zip ring, else its city."""
     zips = set(parse_list_field(criteria.get("Zip Codes")))
     city = (criteria.get("City") or "").strip().lower()
     out = []
-    for l in _homesteps_fetch_all():
+    for l in _homesteps_fetch_all(criteria.get("State") or "GA"):
+        if is_radius_search(criteria):
+            if l.get("latitude") is None or l.get("longitude") is None:
+                continue
+            d = miles_between(float(criteria["Latitude"]), float(criteria["Longitude"]),
+                              l["latitude"], l["longitude"])
+            if d <= float(criteria["Radius Miles"]):
+                out.append(dict(l))
+            continue
         addr = l["address"]
         zm = re.search(r"(\d{5})\s*$", addr)
         in_zip = bool(zips and zm and zm.group(1) in zips)
@@ -1069,6 +1187,11 @@ def main():
     if not criteria_rows:
         print("::warning::No Active rows in Search Criteria -- nothing to search.")
         return 0
+
+    saved = plan_shared_fetches(criteria_rows)
+    if saved:
+        print(f"Shared calls: {saved} search(es) ride on another's RentCast "
+              f"call this run instead of buying their own")
 
     budget = rentcast_budget.load()
     print(budget.summary())

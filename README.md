@@ -74,13 +74,41 @@ Repo → Settings → Secrets and variables → Actions:
 
 Then run **Actions → Search Listings → Run workflow** to test it.
 
+**RentCast budget.** 50 free calls a month, refilled on the 1st; the weekly
+schedule uses about 30. When the month is spent, a manual run with
+`allow_paid` ticked (and `only` set, e.g. `Ivan`) spends prepaid credit at
+$0.20 a call: up to 6 calls a run and 25 a month (`rentcast_budget.py`).
+A scheduled run never spends paid credit.
+
 ### 5. Email digests
 
 `send_digest.py` mails anything newly listed or newly cheaper, daily at 8am
 Atlanta. There are two: **Email Digest** for houses and **Email Multifamily
-Digest** for 20+ door complexes. Both stay quiet when nothing changed.
-Secrets: `SMTP_USER` (Gmail address), `SMTP_PASS` (a Gmail **App Password**,
-not the account password). Recipients live in the `recipients` table.
+Digest** for duplexes up to apartment buildings. Both stay quiet when nothing
+changed. Secrets: `SMTP_USER` (Gmail address), `SMTP_PASS` (a Gmail **App
+Password**, not the account password).
+
+Recipients live in the `recipients` table. Its **Markets** column decides
+what each person gets: blank means every market that isn't private
+(Atlanta today); `Orange County, Los Angeles` means only those. Private
+markets never reach anyone who doesn't name them.
+
+Each email is short on purpose: at most 12 houses, best first, each one a
+photo, price, one line of facts, a verdict and two links. The photo is the
+feed's own when it has one, otherwise a free aerial view (Esri World
+Imagery, no key needed) from the listing's coordinates.
+
+**Testing an email** (Actions → Email Digest → Run workflow):
+
+- `dry_run` renders every email as a downloadable artifact and sends nothing
+- `preview_to` sends only to that address; add `markets` (e.g.
+  `Orange County, Los Angeles`) to preview a private market
+- `days: 30` pulls in a month of houses so there is something to look at
+
+`scripts/test_digest.py` runs on every push: it throws malformed rows at the
+email (the Sept 17 digest crashed on a house with beds but no baths), checks
+nobody receives a market they don't follow, and keeps the email under Gmail's
+102 KB clipping size.
 
 ## Where listings come from
 
@@ -202,6 +230,11 @@ remarks or numbers show: `Basement`, `ADU potential`, `FSBO`, `Fixer`,
 in Matches even when the placeholder math says PASS, because placeholder math
 is exactly what's wrong about a mispriced house. Missing sqft deliberately
 passes both the `Min Sqft` floor and the `Max Price Per Sqft` cap.
+
+A row with **Latitude, Longitude and Radius Miles** searches a circle instead
+of a city: one API call for "Anaheim, Buena Park and everything between".
+Searches over the same ground that differ only in price share one call per
+run.
 
 Criteria rows can also set `Zip Codes` (a ring of zips is how "within 10 miles"
 is expressed), `Must Haves` (comma = AND, `/` = alternatives, e.g.

@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v52";
+const APP_VERSION = "v53";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -166,7 +166,7 @@ const FIELD_NAMES = [
   "Keywords", "Must Haves", "Strategy", "Property Class", "Min Units",
   "Max Price Per Sqft", "Max All In", "Target Total Sqft",
   "Min Baths After Reno", "Target Flip Profit", "Target Cash on Cash",
-  "Target One Percent", "Rehab Cost Per Sqft", "Notes",
+  "Target One Percent", "Rehab Cost Per Sqft", "Notes", "Radius Miles",
   "Address", "Status", "Price", "Beds", "Baths", "Sqft", "Lot Sqft",
   "Price Per Sqft", "Value Signals", "Rehab Cost", "ARV", "Rent Estimate",
   "Flip Profit", "Cash on Cash", "One Percent", "Flip Verdict",
@@ -245,14 +245,18 @@ let allHouses = [];
 // This is a curtain, not a vault: the app reads a public table, so the rows
 // are reachable by anyone who goes looking. It keeps them out of sight of
 // the main audience, which is what was asked. Mirrors send_digest.PRIVATE_MARKETS.
-const PRIVATE_MARKETS = { "Orange County": "ivan" };
+const PRIVATE_MARKETS = { "Orange County": "ivan", "Los Angeles": "ivan" };
 
 function unlockedMarkets() {
   try { return new Set(JSON.parse(localStorage.getItem("hf-unlocked") || "[]")); }
   catch { return new Set(); }
 }
 function marketVisible(market) {
-  return !(market in PRIVATE_MARKETS) || unlockedMarkets().has(market);
+  if (!(market in PRIVATE_MARKETS)) return true;
+  // Open if any market sharing its code is open, so a phone unlocked for
+  // Orange County before LA existed sees LA too without re-entering it.
+  const code = PRIVATE_MARKETS[market];
+  return [...unlockedMarkets()].some(m => PRIVATE_MARKETS[m] === code);
 }
 // Apply the gate to what was loaded, and rebuild anything derived from it.
 function applyVisibility() {
@@ -269,11 +273,13 @@ function applyVisibility() {
   }
 }
 function unlockMarket(code) {
-  const hit = Object.entries(PRIVATE_MARKETS).find(([, c]) => c === code.trim().toLowerCase());
-  if (!hit) return null;
-  const set = unlockedMarkets(); set.add(hit[0]);
+  // One code can open several markets (Ivan's is Orange County and LA).
+  const hits = Object.entries(PRIVATE_MARKETS)
+    .filter(([, c]) => c === code.trim().toLowerCase()).map(([m]) => m);
+  if (!hits.length) return null;
+  const set = unlockedMarkets(); hits.forEach(m => set.add(m));
   try { localStorage.setItem("hf-unlocked", JSON.stringify([...set])); } catch {}
-  return hit[0];
+  return hits.join(" + ");
 }
 function lockMarkets() {
   try { localStorage.removeItem("hf-unlocked"); } catch {}
@@ -990,6 +996,21 @@ function streetViewLink(address) {
   return `https://www.google.com/maps/search/?api=1&query=${q}&layer=c`;
 }
 
+// An overhead photo of the lot, from coordinates the feed already gives us.
+// Esri's public World Imagery export needs no key, account or card, so every
+// house with a position gets a real picture -- the roof, the yard, the room
+// for an ADU -- instead of a grey box. Mirrors send_digest.aerial_url.
+function aerialPhoto(f, w = 640, h = 240) {
+  const lat = Number(f.Latitude), lng = Number(f.Longitude);
+  if (!lat || !lng) return "";
+  const dLng = 0.0011, dLat = dLng * (h / w) * Math.cos(lat * Math.PI / 180);
+  const bbox = [lng - dLng / 2, lat - dLat / 2, lng + dLng / 2, lat + dLat / 2]
+    .map(n => n.toFixed(6)).join(",");
+  return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/"
+       + `MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=3857`
+       + `&size=${w},${h}&format=jpg&f=image`;
+}
+
 // The embedded still, only if someone has chosen to paste a key in. Absent a
 // key this returns "" and the card falls back to the link tile.
 function streetView(address, w = 640, h = 200) {
@@ -1511,11 +1532,12 @@ function houseCard({ id, f, v }) {
   // The feed's own photo when it has one, a Street View still otherwise --
   // for a fixer hunt the kerb shot is close to the point, since a tired roof
   // and an overgrown yard are visible from the road.
-  const src = f["Photo URL"] || streetView(f.Address);
+  const src = f["Photo URL"] || streetView(f.Address) || aerialPhoto(f);
   const link = streetViewLink(f.Address);
   let photo;
   if (src) {
-    photo = `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy">`;
+    photo = `<img class="card-photo" src="${esc(src)}" alt="" loading="lazy"
+                  onerror="this.style.display='none'">`;
   } else if (link) {
     // No key and no feed photo: a tappable tile that opens the curb view in
     // Google Maps. Costs nothing and needs no account.
@@ -1579,6 +1601,10 @@ const CRITERIA_FIELDS = [
   ["Min Baths", "number", ""],
   ["Min Sqft", "number", ""],
   ["Zip Codes", "text", "30068, 30067, 30062"],
+  // A circle instead of a city. All three set = one call covers the lot.
+  ["Latitude", "number", "33.852"],
+  ["Longitude", "number", "-117.956"],
+  ["Radius Miles", "number", "7"],
   // Searches are single family only; this column can narrow within that but
   // never widen it, so suggesting "Townhouse" here only invites a value the
   // worker will ignore. Leaving it blank is the normal case.
@@ -1639,7 +1665,7 @@ function openCriteria(id) {
   $("criteria-fields").innerHTML = CRITERIA_FIELDS.map(([key, type, ph]) => `
     <label>${key}
       <input type="${type}" data-field="${esc(key)}" placeholder="${esc(ph)}"
-             value="${esc(f[key] ?? "")}">
+             ${type === "number" ? 'step="any"' : ""} value="${esc(f[key] ?? "")}">
     </label>`).join("");
   $("criteria-active").checked = rec ? !!f.Active : true;
   $("criteria-dialog").showModal();

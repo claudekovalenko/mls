@@ -24,6 +24,9 @@ create table if not exists search_criteria (
   min_baths             numeric,
   min_sqft              numeric,
   zip_codes             text,          -- comma-separated; how "within 10 mi" is expressed
+  latitude              numeric,       -- radius search centre; with radius_miles,
+  longitude             numeric,       -- replaces city (one call for a whole circle)
+  radius_miles          numeric,
   property_types        text,          -- comma-separated
   keywords              text,
   must_haves            text,
@@ -139,6 +142,7 @@ create table if not exists recipients (
   email   text not null,
   name    text,
   active  boolean not null default true,
+  markets text,        -- comma-separated; blank = every non-private market
   notes   text
 );
 
@@ -169,3 +173,10 @@ create policy anon_rw_houses on houses
 drop policy if exists anon_read_recipients on recipients;
 create policy anon_read_recipients on recipients
   for select to anon using (true);
+
+-- -------------------------------------------------------------- migrations
+-- For a database built before these columns existed. Safe to re-run.
+alter table search_criteria add column if not exists latitude numeric;
+alter table search_criteria add column if not exists longitude numeric;
+alter table search_criteria add column if not exists radius_miles numeric;
+alter table recipients add column if not exists markets text;

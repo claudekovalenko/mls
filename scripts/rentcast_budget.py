@@ -46,6 +46,14 @@ FREE_CALLS_PER_MONTH = 50
 # produce silence for the back half of every month.
 MONTHLY_CALL_CAP = FREE_CALLS_PER_MONTH
 
+# Paid calls a month, and only on a run a human dispatched with allow_paid
+# ticked. This used to be zero by accident: MONTHLY_CALL_CAP counted free and
+# paid together, so once the free 50 were gone the allow_paid box unlocked
+# nothing and the month simply stopped until the 1st -- which is what
+# happened in September 2026. 25 calls is $5, enough for a handful of
+# targeted runs, and still a number written down rather than a blank check.
+PAID_CALLS_PER_MONTH = 25
+
 # Prepaid credit, in requests ($100 at $0.20). Off by default -- reaching it
 # means spending money, which requires ALLOW_PAID_CREDIT=1 on that run.
 PAID_CALL_CEILING = 500
@@ -64,6 +72,9 @@ PACE_HEADROOM = 6
 # not for a full pass: at most this many calls each, and never out of the
 # last SCHEDULE_RESERVE calls of the month, which belong to the schedule.
 MANUAL_RUN_LIMIT = 3
+# A manual run where the person ticked allow_paid has already decided to
+# spend money; it gets enough calls to refresh one market's searches.
+MANUAL_PAID_RUN_LIMIT = 6
 SCHEDULE_RESERVE = 12
 
 COST_PER_CALL = 0.20
@@ -126,24 +137,30 @@ class Budget:
         return max(0, PAID_CALL_CEILING - self.total)
 
     def monthly_cap_remaining(self):
-        return max(0, MONTHLY_CALL_CAP - self.monthly)
+        cap = MONTHLY_CALL_CAP + (PAID_CALLS_PER_MONTH if self.allow_paid else 0)
+        return max(0, cap - self.monthly)
 
     def pace_remaining(self):
         """Free calls the month's pacing still permits today."""
         return max(0, pace_allowance(self.today) - self.monthly)
 
     def run_limit(self):
-        return MANUAL_RUN_LIMIT if self.manual else PER_RUN_LIMIT
+        if self.manual:
+            return MANUAL_PAID_RUN_LIMIT if self.allow_paid else MANUAL_RUN_LIMIT
+        return PER_RUN_LIMIT
 
     def remaining(self):
         """What this run may actually spend, under the allowance in force."""
+        allowed = 0
         if self.free_remaining() > 0:
             allowed = min(self.free_remaining(), self.pace_remaining())
             if self.manual:
                 # The schedule's reserve is off limits to a person's run.
                 allowed = min(allowed, max(0, self.free_remaining() - SCHEDULE_RESERVE))
-        else:
-            allowed = self.paid_remaining() if self.allow_paid else 0
+        if not allowed and self.allow_paid:
+            # Free calls held back (spent, paced, or reserved): a person who
+            # ticked allow_paid pays for this run instead of waiting.
+            allowed = self.paid_remaining()
         return min(allowed, self.monthly_cap_remaining())
 
     def can_spend(self):
@@ -151,8 +168,14 @@ class Budget:
 
     def why_not(self):
         """One line on what is holding spend back, for the run log."""
-        if self.free_remaining() <= 0:
-            return "free allowance used up; refills on the 1st"
+        if self.allow_paid and self.remaining() > 0 \
+                and self.spent_this_run >= self.run_limit():
+            return f"paid manual run cap of {self.run_limit()} reached"
+        if self.free_remaining() <= 0 and not self.allow_paid:
+            return ("free allowance used up; refills on the 1st "
+                    "(or tick allow_paid on a manual run)")
+        if self.monthly_cap_remaining() <= 0:
+            return "monthly cap reached, paid included; resets on the 1st"
         if self.pace_remaining() <= 0:
             return (f"pacing: {self.monthly} used, {pace_allowance(self.today)} "
                     f"allowed by day {self.today.day}")
@@ -171,10 +194,12 @@ class Budget:
         """
         if self.monthly_cap_remaining() <= 0:
             raise BudgetExhausted(
-                f"Monthly cap reached ({self.monthly}/{MONTHLY_CALL_CAP} calls "
-                f"this month, free and paid combined). Resets on the 1st. "
-                f"Raise MONTHLY_CALL_CAP in rentcast_budget.py only with the "
-                f"owner's say-so -- it is their approved spend, written down."
+                f"Monthly cap reached ({self.monthly} calls this month; "
+                f"{MONTHLY_CALL_CAP} free"
+                f"{f' + {PAID_CALLS_PER_MONTH} paid' if self.allow_paid else ''}). "
+                f"Resets on the 1st."
+                + ("" if self.allow_paid else
+                   " Tick allow_paid on a manual run to spend prepaid credit.")
             )
         if self.free_remaining() <= 0 and not self.allow_paid:
             raise BudgetExhausted(

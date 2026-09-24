@@ -47,6 +47,11 @@ def digest_picks(house, days=1):
     return is_new or dropped
 
 
+def sw_plan(rows):
+    from search_worker import plan_shared_fetches
+    return plan_shared_fetches(rows)
+
+
 def main():
     print("\nRUN 1 -- four houses recorded, then a week passes.\n")
     # What the first run left in the database.
@@ -294,6 +299,21 @@ def main():
           mk_budget(50 - rb.SCHEDULE_RESERVE, False, 28).can_spend(), True)
     check("nothing is spendable once the month is used up",
           mk_budget(50, False, 30).can_spend(), False)
+    paid = rb.Budget({"month": _d(2026, 9, 24).strftime("%Y-%m"), "monthlyCalls": 50,
+                      "totalCalls": 122}, allow_paid=True, manual=True,
+                     today=_d(2026, 9, 24))
+    check("ticking allow_paid after the free 50 actually unlocks calls",
+          paid.can_spend(), True)
+    check("...up to the paid manual run cap", paid.run_limit(), rb.MANUAL_PAID_RUN_LIMIT)
+    for _ in range(rb.MANUAL_PAID_RUN_LIMIT):
+        paid.spend()
+    check("...and then stops", paid.can_spend(), False)
+    capped = rb.Budget({"month": _d(2026, 9, 24).strftime("%Y-%m"),
+                        "monthlyCalls": 50 + rb.PAID_CALLS_PER_MONTH, "totalCalls": 200},
+                       allow_paid=True, manual=True, today=_d(2026, 9, 24))
+    check("paid spend has its own monthly ceiling", capped.can_spend(), False)
+    check("a scheduled run never spends paid credit",
+          mk_budget(50, False, 24).can_spend(), False)
     from search_worker import scheduled_slice
     rows = [{"fields": {"Name": n}} for n in "ABCDEFGHIJK"]
     even, _ = scheduled_slice(rows, week=38)
@@ -303,15 +323,41 @@ def main():
     check("no search runs in both weeks",
           set(r["fields"]["Name"] for r in even) & set(r["fields"]["Name"] for r in odd), set())
 
-    print("\nMultifamily searches ask for buildings, and keep them:")
+    print("\nRentCast queries use the parameters RentCast actually reads:")
     from search_worker import rentcast_params, signal_floor, MIN_CATEGORIES
     mf = {"City": "Marietta", "State": "GA", "Max Price": 5000000,
           "Property Class": "Multifamily", "Min Units": 5}
     sf = {"City": "Marietta", "State": "GA", "Max Price": 500000}
-    check("a multifamily search asks RentCast for Multi-Family",
-          rentcast_params(mf).get("propertyType"), "Multi-Family")
-    check("a house search asks for no type (the class gate sorts it)",
-          "propertyType" in rentcast_params(sf), False)
+    check("a multifamily search asks for 2-4 unit AND 5+ unit buildings",
+          rentcast_params(mf).get("propertyType"), "Multi-Family|Apartment")
+    check("a house search asks for houses, so condos don't eat the page",
+          rentcast_params(sf).get("propertyType"), "Single Family")
+    check("price goes in the min:max range syntax", rentcast_params(sf).get("price"),
+          "0:500000")
+    check("the dead maxPrice name is gone", "maxPrice" in rentcast_params(sf), False)
+    check("min beds is a range, not an exact match",
+          rentcast_params({**sf, "Min Beds": 3}).get("bedrooms"), "3:50")
+    circle = {"Latitude": 33.852, "Longitude": -117.956, "Radius Miles": 7,
+              "City": "Anaheim", "State": "CA", "Max Price": 1100000}
+    rp = rentcast_params(circle)
+    check("a radius row searches the circle, not the city",
+          (rp.get("latitude"), rp.get("radius"), "city" in rp, "state" in rp),
+          ("33.852000", "7", False, False))
+
+    print("\nSearches over the same ground share one paid call:")
+    rows = [{"fields": {"Name": "Flip", "City": "Marietta", "State": "GA",
+                        "Max Price": 500000}},
+            {"fields": {"Name": "BRRRR A", "City": "Marietta", "State": "GA",
+                        "Max Price": 300000}},
+            {"fields": {"Name": "MF", "City": "Marietta", "State": "GA",
+                        "Max Price": 5000000, "Property Class": "Multifamily"}}]
+    check("two house rows in one city save one call",
+          sw_plan(rows), 1)
+    check("both fetch the wider price range",
+          [rentcast_params(r["fields"])["price"] for r in rows[:2]],
+          ["0:500000", "0:500000"])
+    check("the building search keeps its own call and range",
+          rentcast_params(rows[2]["fields"])["price"], "0:5000000")
     check("a building needs no house-style value signals to be stored",
           signal_floor(mf), 0)
     check("a house still needs the usual two", signal_floor(sf), MIN_CATEGORIES)
@@ -349,12 +395,18 @@ def main():
     check("the map pane's coordinates attach to the listing",
           (with_geo[0]["latitude"], with_geo[0]["longitude"]),
           (33.69195, -84.537156))
-    sw._homesteps_cache = parsed
+    sw._homesteps_cache = {"GA": with_geo}
     check("a Marietta search does not receive a Lithonia foreclosure",
           len(sw.fetch_homesteps({"City": "Marietta"})), 0)
     check("its own zip ring does receive it",
           len(sw.fetch_homesteps({"Zip Codes": "30058, 30062"})), 1)
-    sw._homesteps_cache = None
+    check("a 10-mile circle around it receives it",
+          len(sw.fetch_homesteps({"State": "GA", "Latitude": 33.70,
+                                  "Longitude": -84.55, "Radius Miles": 10})), 1)
+    check("a 10-mile circle around Anaheim does not",
+          len(sw.fetch_homesteps({"State": "GA", "Latitude": 33.85,
+                                  "Longitude": -117.95, "Radius Miles": 10})), 0)
+    sw._homesteps_cache = {}
 
     print("\nA richer feed fills the blanks a sparse source left:")
     from search_worker import enrich_gaps

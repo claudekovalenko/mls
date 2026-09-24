@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Email digest: the criteria we're hunting with, and what turned up.
+"""Email digest: what turned up, short enough to read on a phone.
 
-Sends one HTML email listing every Active search (so the recipient always
-sees exactly what's being hunted) followed by the houses added in the last
-DIGEST_DAYS days, best-first, with their value signals and verdicts.
+Each recipient gets one email for the markets they follow (the Markets
+column on their Recipients row), holding the houses added or re-priced in
+the last DIGEST_DAYS days, best first: a photo, the price, one line of facts,
+one line of verdict, and links. Everything else lives in the app.
 
 By default it stays silent when there's nothing new -- a daily "no houses"
 email trains people to ignore the ones that matter. Set FORCE_SEND=1 to send
@@ -22,6 +23,10 @@ Credentials still have to be secrets, and only these two:
   SMTP_PORT   default 465 (SSL)
   EMAIL_TO    optional override, comma-separated; wins over the table when
               set, for a one-off send or a local test
+  DIGEST_MARKETS  with EMAIL_TO: which markets that send covers
+              (default: the non-private ones)
+  DIGEST_DRY_RUN  "1" writes each email to DIGEST_OUT (default
+              ./digest-preview) instead of sending; needs no SMTP login
 """
 import html
 import os
@@ -41,87 +46,10 @@ def _money(v):
     return f"${v:,.0f}" if isinstance(v, (int, float)) else "—"
 
 
-def _price_range(f):
-    """A max-only search reads as "up to $500,000", not "—–$500,000"."""
-    lo, hi = f.get("Min Price"), f.get("Max Price")
-    if lo and hi:
-        return f"{_money(lo)}–{_money(hi)}"
-    if hi:
-        return f"up to {_money(hi)}"
-    if lo:
-        return f"{_money(lo)}+"
-    return "any price"
-
-
-def criteria_block(rows):
-    """Every constraint on the row, not just the numeric ones.
-
-    The recipient is checking that what we're hunting matches what they
-    asked for, so a field they specified and can't find here reads as
-    "you dropped it" -- Keywords and the rehab allowance were doing exactly
-    that. Notes carries the qualitative half of the brief (the ADU layout,
-    the finish-the-basement plan) that no structured field can hold.
-    """
-    items = []
-    for rec in rows:
-        f = rec.get("fields", {})
-        bits = []
-        if f.get("Zip Codes"):
-            zips = [z.strip() for z in str(f["Zip Codes"]).split(",") if z.strip()]
-            bits.append(f"{len(zips)} zips: {', '.join(zips)}")
-        elif f.get("City"):
-            bits.append(f.get("City"))
-        bits.append(_price_range(f))
-        if f.get("Max Price Per Sqft"):
-            bits.append(f"≤${f['Max Price Per Sqft']:.0f}/sqft (or sqft not listed)")
-        if f.get("Max All In"):
-            bits.append(f"≤{_money(f['Max All In'])} all-in (purchase + rehab)")
-        if f.get("Rehab Cost Per Sqft"):
-            bits.append(f"rehab budgeted at ${f['Rehab Cost Per Sqft']:.0f}/sqft")
-        if f.get("Min Beds"):
-            bits.append(f"{f['Min Beds']:g}+ bd")
-        if f.get("Min Baths"):
-            bits.append(f"{f['Min Baths']:g}+ ba")
-        if f.get("Min Sqft"):
-            bits.append(f"{f['Min Sqft']:,.0f}+ sqft")
-        if f.get("Must Haves"):
-            bits.append(f"must have: {f['Must Haves']}")
-        if f.get("Keywords"):
-            bits.append(f"listing must read like: {f['Keywords']}")
-        if f.get("Target Total Sqft"):
-            bits.append(f"goal {f['Target Total Sqft']:,.0f}+ sqft after reno")
-        if f.get("Min Baths After Reno"):
-            bits.append(f"{f['Min Baths After Reno']:g}+ baths after reno")
-        if f.get("Target Flip Profit"):
-            bits.append(f"target {_money(f['Target Flip Profit'])}+ flip profit")
-        if f.get("Target Cash on Cash"):
-            bits.append(f"{f['Target Cash on Cash']:g}%+ cash-on-cash")
-
-        note = f.get("Notes")
-        note_html = (f'<div style="color:{MUTED};font-size:12px;line-height:1.5;'
-                     f'margin:4px 0 0;font-style:italic;">{html.escape(note)}</div>'
-                     ) if note else ""
-        items.append(
-            f'<tr><td style="padding:0 0 12px;">'
-            f'<div style="font-size:14px;font-weight:700;color:{INK};">'
-            f'{html.escape(f.get("Name") or "Search")}'
-            f'<span style="font-size:11px;font-weight:600;color:#0b5d56;background:{SOFT};'
-            f'border-radius:10px;padding:2px 8px;margin-left:6px;">'
-            f'{html.escape(f.get("Strategy") or "Either")}</span></div>'
-            f'<div style="font-size:12px;color:{MUTED};line-height:1.55;margin-top:3px;">'
-            f'{html.escape(" · ".join(str(b) for b in bits))}</div>'
-            f'{note_html}</td></tr>'
-        )
-    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            'border="0">' + "".join(items) + "</table>")
-
-
-# Restated in the email because the whole thesis is "value a normal buyer
-# misses" -- a recipient seeing only price bands would think this is an
-# ordinary MLS filter. Mirrors SIGNAL_RULES in search_worker.py.
 # Email HTML is not web HTML: Gmail strips <style> blocks and Outlook renders
 # through Word, ignoring flexbox, grid and most positioning. So everything here
-# is tables with inline styles, one 600px column, and no external assets.
+# is tables with inline styles in one 600px column. The only external asset
+# is each card's photo, which Gmail fetches through its own image proxy.
 # The palette and type mirror the deal-sheet artifact: warm-grey ground, teal
 # accent, ochre for the discount signal, and a serif for addresses and prices.
 # Georgia stands in for Fraunces because web fonts don't survive email clients.
@@ -150,28 +78,23 @@ def _chip(text, warm=False):
 # hue, so motivation reads differently from geometry at a glance.
 WARM_MARKERS = ("price cut", "days on market", "fsbo", "built ")
 
-# Feed names in words a person recognises. An empty Source means nobody's
-# adapter wrote the row -- a human typed it in.
 # Statuses that mean the question is settled. Interested and Touring are
 # deliberately absent: those are live and a price drop on one is exactly the
 # email worth getting.
 DECIDED_STATUSES = {"Under Contract", "Purchased", "Rejected"}
 
 # Markets that belong to someone else's hunt. They live in the same table
-# and run through the same worker, but never reach the Atlanta emails and
-# never show in the app until unlocked there. Mirrors PRIVATE_MARKETS in
-# docs/app.js.
-PRIVATE_MARKETS = {"Orange County"}
+# and run through the same worker, but only reach recipients whose Markets
+# column names them, and never show in the app until unlocked there.
+# Mirrors PRIVATE_MARKETS in docs/app.js.
+PRIVATE_MARKETS = {"Orange County", "Los Angeles"}
 
 
 def is_private(f):
     return (f.get("Market") or "") in PRIVATE_MARKETS
 
-SOURCE_LABELS = {"rentcast": "RentCast", "reso": "MLS / IDX", "search": "search",
-                 "homesteps": "HomeSteps foreclosure (Freddie Mac)",
-                 "manual": "typed in by hand"}
 
-# Verdict colours for the per-strategy fit rows.
+# Verdict colours.
 GOOD_FIT = "#166534"
 GOOD_FIT_SOFT = "#dcf2e3"
 
@@ -289,76 +212,6 @@ def fit_summary(f, criteria_rows):
     return fits, best
 
 
-def _fit_rows_html(fits, best):
-    """The per-strategy scorecard on a card: one row per search, met/known,
-    and each miss or unknown named -- the point is knowing what to check on
-    the walkthrough, not just a number."""
-    rows = []
-    for fit in fits:
-        is_best = best is not None and fit["name"] == best["name"]
-        badge = (f'<span style="background:{GOOD_FIT_SOFT};color:{GOOD_FIT};'
-                 f'border-radius:9px;padding:1px 7px;font-size:10px;font-weight:700;'
-                 f'margin-left:6px;">BEST FIT</span>') if is_best and fit["score"] > 0 else ""
-        # Short name: "Flip", "BRRRR A", "BRRRR B" read faster than full row names.
-        short = fit["name"].split("—")[0].strip()
-        misses = [lab for lab, s in fit["checks"] if s is False]
-        unknowns = [lab for lab, s in fit["checks"] if s is None]
-        detail = ""
-        if misses:
-            detail += f'<span style="color:{SIGNAL};">misses: {html.escape("; ".join(misses))}</span>'
-        if unknowns:
-            if detail:
-                detail += " &middot; "
-            detail += f'<span style="color:{MUTED};">to verify: {html.escape("; ".join(unknowns))}</span>'
-        if not detail:
-            detail = f'<span style="color:{GOOD_FIT};">meets everything we can measure</span>'
-        pct_color = GOOD_FIT if fit["score"] >= 0.75 else (SIGNAL if fit["score"] >= 0.4 else MUTED)
-        rows.append(
-            f'<tr><td style="padding:3px 0;font-size:12px;line-height:1.5;'
-            f'border-top:1px solid {LINE};">'
-            f'<b style="color:{INK};">{html.escape(short)}</b>'
-            f'<span style="color:{pct_color};font-weight:700;padding-left:6px;">'
-            f'{fit["met"]}/{fit["known"]}</span>{badge}'
-            f'<br><span style="font-size:11px;">{detail}</span></td></tr>')
-    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'border="0" style="margin:4px 0 12px;">'
-            f'<tr><td style="padding:0 0 4px;font-size:10px;font-weight:700;'
-            f'letter-spacing:0.8px;color:{MUTED};">FIT BY STRATEGY</td></tr>'
-            + "".join(rows) + "</table>")
-
-
-def _street_view(address):
-    """How the house looks from the road -- by link for free, by image if paid.
-
-    Embedding a Street View still requires a Google Maps API key, and getting
-    a key requires enabling billing on a Google Cloud project, which means a
-    card on file even when usage never leaves the free allowance. So the
-    default is a plain Maps link: no key, no account, no card, and it opens
-    the same curb view one tap away. Set GOOGLE_MAPS_KEY only if you'd rather
-    have the picture inline and have accepted that trade.
-    """
-    if not address:
-        return ""
-    q = urllib.parse.quote(str(address))
-    key = os.environ.get("GOOGLE_MAPS_KEY")
-    if key:
-        url = (f"https://maps.googleapis.com/maps/api/streetview"
-               f"?size=560x240&location={q}&fov=75&key={key}")
-        return (f'<img src="{html.escape(url)}" width="560" alt="Street view of '
-                f'{html.escape(str(address))}" style="display:block;width:100%;'
-                f'max-width:560px;height:auto;border:1px solid {LINE};'
-                f'margin:0 0 12px;">')
-    link = f"https://www.google.com/maps/search/?api=1&query={q}&layer=c"
-    return (f'<table role="presentation" width="100%" cellpadding="0" '
-            f'cellspacing="0" border="0" style="margin:0 0 12px;">'
-            f'<tr><td style="border:1px solid {LINE};background:{SOFT};'
-            f'text-align:center;">'
-            f'<a href="{html.escape(link)}" style="display:block;padding:12px 16px;'
-            f'color:{BRAND};font-size:12px;font-weight:700;text-decoration:none;'
-            f'letter-spacing:0.3px;">&#128739; See it from the street &rarr;</a>'
-            f'</td></tr></table>')
-
-
 DROP = "#a2500c"        # a cut is the interesting direction, so it gets the hue
 DROP_SOFT = "#f5e6d5"
 RISE = "#5c6b69"        # a raise is worth knowing and worth not shouting about
@@ -381,126 +234,6 @@ def _triage_rows(houses, criteria_rows):
     return rows
 
 
-def _strength_chip(value):
-    return (f'<span style="background:{INK};color:#ffffff;border-radius:10px;'
-            f'padding:2px 8px;font-size:11px;font-weight:700;margin-left:8px;'
-            f'vertical-align:middle;">{value}</span>')
-
-
-def _picks_html(houses, criteria_rows):
-    """Where to start: the few houses worth acting on, with the play.
-
-    A digest of forty-five houses ranked by fit answers "which of these
-    match". This answers "what do I do on Saturday", which is the question
-    somebody actually opens the email with.
-    """
-    rows = _triage_rows(houses, criteria_rows)
-    order = {recommend.SEE_IT: 0, recommend.NEGOTIATE: 1}
-    chosen = sorted((r for r in rows if r["action"] in order),
-                    key=lambda r: (order[r["action"]], -r["strength"]))[:3]
-    if not chosen:
-        return ""
-
-    blocks = []
-    for i, pick in enumerate(chosen, 1):
-        f, best = pick["fields"], pick["best"]
-        name, play, numbers = recommend.approach(f, best)
-        steps = recommend.next_steps(f, pick["action"], best)
-        step_html = "".join(
-            f'<tr><td style="padding:2px 0 2px 14px;font-size:12px;color:{MUTED};'
-            f'line-height:1.5;">{n}. {html.escape(t)}</td></tr>'
-            for n, t in enumerate(steps, 1))
-        blocks.append(
-            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'border="0" style="margin:0 0 12px;border:1px solid {LINE};'
-            f'background:#ffffff;"><tr><td style="padding:14px 16px;">'
-            f'<div style="font-size:11px;font-weight:700;letter-spacing:0.8px;'
-            f'color:{BRAND};">{i} &middot; {html.escape(pick["action"]).upper()}</div>'
-            f'<div style="font-family:{SERIF};font-size:17px;font-weight:700;'
-            f'color:{INK};margin-top:4px;">{html.escape(str(f.get("Address") or ""))}</div>'
-            f'<div style="font-size:12px;color:{MUTED};margin-top:5px;line-height:1.55;">'
-            f'<b style="color:{INK};">{html.escape(name)}.</b> {html.escape(play)}</div>'
-            f'<div style="font-size:12px;color:{SIGNAL};margin-top:6px;font-weight:600;">'
-            f'{" &middot; ".join(html.escape(n) for n in numbers)}</div>'
-            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'border="0" style="margin-top:9px;"><tr><td style="padding:0 0 3px;'
-            f'font-size:10px;font-weight:700;letter-spacing:0.7px;color:{MUTED};">'
-            f'NEXT STEPS</td></tr>{step_html}</table>'
-            f'</td></tr></table>')
-
-    return (f'<tr><td style="padding:18px 18px 2px;">'
-            f'<div style="font-family:{SERIF};font-size:20px;font-weight:700;'
-            f'color:{INK};margin-bottom:3px;">Where to start</div>'
-            f'<div style="font-size:12px;color:{MUTED};margin-bottom:12px;'
-            f'line-height:1.55;">Still on the market, and the evidence supports '
-            f'doing something about them this week.</div>'
-            f'{"".join(blocks)}</td></tr>')
-
-
-def _recommendation_html(f, best, final=None):
-    """The recommendation block: what to do, why, and what it cannot see.
-
-    `final` is this house's triage row. Without it the block would re-judge
-    the house alone and could contradict the cap -- claiming a viewing the
-    triage already gave to somebody stronger.
-    """
-    if final is not None:
-        action, reasons, caveats = final["action"], final["reasons"], final["caveats"]
-    else:
-        action, reasons, caveats = recommend.recommend(f, best)
-
-    if action in (recommend.WATCH, recommend.SKIP, recommend.NEXT_UP):
-        # The full panel is for houses that earn action. Everything else
-        # gets its verdict in one line -- clean to scan, and the detail is a
-        # tap away in the app.
-        # For a held-back house the appended explanation is the whole story
-        # -- "23% under" without "next in line" reads as the system ignoring
-        # its own evidence.
-        if final is not None and final.get("held_back") and reasons:
-            first = reasons[-1]
-        else:
-            first = reasons[0] if reasons else ""
-        strength_txt = (f' &middot; strength {final["strength"]}'
-                        if final is not None else "")
-        return (f'<div style="margin:2px 0 12px;padding:8px 12px;background:{GROUND};'
-                f'font-size:12px;color:{MUTED};line-height:1.5;">'
-                f'<b style="color:{INK};">{html.escape(action)}</b>'
-                f'{strength_txt} &middot; {html.escape(first)}</div>')
-    tone = {recommend.SEE_IT: (GOOD_FIT, GOOD_FIT_SOFT),
-            recommend.NEGOTIATE: (SIGNAL, SIGNAL_SOFT)}.get(action, (MUTED, GROUND))
-    fg, bg = tone
-    why = "".join(
-        f'<tr><td style="padding:1px 0 1px 12px;font-size:12px;color:{MUTED};'
-        f'line-height:1.5;">&bull; {html.escape(r)}</td></tr>' for r in reasons)
-    notes = "".join(
-        f'<tr><td style="padding:1px 0 1px 12px;font-size:11px;color:{MUTED};'
-        f'line-height:1.5;font-style:italic;">{html.escape(c)}</td></tr>'
-        for c in caveats)
-    name, play, numbers = recommend.approach(f, best)
-    plan = (f'<tr><td style="padding:8px 12px 0;font-size:12px;color:{MUTED};'
-            f'line-height:1.55;"><b style="color:{INK};">{html.escape(name)}.</b> '
-            f'{html.escape(play)}</td></tr>'
-            f'<tr><td style="padding:5px 12px 0;font-size:12px;font-weight:600;'
-            f'color:{SIGNAL};">{" &middot; ".join(html.escape(n) for n in numbers)}</td></tr>')
-    steps = "".join(
-        f'<tr><td style="padding:2px 0 2px 12px;font-size:12px;color:{MUTED};'
-        f'line-height:1.5;">{n}. {html.escape(t)}</td></tr>'
-        for n, t in enumerate(recommend.next_steps(f, action, best), 1))
-    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'border="0" style="margin:2px 0 12px;background:{bg};">'
-            f'<tr><td style="padding:10px 12px 4px;font-size:13px;font-weight:700;'
-            f'color:{fg};">{html.escape(action)}</td></tr>'
-            f'{why}'
-            f'{plan}'
-            f'<tr><td style="padding:8px 0 3px 12px;font-size:10px;font-weight:700;'
-            f'letter-spacing:0.7px;color:{MUTED};">NEXT STEPS</td></tr>'
-            f'{steps}'
-            f'<tr><td style="padding:8px 0 0 12px;font-size:10px;font-weight:700;'
-            f'letter-spacing:0.6px;color:{MUTED};">WHAT THIS CANNOT SEE</td></tr>'
-            f'{notes}'
-            f'<tr><td style="height:10px;"></td></tr></table>')
-
-
 def lane_of(f):
     """Which of the two digests a house belongs in.
 
@@ -520,243 +253,95 @@ def lane_of(f):
     return "house"
 
 
-def _price_change_html(f):
-    """The actual dollars off, since the last time we looked.
+def _n(value):
+    """A number from a field, or None. Rows arrive from Postgres as numbers,
+    from hand edits as strings, and sometimes as "" -- the Sept 17 digest
+    crashed formatting a house whose baths were missing, and the email
+    never went out."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        text = str(value).replace(",", "").replace("$", "").strip()
+        return float(text) if text else None
+    except ValueError:
+        return None
 
-    "Price cut" from the feed's own history is the whole life of the listing;
-    this is the move that happened between two of our runs, which is the one
-    that is news today. Shown in dollars first because that is the number
-    people react to -- "$25,000 off" lands where "-6.1%" does not.
+
+def _numeric_fields():
+    from schema import SCHEMA
+    return {name for name, kind in SCHEMA[TABLE_HOUSES] if kind == "number"}
+
+
+NUMERIC_FIELDS = _numeric_fields()
+
+
+def clean(rec):
+    """A copy of a house record whose number fields are numbers or None.
+
+    Everything downstream -- the fit checks, the triage score, the card --
+    compares and formats these, and each one was its own chance to crash on
+    a "1,200" or a "" that a hand edit or an old import left behind.
+    Cleaning once at the door is what makes the rest safe to trust.
     """
-    old, new = f.get("Previous Price"), f.get("Price")
+    f = dict(rec.get("fields") or {})
+    for name in NUMERIC_FIELDS & f.keys():
+        f[name] = _n(f[name])
+    return {**rec, "fields": f}
+
+
+def _fmt(value):
+    """3 -> "3", 2.5 -> "2.5", None -> "?"."""
+    v = _n(value)
+    return "?" if v is None else f"{v:g}"
+
+
+def stats_line(f):
+    """3 bd · 2 ba · 1,420 sqft · $457/sqft · built 1958 -- the facts a
+    person scans before deciding to tap."""
+    bits = []
+    units = _n(f.get("Units"))
+    if units:
+        bits.append(f"{units:g} units")
+    if _n(f.get("Beds")) is not None or _n(f.get("Baths")) is not None:
+        bits.append(f"{_fmt(f.get('Beds'))} bd · {_fmt(f.get('Baths'))} ba")
+    sqft = _n(f.get("Sqft"))
+    bits.append(f"{sqft:,.0f} sqft" if sqft else "sqft not listed")
+    ppsf = _n(f.get("Price Per Sqft"))
+    if ppsf:
+        bits.append(f"${ppsf:,.0f}/sqft")
+    year = _n(f.get("Year Built"))
+    if year:
+        bits.append(f"built {year:.0f}")
+    return " · ".join(bits)
+
+
+def price_move(f):
+    """(delta, pct) since the last run, or None when the price held."""
+    old, new = _n(f.get("Previous Price")), _n(f.get("Price"))
     if not old or not new or old == new:
-        return ""
-    delta = new - old
-    pct = abs(delta) / old * 100
-    when = f.get("Price Change Date") or ""
-    if delta < 0:
-        label = f"&darr; {_money(abs(delta))} off &nbsp;·&nbsp; {pct:.1f}% cut"
-        fg, bg = DROP, DROP_SOFT
-    else:
-        label = f"&uarr; {_money(delta)} up &nbsp;·&nbsp; {pct:.1f}%"
-        fg, bg = RISE, GROUND
-    was = f'was {_money(old)}' + (f' &nbsp;·&nbsp; changed {html.escape(when)}' if when else "")
-    return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-            f'style="margin:0 0 8px;"><tr><td style="background:{bg};'
-            f'border-radius:4px;padding:6px 10px;font-size:12px;font-weight:700;'
-            f'color:{fg};">{label}<span style="font-weight:400;color:{MUTED};">'
-            f'&nbsp;&nbsp;{was}</span></td></tr></table>')
-
-
-def _discount_pct(cats):
-    """The 'N% under area $/sqft' figure, if the scorer wrote one."""
-    for c in cats:
-        if "% under area" in c:
-            try:
-                return int(c.split("%")[0].strip())
-            except ValueError:
-                return None
-    return None
-
-
-def _discount_bar(pct):
-    """The deal sheet's discount bar, rebuilt as two table cells.
-
-    Outlook can't draw a styled div, but it can colour two <td>s whose widths
-    split at the percentage. Doubled so a strong 40% discount reads as a
-    mostly-full bar rather than a mostly-empty one.
-    """
-    fill = max(2, min(96, pct * 2))
-    return f"""
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="margin:9px 0 2px;">
-          <tr>
-            <td style="padding:0 0 4px;font-size:11px;font-weight:700;color:{SIGNAL};
-                       letter-spacing:0.4px;">UNDER AREA MEDIAN</td>
-            <td align="right" style="padding:0 0 4px;font-size:11px;font-weight:700;
-                       color:{SIGNAL};">{pct}%</td>
-          </tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr>
-            <td width="{fill}%" bgcolor="{SIGNAL}" style="font-size:0;line-height:5px;height:5px;">&nbsp;</td>
-            <td bgcolor="{TRACK}" style="font-size:0;line-height:5px;height:5px;">&nbsp;</td>
-          </tr>
-        </table>"""
-
-
-def _house_card(f, criteria_rows=(), final=None):
-    """One house, as a self-contained table so it survives every client."""
-    cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
-    link = f.get("Listing URL") or zillow_url(f.get("Address"))
-    addr = html.escape(f.get("Address") or "?")
-
-    stats = []
-    if f.get("Beds") or f.get("Baths"):
-        stats.append(f"{f.get('Beds') or '?'} bd / {f.get('Baths') or '?'} ba")
-    stats.append(f"{f['Sqft']:,.0f} sqft" if f.get("Sqft") else "sqft not listed")
-    if f.get("Price Per Sqft"):
-        stats.append(f"${f['Price Per Sqft']:,.0f}/sqft")
-    if f.get("Units"):
-        stats.append(f"{f['Units']:.0f} units")
-    if f.get("Year Built"):
-        stats.append(f"built {f['Year Built']:.0f}")
-    if f.get("Days on Market"):
-        stats.append(f"{f['Days on Market']:.0f} days on market")
-    # Which net caught this one. Zillow is the hub every house links to, so
-    # this is the other half of the provenance -- and a hand-added house says
-    # so, since that is the one whose numbers no feed has checked.
-    # Only claim a source when one was actually recorded. Rows written
-    # before the field existed have none, and labelling those "added by
-    # hand" asserts something untrue about where the numbers came from --
-    # which is exactly the thing a provenance line is supposed to settle.
-    source = str(f.get("Source") or "").strip()
-    finder = str(f.get("Found By") or "").split("—")[0].strip()
-    if source:
-        stats.append("found via " + SOURCE_LABELS.get(source, source)
-                     + (f" — {finder}" if finder else ""))
-    elif finder:
-        stats.append(f"found by {finder}")
-
-    def _days_ago(value, verb):
-        ds = str(value or "")[:10]
-        if not ds:
-            return None
-        try:
-            n = (date.today() - date.fromisoformat(ds)).days
-        except ValueError:
-            return None
-        if n < 0:
-            return None
-        return f"{verb} today" if n == 0 else \
-            f"{verb} {n} day{'' if n == 1 else 's'} ago"
-    added = _days_ago(f.get("Date Added"), "found")
-    if added:
-        stats.append(added)
-    seen = _days_ago(f.get("Last Seen"), "checked")
-    if seen and (not added or seen != added.replace("found", "checked", 1)):
-        stats.append(seen)
-
-    star = ('<span style="background:#fef3c7;color:#92400e;border-radius:10px;'
-            'padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;">'
-            'MEETS TARGETS</span>') if f.get("Qualified") else ""
-
-    pct = _discount_pct(cats)
-    bar = _discount_bar(pct) if pct else ""
-    chips = "".join(
-        _chip(c, warm=any(m in c.lower() for m in WARM_MARKERS)) for c in cats)
-
-    photo = _street_view(f.get("Address"))
-    fits, best = fit_summary(f, criteria_rows)
-    fit_html = _fit_rows_html(fits, best) if fits else ""
-    advice = _recommendation_html(f, best, final)
-    best_badge = ""
-    if best and best["score"] > 0:
-        short = html.escape(best["name"].split("—")[0].strip())
-        best_badge = (f'<span style="background:{GOOD_FIT_SOFT};color:{GOOD_FIT};'
-                      f'border-radius:10px;padding:2px 9px;font-size:11px;'
-                      f'font-weight:700;margin-left:8px;vertical-align:middle;">'
-                      f'{short} · {best["met"]}/{best["known"]}</span>')
-
-    change = _price_change_html(f)
-
-    # A bordered table cell, not a CSS button: Outlook drops padding on <a>.
-    button = (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
-        f'<tr><td style="border:1px solid {BRAND};border-radius:6px;">'
-        f'<a href="{html.escape(link)}" style="display:inline-block;padding:9px 18px;'
-        f'color:{BRAND};font-size:13px;font-weight:700;text-decoration:none;'
-        f'letter-spacing:0.3px;">View on Zillow &rarr;</a></td></tr></table>') if link else ""
-
-    return f"""
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-           style="margin:0 0 14px;border:1px solid {LINE};background:#ffffff;">
-      <tr><td style="padding:18px 20px;">
-        {photo}
-        <div style="font-family:{SERIF};font-size:18px;font-weight:700;color:{INK};
-                    line-height:1.3;">{addr}{star}</div>
-        <div style="margin:7px 0 2px;">
-          <span style="font-family:{SERIF};font-size:26px;font-weight:700;
-                       color:{INK};">{_money(f.get('Price'))}</span>{best_badge}
-        </div>
-        {change}
-        <div style="font-size:13px;color:{MUTED};line-height:1.5;">{html.escape(' · '.join(stats))}</div>
-        {bar}
-        <div style="margin:11px 0 10px;">{chips}</div>
-        {advice}
-        {fit_html}
-        {button}
-      </td></tr>
-    </table>"""
-
-
-def house_rows(houses, criteria_rows=()):
-    # Hottest first, judged by the same triage the picks use, so the order
-    # of the list and the order of the advice never disagree.
-    rows = _triage_rows(houses, criteria_rows)
-    return "".join(_house_card(r["fields"], criteria_rows, final=r)
-                   for r in rows)
-
-
-SIGNALS_HTML = f"""
-      <h3 style="font-size:15px;color:{INK};margin:26px 0 6px;">What the tags mean</h3>
-      <p style="font-size:13px;color:{MUTED};margin:0 0 10px;line-height:1.5;">
-        Each house is tagged with the criteria it provably falls into. Two or more
-        surfaces it &mdash; they don't need to hit all of them.</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="font-size:13px;color:{MUTED};line-height:1.55;">
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">under $X/sqft</b> &mdash; beats that search's price-per-foot ceiling</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">N% under area $/sqft</b> &mdash; cheaper per foot than the median of everything else that search pulled right now</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">oversized lot</b> &mdash; room to build an ADU</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">no sqft listed</b> &mdash; missing data other buyers skip past</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">$Xk all-in</b> &mdash; purchase plus budgeted rehab clears the cap</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">built 19XX</b> &mdash; dated, original-condition stock (1985 or earlier)</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">N days on market</b> &mdash; being passed over; the area's typical time to contract is ~3 weeks</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">price cut N%</b> &mdash; the seller's own statement about motivation</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{SIGNAL};">possible FSBO</b> &mdash; no listing agent or office on the record</td></tr>
-        <tr><td style="padding:2px 0;"><b style="color:{INK};">fixer / unfinished basement / ADU potential</b> &mdash; read from the listing remarks when the feed carries them</td></tr>
-      </table>"""
+        return None
+    return new - old, abs(new - old) / old * 100
 
 
 def text_summary(new_houses, criteria_rows=()):
     """Plain text, shaped to be pasted into a text message.
 
     One house per short block, no table, no markdown -- iMessage renders
-    neither, and a wrapped table is unreadable on a phone. The Zillow link
-    goes on its own line so it stays tappable instead of being swallowed by
-    surrounding punctuation.
+    neither. The link goes on its own line so it stays tappable.
     """
     lines = []
+    new_houses = [clean(r) for r in new_houses]
     for rec in sorted(new_houses, key=_house_sort_key):
         f = rec.get("fields", {})
-        cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
-        bits = [_money(f.get("Price"))]
-        if f.get("Beds") or f.get("Baths"):
-            bits.append(f"{f.get('Beds') or '?':g}bd/{f.get('Baths') or '?':g}ba"
-                        if isinstance(f.get("Beds"), (int, float)) else "")
-        if f.get("Sqft"):
-            bits.append(f"{f['Sqft']:,.0f} sqft")
-        else:
-            bits.append("sqft not listed")
-        if f.get("Price Per Sqft"):
-            bits.append(f"${f['Price Per Sqft']:.0f}/sqft")
-        star = " *" if f.get("Qualified") else ""
-        lines.append(f"{f.get('Address') or '?'}{star}")
-        if criteria_rows:
-            fits, best = fit_summary(f, criteria_rows)
-            if best and best["score"] > 0:
-                short = best["name"].split("—")[0].strip()
-                lines.append(f"  Best fit: {short} ({best['met']}/{best['known']} checks)")
-        lines.append("  " + " · ".join(b for b in bits if b))
-        old = f.get("Previous Price")
-        if old and f.get("Price") and old != f["Price"]:
-            delta = f["Price"] - old
-            way = "off" if delta < 0 else "up"
+        lines.append(f"{f.get('Address') or '?'}")
+        lines.append(f"  {_money(_n(f.get('Price')))} · {stats_line(f)}")
+        move = price_move(f)
+        if move:
+            delta, pct = move
             lines.append(f"  PRICE {'DROP' if delta < 0 else 'RAISE'}: "
-                         f"{_money(abs(delta))} {way} from {_money(old)} "
-                         f"({abs(delta) / old * 100:.1f}%)")
-        if cats:
-            lines.append(f"  Why: {', '.join(cats)}")
+                         f"{_money(abs(delta))} ({pct:.1f}%)")
         lines.append("  " + (f.get("Listing URL") or zillow_url(f.get("Address"))))
         lines.append("")
     return "\n".join(lines).rstrip()
@@ -769,113 +354,290 @@ def _house_sort_key(rec):
     # number nobody has checked yet.
     f = rec.get("fields", {})
     cats = len([c for c in str(f.get("Value Signals") or "").split(",") if c.strip()])
-    return (not f.get("Qualified"), -cats, -(f.get("Flip Profit") or -10**9))
+    return (not f.get("Qualified"), -cats, -(_n(f.get("Flip Profit")) or -10**9))
 
 
-def _pulled_stamp(houses):
-    """When the feed was last actually read: the newest Last Seen the worker
-    stamped (Date Added for rows that predate the stamp). The same date the
-    app shows, because both read the same table."""
-    latest = ""
-    for rec in houses:
-        f = rec.get("fields", {})
-        d = str(f.get("Last Seen") or f.get("Date Added") or "")[:10]
-        latest = max(latest, d)
-    return latest or date.today().isoformat()
+# ------------------------------------------------------------------ photos
+
+def aerial_url(f, w=560, h=220):
+    """An overhead photo of the lot, from coordinates the feed already gives.
+
+    RentCast carries no listing photos, which is why every card used to be a
+    grey "see it from the street" button. Esri's public World Imagery export
+    needs no key, no account and no card, and a roof-and-yard view is most
+    of what a fixer or ADU hunt wants from a first glance anyway. Mirrors
+    aerialPhoto() in docs/app.js.
+    """
+    import math
+    lat, lng = _n(f.get("Latitude")), _n(f.get("Longitude"))
+    if not lat or not lng:
+        return ""
+    d_lng = 0.0011
+    d_lat = d_lng * (h / w) * math.cos(math.radians(lat))
+    bbox = ",".join(f"{v:.6f}" for v in (lng - d_lng / 2, lat - d_lat / 2,
+                                          lng + d_lng / 2, lat + d_lat / 2))
+    return ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/"
+            f"MapServer/export?bbox={bbox}&bboxSR=4326&imageSR=3857"
+            f"&size={w},{h}&format=jpg&f=image")
 
 
-def build_email(criteria_rows, new_houses):
-    app_url = "https://claudekovalenko.github.io/mls/"
+def photo_url(f):
+    """The best picture we can put on a card, and what it is.
+
+    The feed's own photo first; a Street View still if someone has paid for
+    a Google key; otherwise the free aerial. ("", None) only when a house
+    has neither a photo nor a position.
+    """
+    if f.get("Photo URL"):
+        return f["Photo URL"], "photo"
+    key = os.environ.get("GOOGLE_MAPS_KEY")
+    if key and f.get("Address"):
+        q = urllib.parse.quote(str(f["Address"]))
+        return (f"https://maps.googleapis.com/maps/api/streetview"
+                f"?size=560x220&location={q}&fov=75&key={key}"), "street"
+    aerial = aerial_url(f)
+    return (aerial, "aerial") if aerial else ("", None)
+
+
+def street_link(address):
+    q = urllib.parse.quote(str(address or ""))
+    return f"https://www.google.com/maps/search/?api=1&query={q}&layer=c"
+
+
+# ------------------------------------------------------------------- cards
+
+# How many houses one email shows. Past a dozen nobody reads on; the rest
+# are one tap away in the app, sorted the same way.
+MAX_CARDS = 12
+MAX_CHIPS = 3
+APP_URL = "https://claudekovalenko.github.io/mls/"
+
+VERDICT_TONE = {
+    recommend.SEE_IT: (GOOD_FIT, GOOD_FIT_SOFT),
+    recommend.NEGOTIATE: (SIGNAL, SIGNAL_SOFT),
+}
+
+
+def _card(row):
+    """One house: photo, address, price, facts, verdict, links. That's all."""
+    f = row["fields"]
+    addr = str(f.get("Address") or "?")
+    listing = f.get("Listing URL") or zillow_url(addr)
+    src, _kind = photo_url(f)
+
+    photo = ""
+    if src:
+        photo = (f'<a href="{html.escape(listing)}"><img src="{html.escape(src)}" '
+                 f'width="560" alt="Photo" style="display:block;'
+                 f'width:100%;max-width:560px;height:auto;border:0;'
+                 f'background:{TRACK};"></a>')
+
+    move = price_move(f)
+    move_html = ""
+    if move:
+        delta, pct = move
+        arrow, fg = ("&darr;", DROP) if delta < 0 else ("&uarr;", RISE)
+        move_html = (f'<span style="font-size:13px;font-weight:700;color:{fg};'
+                     f'padding-left:8px;">{arrow} {_money(abs(delta))} '
+                     f'({pct:.1f}%)</span>')
+
+    action = row.get("action") or ""
+    reasons = row.get("reasons") or []
+    why = (reasons[-1] if row.get("held_back") else reasons[0]) if reasons else ""
+    fg, bg = VERDICT_TONE.get(action, (MUTED, GROUND))
+    verdict = ""
+    if action:
+        verdict = (f'<div style="margin-top:8px;font-size:12px;line-height:1.45;'
+                   f'color:{MUTED};"><span style="background:{bg};color:{fg};'
+                   f'border-radius:10px;padding:2px 8px;font-weight:700;">'
+                   f'{html.escape(action)}</span>&nbsp; {html.escape(why)}</div>')
+
+    cats = [c.strip() for c in str(f.get("Value Signals") or "").split(",") if c.strip()]
+    chips = "".join(_chip(c, warm=any(m in c.lower() for m in WARM_MARKERS))
+                    for c in cats[:MAX_CHIPS])
+    chips = f'<div style="margin-top:8px;">{chips}</div>' if chips else ""
+
+    link = f'color:{BRAND};font-weight:700;text-decoration:none;'
+    links = (f'<div style="margin-top:10px;font-size:13px;">'
+             f'<a href="{html.escape(listing)}" style="{link}">Listing &rarr;</a>'
+             f'&nbsp;&nbsp;&nbsp;<a href="{html.escape(street_link(addr))}" '
+             f'style="{link}">Street view &rarr;</a></div>')
+
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'border="0" style="margin:0 0 16px;border:1px solid {LINE};'
+            f'background:#ffffff;"><tr><td>{photo}</td></tr>'
+            f'<tr><td style="padding:12px 16px 14px;">'
+            f'<div style="font-size:15px;font-weight:700;color:{INK};'
+            f'line-height:1.3;">{html.escape(addr)}</div>'
+            f'<div style="margin-top:4px;"><span style="font-family:{SERIF};'
+            f'font-size:22px;font-weight:700;color:{INK};">'
+            f'{_money(_n(f.get("Price")))}</span>{move_html}</div>'
+            f'<div style="font-size:13px;color:{MUTED};margin-top:3px;">'
+            f'{html.escape(stats_line(f))}</div>'
+            f'{verdict}{chips}{links}</td></tr></table>')
+
+
+def _headline(houses, lane):
+    noun = ("building", "buildings") if lane == "multifamily" else ("home", "homes")
+    drops = sum(1 for r in houses if (price_move(r.get("fields", {})) or (0,))[0] < 0)
+    fresh = len(houses) - drops
+    parts = []
+    if fresh:
+        parts.append(f"{fresh} new {noun[fresh != 1]}")
+    if drops:
+        parts.append(f"{drops} price drop{'s' if drops != 1 else ''}")
+    return " · ".join(parts) or f"No new {noun[1]}"
+
+
+def build_email(criteria_rows, new_houses, markets=(), lane=None):
+    """(subject, html). `markets` names the email; `lane` picks the noun."""
+    new_houses = [clean(r) for r in new_houses]
     today = date.today().strftime("%b %-d")
+    label = " + ".join(markets) if markets else "All markets"
+    headline = _headline(new_houses, lane)
+    subject = f"{label}: {headline}" if new_houses else f"{label}: searches are live"
 
-    if new_houses:
-        n = len(new_houses)
-        # Two kinds of news, counted separately, because "3 price drops" is a
-        # different email from "3 new listings" and the subject line is the
-        # only part most people read.
-        drops = sum(1 for r in new_houses
-                    if r.get("fields", {}).get("Previous Price")
-                    and r.get("fields", {}).get("Price")
-                    and r["fields"]["Price"] < r["fields"]["Previous Price"])
-        fresh = n - drops
-        parts = []
-        if fresh:
-            parts.append(f"{fresh} new match{'es' if fresh != 1 else ''}")
-        if drops:
-            parts.append(f"{drops} price drop{'s' if drops != 1 else ''}")
-        headline = " · ".join(parts) or f"{n} match{'es' if n != 1 else ''}"
-        subject = f"House Finder: {headline}"
-        sub = ("Newly listed, or newly cheaper. Ranked by how many of your criteria "
-               "each one provably falls into. Tap through for the full listing.")
-        content = house_rows(new_houses, criteria_rows)
-        picks_html = _picks_html(new_houses, criteria_rows)
-    else:
-        subject = "House Finder: search criteria are live"
-        headline = "No new matches today"
-        sub = "The searches below ran and found nothing new. Here's what they're hunting for."
-        content = ""
-        picks_html = ""
+    rows = _triage_rows(new_houses, criteria_rows) if new_houses else []
+    shown, rest = rows[:MAX_CARDS], rows[MAX_CARDS:]
+    cards = "".join(_card(r) for r in shown)
+    if not rows:
+        cards = (f'<div style="font-size:14px;color:{MUTED};padding:8px 0 16px;">'
+                 f'Nothing new since the last email. The searches below are '
+                 f'still running.</div>')
+    more = (f"See all {len(rows)} in the app" if rest else "Open the app")
+    more_note = (f'<div style="font-size:12px;color:{MUTED};padding-top:6px;">'
+                 f'{len(rest)} more, same order, in the app.</div>') if rest else ""
 
-    return subject, f"""<!DOCTYPE html>
+    searches = sorted({str((r.get("fields") or {}).get("Name") or "")
+                       for r in criteria_rows} - {""})
+    aerial_used = any(photo_url(r["fields"])[1] == "aerial" for r in shown)
+    credit = " &middot; Aerial imagery &copy; Esri" if aerial_used else ""
+
+    body = f"""<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:{GROUND};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="background:{GROUND};padding:24px 10px;">
+       style="background:{GROUND};padding:16px 8px;">
  <tr><td align="center">
   <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
-         style="width:100%;max-width:600px;background:#ffffff;
-                font-family:{SANS};">
-
-    <tr><td style="padding:26px 24px 20px;border-bottom:2px solid {INK};">
-      <div style="color:{BRAND};font-size:11px;font-weight:700;letter-spacing:1.6px;
-                  text-transform:uppercase;">House Finder &middot; Deal Sheet &middot; {today}</div>
-      <div style="color:{MUTED};font-size:11px;margin-top:4px;">Data pulled {_pulled_stamp(new_houses)}</div>
-      <div style="font-family:{SERIF};color:{INK};font-size:30px;font-weight:700;
-                  margin-top:8px;line-height:1.1;">{headline}</div>
-      <div style="color:{MUTED};font-size:13px;margin-top:9px;line-height:1.55;">{sub}</div>
+         style="width:100%;max-width:600px;font-family:{SANS};">
+    <tr><td style="padding:8px 4px 14px;">
+      <div style="color:{BRAND};font-size:11px;font-weight:700;letter-spacing:1.4px;
+                  text-transform:uppercase;">{html.escape(label)} &middot; {today}</div>
+      <div style="font-family:{SERIF};color:{INK};font-size:26px;font-weight:700;
+                  margin-top:6px;line-height:1.15;">{html.escape(headline)}</div>
+      <div style="color:{MUTED};font-size:13px;margin-top:6px;">Best first.
+        Tap a photo for the listing.</div>
     </td></tr>
-    {picks_html}
-    <tr><td style="padding:20px 18px 4px;">
-      {content}
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr><td align="center" style="padding:8px 0 18px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="border:1.5px solid {BRAND};border-radius:6px;">
-              <a href="{app_url}" style="display:inline-block;padding:10px 22px;color:{BRAND};
-                 font-size:13px;font-weight:700;text-decoration:none;">Open the app</a>
-            </td></tr>
-          </table>
-          <div style="font-size:12px;color:{MUTED};padding-top:8px;">
-            Enter real rehab and resale numbers there and every verdict recalculates live.
-          </div>
+    <tr><td>{cards}</td></tr>
+    <tr><td align="center" style="padding:4px 0 18px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="background:{BRAND};border-radius:6px;">
+          <a href="{APP_URL}" style="display:inline-block;padding:11px 24px;color:#ffffff;
+             font-size:14px;font-weight:700;text-decoration:none;">{more}</a>
         </td></tr>
-      </table>
+      </table>{more_note}
     </td></tr>
-
-    <tr><td style="padding:0 24px;border-top:1px solid {LINE};">
-      <h3 style="font-size:15px;color:{INK};margin:22px 0 8px;">What we're looking for</h3>
-      {criteria_block(criteria_rows)}
-      {SIGNALS_HTML}
-      <h3 style="font-size:15px;color:{INK};margin:26px 0 6px;">What this can't see</h3>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="font-size:13px;color:{MUTED};line-height:1.55;">
-        <tr><td style="padding:3px 0;"><b style="color:{INK};">FSBO and off-market</b> never reach a
-          data feed, so they can't be searched. Anything spotted in the wild gets added by hand.</td></tr>
-        <tr><td style="padding:3px 0;"><b style="color:{INK};">Renovation cost and resale value</b>
-          aren't in any listing. Until someone enters real figures, no profit number here means
-          anything &mdash; which is why houses arrive uncosted rather than pre-judged.</td></tr>
-      </table>
-      <div style="height:22px;"></div>
-    </td></tr>
-
-    <tr><td style="background:{GROUND};border-top:1px solid {LINE};padding:14px 24px;
-                   font-size:11px;color:{MUTED};line-height:1.5;text-align:center;">
-      Sent by House Finder &middot; searches run weekly &middot;
-      change recipients or criteria in the database
+    <tr><td style="padding:12px 4px 4px;border-top:1px solid {LINE};font-size:11px;
+                   color:{MUTED};line-height:1.6;">
+      Searching: {html.escape(" · ".join(searches) or "—")}<br>
+      Searches run weekly &middot; change them in the app{credit}
     </td></tr>
   </table>
  </td></tr>
 </table>
 </body></html>"""
+    return subject, body
+
+
+# ---------------------------------------------------------------- routing
+
+def recipient_markets(value):
+    """A Markets cell -> set of market names; empty set means "the public ones"."""
+    return {m.strip() for m in str(value or "").split(",") if m.strip()}
+
+
+def resolve_recipients(at):
+    """[(email, markets)] from the table, or from EMAIL_TO when set.
+
+    Recipients come from the database, so they can be changed from a phone.
+    EMAIL_TO still wins when set -- for a one-off send or a preview -- and
+    covers DIGEST_MARKETS, defaulting to the non-private markets so an
+    override can never leak a private market to someone by accident.
+    """
+    override = [a.strip() for a in os.environ.get("EMAIL_TO", "").split(",") if a.strip()]
+    if override:
+        markets = recipient_markets(os.environ.get("DIGEST_MARKETS"))
+        print(f"Recipients: {len(override)} from EMAIL_TO override, markets: "
+              f"{', '.join(sorted(markets)) or 'public'}")
+        return [(a, markets) for a in override]
+
+    try:
+        rows = at.list_records(TABLE_RECIPIENTS, formula="{Active}")
+    except Exception as exc:
+        print(f"::warning::Could not read the {TABLE_RECIPIENTS} table ({exc}).")
+        return []
+
+    good = []
+    for rec in rows:
+        f = rec.get("fields", {})
+        email = (f.get("Email") or "").strip()
+        if not _looks_like_email(email):
+            print(f"::warning::Skipping {email or '(blank)'!r} in {TABLE_RECIPIENTS} "
+                  f"-- not a valid address.")
+            continue
+        good.append((email, recipient_markets(f.get("Markets"))))
+    print(f"Recipients: {len(good)} active")
+    return good
+
+
+def in_markets(f, markets):
+    """Does this house or search belong in an email for `markets`?"""
+    market = (f.get("Market") or "").strip()
+    if markets:
+        return market in markets
+    return market not in PRIVATE_MARKETS
+
+
+def worth_sending(f, cutoff, lane=None):
+    """Newly listed or newly re-priced, still buyable, not already decided."""
+    if lane and lane_of(f) != lane:
+        return False
+    # A house you can no longer buy is not news, including one the feed
+    # itself reported as pending.
+    if f.get("Listing Status") in ("Off Market", "Under Contract"):
+        return False
+    # Two ways in: newly listed, or its price moved. Anything else we
+    # already emailed about, unchanged.
+    is_new = str(f.get("Date Added") or "") >= cutoff
+    moved = str(f.get("Price Change Date") or "") >= cutoff
+    if not (is_new or moved):
+        return False
+    # Your own decisions (Under Contract, Purchased, Rejected) are not news.
+    if f.get("Status") in DECIDED_STATUSES:
+        return False
+    # Costed by a human and failed both ways. NO DATA is not a rejection.
+    return not (f.get("Flip Verdict") == "PASS" and f.get("BRRRR Verdict") == "PASS")
+
+
+def plan_emails(recipients, criteria_rows, houses, cutoff, lane=None):
+    """Group recipients who follow the same markets into one email each.
+
+    Returns [(markets_label_list, [emails], criteria, houses)]. A group with
+    no houses is still returned; main() decides whether to stay quiet.
+    """
+    groups = {}
+    for email, markets in recipients:
+        groups.setdefault(frozenset(markets), []).append(email)
+    plans = []
+    for markets, emails in groups.items():
+        crit = [r for r in criteria_rows if in_markets(r.get("fields", {}), markets)]
+        picked = [r for r in houses
+                  if in_markets(r.get("fields", {}), markets)
+                  and worth_sending(r.get("fields", {}), cutoff, lane)]
+        names = sorted(markets) or sorted(
+            {(r.get("fields", {}).get("Market") or "").strip() for r in crit} - {""})
+        plans.append((names, emails, crit, picked))
+    return plans
 
 
 def _looks_like_email(value):
@@ -885,144 +647,94 @@ def _looks_like_email(value):
     return "@" in value and "." in value.split("@")[-1] and " " not in value
 
 
-def resolve_recipients(at):
-    """Recipients come from the database, so they can be changed from a phone.
+def lane_from_env():
+    """Which lane this workflow sends. DIGEST_SEARCH=Multifamily is the
+    buildings email; DIGEST_EXCLUDE=Multifamily is the homes email."""
+    only = os.environ.get("DIGEST_SEARCH", "").strip().lower()
+    skip = os.environ.get("DIGEST_EXCLUDE", "").strip().lower()
+    if "multifamily" in only:
+        return "multifamily"
+    if "multifamily" in skip:
+        return "house"
+    return None
 
-    EMAIL_TO still works and wins when set -- useful for a one-off send to
-    someone who shouldn't join the standing list, and for running this
-    locally without touching the shared table.
-    """
-    override = [a.strip() for a in os.environ.get("EMAIL_TO", "").split(",") if a.strip()]
-    if override:
-        print(f"Recipients: {len(override)} from EMAIL_TO override")
-        return override
 
-    try:
-        rows = at.list_records(TABLE_RECIPIENTS, formula="{Active}")
-    except Exception as exc:
-        # A missing table is the expected first-run state, not a crash.
-        print(f"::warning::Could not read the {TABLE_RECIPIENTS} table ({exc}).")
-        return []
-
-    good, bad = [], []
-    for rec in rows:
-        email = (rec.get("fields", {}).get("Email") or "").strip()
-        (good if _looks_like_email(email) else bad).append(email or "(blank)")
-    for entry in bad:
-        print(f"::warning::Skipping {entry!r} in {TABLE_RECIPIENTS} -- not a valid address.")
-    print(f"Recipients: {len(good)} active")
-    return good
+def criteria_for_lane(rows, lane):
+    if not lane:
+        return rows
+    def crit_lane(f):
+        return ("multifamily" if (f.get("Property Class") == "Multifamily"
+                                  or f.get("Min Units")) else "house")
+    return [r for r in rows if crit_lane(r.get("fields", {})) == lane]
 
 
 def main():
+    dry = os.environ.get("DIGEST_DRY_RUN") == "1"
     user = os.environ.get("SMTP_USER")
     password = os.environ.get("SMTP_PASS")
-    if not (user and password):
-        # Fail loudly, for the same reason the search worker does: returning 0
-        # here paints the workflow green while no email is ever sent, and the
-        # absence of an email looks identical to "nothing new today".
+    if not dry and not (user and password):
+        # Fail loudly: a green run that sent nothing looks identical to
+        # "nothing new today".
         missing = [n for n, v in (("SMTP_USER", user), ("SMTP_PASS", password)) if not v]
         print(f"::error::Email not configured; missing: {', '.join(missing)}")
         print("::error::Set these as repository secrets. For Gmail, SMTP_PASS must be "
               "an App Password (myaccount.google.com/apppasswords), not the account password.")
         return 1
 
-    # DIGEST_SEARCH scopes this send to one criteria row, matched against the
-    # Found By column. That is what keeps the multifamily email separate from
-    # the house email without a second table or a second script: same code,
-    # two workflows, each pointed at its own search. Unset means every search,
-    # which is the existing behaviour.
-    only = os.environ.get("DIGEST_SEARCH", "").strip().lower()
-    # The mirror of DIGEST_SEARCH. Without it the two digests overlap: the
-    # house email has no scope of its own, so it would happily list the
-    # multifamily complexes the other email exists to carry.
-    skip = os.environ.get("DIGEST_EXCLUDE", "").strip().lower()
-
+    lane = lane_from_env()
     at = connect()
-    to = resolve_recipients(at)
-    if not to:
-        print(f"::error::No recipients. Add a row to the {TABLE_RECIPIENTS} table in "
-              "the Recipients table with an Email and Active checked, or set "
-              "EMAIL_TO for a one-off.")
+    recipients = resolve_recipients(at)
+    if not recipients:
+        print(f"::error::No recipients. Add a row to the {TABLE_RECIPIENTS} table "
+              "with an Email and Active checked, or set EMAIL_TO for a one-off.")
         return 1
-    criteria_rows = at.list_records(TABLE_CRITERIA, formula="{Active}")
-    if only:
-        # Show only the brief this email is about; a multifamily digest
-        # listing the three house searches would just be confusing.
-        scoped = [r for r in criteria_rows
-                  if only in (r.get("fields", {}).get("Name") or "").lower()]
-        criteria_rows = scoped or criteria_rows
-    elif skip:
-        criteria_rows = [r for r in criteria_rows
-                         if skip not in (r.get("fields", {}).get("Name") or "").lower()]
-
-    days = int(os.environ.get("DIGEST_DAYS", "1"))
+    criteria_rows = criteria_for_lane(
+        at.list_records(TABLE_CRITERIA, formula="{Active}"), lane)
+    days = int(os.environ.get("DIGEST_DAYS", "1") or "1")
     cutoff = (date.today() - timedelta(days=days)).isoformat()
-    criteria_rows = [r for r in criteria_rows
-                     if not is_private(r.get("fields", {}))]
+    houses = at.list_records(TABLE_HOUSES)
 
-    def worth_sending(rec):
-        f = rec.get("fields", {})
-        if is_private(f):
-            return False
-        lane = lane_of(f)
-        if only and lane != ("multifamily" if "multifamily" in only else "house"):
-            return False
-        if skip and lane == ("multifamily" if "multifamily" in skip else "house"):
-            return False
-        # A house you can no longer buy is not news. Under contract, sold
-        # or withdrawn houses drop out of the email entirely -- including
-        # the ones the feed itself reported as pending, which is the whole
-        # reason for reading its status word rather than waiting a week for
-        # the listing to vanish.
-        if f.get("Listing Status") in ("Off Market", "Under Contract"):
-            return False
-        # Two ways in, and only two: it is newly listed, or its price moved.
-        # Everything else is a house we already emailed about, unchanged --
-        # and re-sending it is how a digest turns into noise nobody opens.
-        is_new = (f.get("Date Added") or "") >= cutoff
-        dropped = (f.get("Price Change Date") or "") >= cutoff
-        if not (is_new or dropped):
-            return False
-        # A decision already made is not news. Under Contract, Purchased and
-        # Rejected are your own words about a house -- there is nothing left
-        # to do about any of them, and putting one back in a list of things
-        # to go and look at is worse than useless. This is the pipeline
-        # Status, which is separate from Listing Status: one is what you
-        # decided, the other is what the market did.
-        if f.get("Status") in DECIDED_STATUSES:
-            return False
-        # A house someone costed and rejected stays out of the email. NO DATA
-        # is not a rejection -- it means nobody has put real numbers in yet.
-        return not (f.get("Flip Verdict") == "PASS" and f.get("BRRRR Verdict") == "PASS")
-
-    new_houses = [rec for rec in at.list_records(TABLE_HOUSES) if worth_sending(rec)]
-
-    if not new_houses and os.environ.get("FORCE_SEND") != "1":
-        print("Nothing new and FORCE_SEND unset -- staying quiet.")
-        return 0
-
-    subject, body = build_email(criteria_rows, new_houses)
-    # Both parts, HTML preferred. The text half is what survives being
-    # forwarded into a text message, and multipart/alternative is also what
-    # keeps a plain-HTML blast out of spam filters.
-    msg = MIMEMultipart("alternative")
-    text = text_summary(new_houses, criteria_rows) if new_houses else \
-        "No new houses yet -- the searches are running. " \
-        "https://claudekovalenko.github.io/mls/"
-    msg.attach(MIMEText(text, "plain", "utf-8"))
-    msg.attach(MIMEText(body, "html", "utf-8"))
-    msg["Subject"] = subject
-    msg["From"] = os.environ.get("EMAIL_FROM", user)
-    msg["To"] = ", ".join(to)
-
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "465"))
-    with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
-        smtp.login(user, password)
-        smtp.send_message(msg)
-    print(f"Sent {subject!r} to {len(to)} recipient(s).")
-    return 0
+    force = os.environ.get("FORCE_SEND") == "1"
+    out_dir = os.environ.get("DIGEST_OUT", "digest-preview")
+    failures = 0
+    for names, emails, crit, picked in plan_emails(recipients, criteria_rows,
+                                                   houses, cutoff, lane):
+        label = " + ".join(names) or "public markets"
+        if not picked and not force:
+            print(f"{label}: nothing new -- staying quiet for {len(emails)} recipient(s).")
+            continue
+        if not crit and not picked:
+            print(f"{label}: no active searches -- nothing to announce.")
+            continue
+        subject, body = build_email(crit, picked, names, lane)
+        text = (text_summary(picked, crit) if picked else
+                "Nothing new since the last email. " + APP_URL)
+        if dry:
+            os.makedirs(out_dir, exist_ok=True)
+            slug = "".join(c if c.isalnum() else "-" for c in label.lower()).strip("-")
+            path = os.path.join(out_dir, f"{lane or 'all'}-{slug}.html")
+            with open(path, "w") as fh:
+                fh.write(body)
+            print(f"DRY RUN {subject!r} -> {path} ({len(picked)} house(s), "
+                  f"{len(body) // 1024} KB) for {len(emails)} recipient(s)")
+            continue
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+        msg.attach(MIMEText(body, "html", "utf-8"))
+        msg["Subject"] = subject
+        msg["From"] = os.environ.get("EMAIL_FROM", user)
+        msg["To"] = ", ".join(emails)
+        try:
+            host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+            port = int(os.environ.get("SMTP_PORT", "465"))
+            with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
+                smtp.login(user, password)
+                smtp.send_message(msg)
+            print(f"Sent {subject!r} to {len(emails)} recipient(s).")
+        except Exception as exc:  # noqa: BLE001 -- one group must not sink the rest
+            failures += 1
+            print(f"::error::{label}: send failed ({exc})")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
