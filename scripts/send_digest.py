@@ -89,6 +89,17 @@ DECIDED_STATUSES = {"Under Contract", "Purchased", "Rejected"}
 # Mirrors PRIVATE_MARKETS in docs/app.js.
 PRIVATE_MARKETS = {"Orange County", "Los Angeles"}
 
+# The app code that opens each private market, so the email's "open the
+# app" button can land its reader straight on their own areas. Only people
+# who follow a private market ever receive its email, so the code in the
+# link goes to someone who already has it.
+PRIVATE_MARKET_CODES = {"Orange County": "ivan", "Los Angeles": "ivan"}
+
+
+def app_link(markets=()):
+    codes = sorted({PRIVATE_MARKET_CODES[m] for m in markets if m in PRIVATE_MARKET_CODES})
+    return APP_URL + (f"?open={urllib.parse.quote(codes[0])}" if len(codes) == 1 else "")
+
 
 def is_private(f):
     return (f.get("Market") or "") in PRIVATE_MARKETS
@@ -342,7 +353,7 @@ def text_summary(new_houses, criteria_rows=()):
             delta, pct = move
             lines.append(f"  PRICE {'DROP' if delta < 0 else 'RAISE'}: "
                          f"{_money(abs(delta))} ({pct:.1f}%)")
-        lines.append("  " + (f.get("Listing URL") or zillow_url(f.get("Address"))))
+        lines.append("  Zillow: " + zillow_url(f.get("Address")))
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -422,7 +433,13 @@ def _card(row):
     """One house: photo, address, price, facts, verdict, links. That's all."""
     f = row["fields"]
     addr = str(f.get("Address") or "?")
-    listing = f.get("Listing URL") or zillow_url(addr)
+    # Zillow for every house, whatever found it: that is where the photos,
+    # remarks and price history are. A source with its own page (a
+    # HomeSteps foreclosure) gets a second link to that page.
+    zillow = zillow_url(addr) if f.get("Address") else ""
+    own = str(f.get("Listing URL") or "")
+    own = "" if (not own or "zillow.com" in own) else own
+    listing = zillow or own
     src, _kind = photo_url(f)
 
     photo = ""
@@ -458,10 +475,17 @@ def _card(row):
     chips = f'<div style="margin-top:8px;">{chips}</div>' if chips else ""
 
     link = f'color:{BRAND};font-weight:700;text-decoration:none;'
-    links = (f'<div style="margin-top:10px;font-size:13px;">'
-             f'<a href="{html.escape(listing)}" style="{link}">Listing &rarr;</a>'
-             f'&nbsp;&nbsp;&nbsp;<a href="{html.escape(street_link(addr))}" '
-             f'style="{link}">Street view &rarr;</a></div>')
+    button = (f'<td style="border:1.5px solid {BRAND};border-radius:6px;">'
+              f'<a href="{html.escape(zillow)}" style="display:inline-block;'
+              f'padding:7px 14px;{link}font-size:13px;">Zillow &rarr;</a></td>'
+              ) if zillow else ""
+    extra = (f'<a href="{html.escape(own)}" style="{link}">'
+             f'{html.escape(_source_name(f))} &rarr;</a>&nbsp;&nbsp;&nbsp;') if own else ""
+    links = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+             f'style="margin-top:12px;"><tr>{button}'
+             f'<td style="padding-left:14px;font-size:13px;">{extra}'
+             f'<a href="{html.escape(street_link(addr))}" style="{link}">'
+             f'Street view &rarr;</a></td></tr></table>')
 
     return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             f'border="0" style="margin:0 0 16px;border:1px solid {LINE};'
@@ -475,6 +499,11 @@ def _card(row):
             f'<div style="font-size:13px;color:{MUTED};margin-top:3px;">'
             f'{html.escape(stats_line(f))}</div>'
             f'{verdict}{chips}{links}</td></tr></table>')
+
+
+def _source_name(f):
+    return {"homesteps": "HomeSteps", "reso": "MLS"}.get(
+        str(f.get("Source") or "").lower(), "Listing")
 
 
 def _headline(houses, lane):
@@ -526,13 +555,13 @@ def build_email(criteria_rows, new_houses, markets=(), lane=None):
       <div style="font-family:{SERIF};color:{INK};font-size:26px;font-weight:700;
                   margin-top:6px;line-height:1.15;">{html.escape(headline)}</div>
       <div style="color:{MUTED};font-size:13px;margin-top:6px;">Best first.
-        Tap a photo for the listing.</div>
+        Tap a photo to open it on Zillow.</div>
     </td></tr>
     <tr><td>{cards}</td></tr>
     <tr><td align="center" style="padding:4px 0 18px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0">
         <tr><td style="background:{BRAND};border-radius:6px;">
-          <a href="{APP_URL}" style="display:inline-block;padding:11px 24px;color:#ffffff;
+          <a href="{html.escape(app_link(markets))}" style="display:inline-block;padding:11px 24px;color:#ffffff;
              font-size:14px;font-weight:700;text-decoration:none;">{more}</a>
         </td></tr>
       </table>{more_note}

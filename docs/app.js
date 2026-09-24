@@ -9,7 +9,7 @@
  */
 
 // Keep in lockstep with CACHE in sw.js -- check_version_sync guards it.
-const APP_VERSION = "v53";
+const APP_VERSION = "v54";
 const TABLE_CRITERIA = "Search Criteria";
 const TABLE_HOUSES = "Houses";
 
@@ -267,11 +267,25 @@ function applyVisibility() {
   const sel = $("filter-market");
   if (sel) {
     const keep = sel.value;
+    // Your own unlocked areas as one choice, so Orange County and LA read
+    // as one hunt instead of two lists to flip between.
+    const mine = markets.filter(m => m in PRIVATE_MARKETS);
     sel.innerHTML = '<option value="">All markets</option>' +
+      (mine.length > 1 ? `<option value="${MY_AREAS}">${esc(mine.join(" + "))}</option>` : "") +
       markets.map(m => `<option>${esc(m)}</option>`).join("");
-    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+    let want = keep;
+    if (!want) { try { want = localStorage.getItem("hf-market") || ""; } catch {} }
+    if ([...sel.options].some(o => o.value === want)) sel.value = want;
   }
 }
+// The market filter's value for "every private market I have open".
+const MY_AREAS = "__mine";
+function marketMatches(market, filter) {
+  if (!filter) return true;
+  if (filter === MY_AREAS) return market in PRIVATE_MARKETS && marketVisible(market);
+  return market === filter;
+}
+
 function unlockMarket(code) {
   // One code can open several markets (Ivan's is Orange County and LA).
   const hits = Object.entries(PRIVATE_MARKETS)
@@ -386,7 +400,7 @@ function visibleMatches() {
 
   let rows = houses.map(r => ({ id: r.id, f: r.fields || {}, v: houseVerdict(r.fields || {}) }));
   rows = rows.filter(r => laneOf(r.f) === currentLane);
-  if (marketFilter) rows = rows.filter(r => (r.f.Market || "") === marketFilter);
+  if (marketFilter) rows = rows.filter(r => marketMatches(r.f.Market || "", marketFilter));
   // Off market is its own view rather than a hidden state: the houses are
   // still there when you want to look back at what a street actually sold
   // for, but they never sit in a list of things to go and buy.
@@ -568,7 +582,10 @@ function renderFilterSummary(shown) {
   const noun = shown === 1 ? (laneDef.label || "").toLowerCase()
                            : (laneDef.plural || "");
   const bits = [`${shown} ${noun}`, viewWord.toLowerCase()];
-  if (market) bits.push(`in ${market}`);
+  if (market) {
+    const sel = $("filter-market");
+    bits.push(`in ${sel.options[sel.selectedIndex]?.text || market}`);
+  }
   if (sortLabel) bits.push(`by ${sortLabel.toLowerCase()}`);
   const pulled = lastPulled();
   if (pulled) bits.push(`data pulled ${pulled}`);
@@ -1928,7 +1945,10 @@ document.addEventListener("DOMContentLoaded", () => {
     $("filters-toggle").setAttribute("aria-expanded", String(open));
   });
 
-  $("filter-market").addEventListener("change", renderMatches);
+  $("filter-market").addEventListener("change", () => {
+    try { localStorage.setItem("hf-market", $("filter-market").value); } catch {}
+    renderMatches();
+  });
   $("filter-view").addEventListener("change", renderMatches);
   $("sort-by").addEventListener("change", renderMatches);
 
@@ -1940,6 +1960,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Restore the last view mode (List is default and needs no work).
 if (viewMode !== "list") setViewMode(viewMode);
+
+// A personal link: ...mls/?open=ivan unlocks that code's markets and lands
+// on them, so the bookmark on a phone's home screen opens straight to your
+// own hunt. The code leaves the address bar immediately.
+(() => {
+  const params = new URLSearchParams(location.search);
+  const code = params.get("open");
+  if (!code) return;
+  if (unlockMarket(code)) {
+    try { localStorage.setItem("hf-market", MY_AREAS); } catch {}
+    applyVisibility(); renderCriteria(); renderMatches();
+  }
+  params.delete("open");
+  const rest = params.toString();
+  history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+})();
 
 // Private areas: a code opens someone else's market on this device only.
 (() => {

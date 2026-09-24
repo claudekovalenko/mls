@@ -98,6 +98,12 @@ photo, price, one line of facts, a verdict and two links. The photo is the
 feed's own when it has one, otherwise a free aerial view (Esri World
 Imagery, no key needed) from the listing's coordinates.
 
+**Personal link.** `https://claudekovalenko.github.io/mls/?open=ivan` unlocks
+Orange County + Los Angeles on that device and opens straight to them
+(Share → Add to Home Screen from there makes it an app icon). Private-market
+emails use it for their "Open the app" button. Every email card has a
+Zillow button; foreclosures also link their HomeSteps page.
+
 **Testing an email** (Actions → Email Digest → Run workflow):
 
 - `dry_run` renders every email as a downloadable artifact and sends nothing

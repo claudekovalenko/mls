@@ -108,7 +108,7 @@ def main():
     many = [house(Address=f"{100 + i} Elm St, Buena Park, CA 90620", Price=700000 + i * 1000)
             for i in range(40)]
     subject, body = sd.build_email(CRITERIA, many, ["Orange County", "Los Angeles"], "house")
-    check("no more than MAX_CARDS houses are shown", body.count("Street view &rarr;"),
+    check("no more than MAX_CARDS houses are shown", body.count("Zillow &rarr;"),
           sd.MAX_CARDS)
     check("the rest are pointed at the app", "See all 40 in the app" in body, True)
     # Gmail clips anything over ~102 KB behind a "[Message clipped]" link,
@@ -131,6 +131,22 @@ def main():
           sd.photo_url(house(Latitude=None)["fields"]), ("", None))
     check("the aerial credit is shown when aerials are used",
           "Aerial imagery &copy; Esri" in body, True)
+
+    print("\nEvery house links to Zillow:")
+    _, b = sd.build_email(CRITERIA, many[:5], ["Orange County"], "house")
+    check("one Zillow button per card", b.count("Zillow &rarr;"), 5)
+    fc = house(**{"Source": "homesteps",
+                  "Listing URL": "https://www.homesteps.com/listingdetails/x"})
+    _, b = sd.build_email(CRITERIA, [fc], ["Orange County"], "house")
+    check("a foreclosure keeps Zillow and adds its own page",
+          ("zillow.com" in b, "HomeSteps &rarr;" in b), (True, True))
+    check("the text version carries the Zillow link",
+          "Zillow: https://www.zillow.com/homes/" in sd.text_summary([fc]), True)
+    check("Ivan's app button opens his areas directly",
+          "mls/?open=ivan" in sd.build_email(CRITERIA, [fc], ["Orange County",
+                                                              "Los Angeles"])[1], True)
+    check("Ryan's app button carries no code",
+          "?open=" in sd.build_email(CRITERIA, [house(Market="Atlanta")], [])[1], False)
 
     print("\nNothing unescaped reaches the HTML:")
     evil = house(Address='<script>alert(1)</script> 1 "Q" St', **{
