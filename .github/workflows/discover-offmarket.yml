@@ -1,0 +1,19 @@
+# Diagnostic: which off-market data sources for Cobb County are reachable,
+# keyless and machine-readable? Reads a few pages, stores nothing, makes no
+# RentCast calls.
+name: Discover Off-Market Sources
+
+on:
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Discover
+        working-directory: scripts
+        run: python discover_offmarket.py
