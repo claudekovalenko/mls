@@ -55,40 +55,54 @@ def show(label, url, peek=600):
 
 
 def main():
-    # 1. ArcGIS Hub: the open-data catalog most counties publish parcels to.
-    #    Keyless JSON. Find Cobb's parcel layer and its FeatureServer URL.
-    hub = show("ArcGIS Hub search: Cobb parcels",
-               "https://hub.arcgis.com/api/v3/datasets?"
-               + urllib.parse.urlencode({"q": "Cobb County Georgia parcels",
-                                         "page[size]": "8"}))
-    if isinstance(hub, dict):
-        for d in hub.get("data", [])[:8]:
-            a = d.get("attributes", {})
-            print(f"  - {a.get('name')!r} owner={a.get('owner')} "
-                  f"url={a.get('url')} fields={[f.get('name') for f in (a.get('fields') or [])][:25]}")
+    # Round 2. Round 1 found Cobb's own ArcGIS server at
+    # gis.cobbcounty.gov/gisserver -- keyless, public. Walk it: every folder,
+    # every service, every layer, and the fields of anything that looks like
+    # a parcel/tax layer. Owner name, mailing address, last sale, year built
+    # and assessed value are the off-market signals; this finds where they sit.
+    base = "https://gis.cobbcounty.gov/gisserver/rest/services"
+    root = show("Cobb GIS root", base + "?f=json", peek=1500)
+    folders = (root or {}).get("folders", []) if isinstance(root, dict) else []
+    services = list((root or {}).get("services", [])) if isinstance(root, dict) else []
+    for folder in folders:
+        doc = show(f"folder {folder}", f"{base}/{folder}?f=json", peek=200)
+        if isinstance(doc, dict):
+            services.extend(doc.get("services", []))
+    print("=" * 70)
+    print(f"{len(services)} service(s):")
+    for svc in services:
+        print(f"  {svc.get('name')} ({svc.get('type')})")
+    # Layers of anything parcel-, tax-, owner- or property-shaped.
+    hits = [s for s in services if any(k in (s.get("name") or "").lower()
+                                       for k in ("parcel", "tax", "owner", "property",
+                                                 "assess", "land", "base"))]
+    for svc in hits[:12]:
+        url = f"{base}/{svc['name']}/{svc['type']}"
+        doc = show(f"service {svc['name']}", url + "?f=json", peek=300)
+        if not isinstance(doc, dict):
+            continue
+        for layer in (doc.get("layers") or [])[:40]:
+            lid, lname = layer.get("id"), layer.get("name")
+            ldoc = show(f"  layer {lname}", f"{url}/{lid}?f=json", peek=100)
+            if isinstance(ldoc, dict):
+                fields = [f.get("name") for f in (ldoc.get("fields") or [])]
+                print(f"    fields({len(fields)}): {fields[:60]}")
+                if any("own" in (f or "").lower() for f in fields):
+                    # One real row, so the adapter is written against truth.
+                    show(f"  sample row {lname}",
+                         f"{url}/{lid}/query?" + urllib.parse.urlencode({
+                             "where": "1=1", "outFields": "*", "resultRecordCount": "1",
+                             "returnGeometry": "false", "f": "json"}), peek=2500)
 
-    # 2. Cobb County's own GIS: the usual ArcGIS REST roots.
-    for root in ("https://gis.cobbcounty.org/arcgis/rest/services?f=json",
-                 "https://gis.cobbcountyga.gov/arcgis/rest/services?f=json",
-                 "https://cobbgis.cobbcounty.org/arcgis/rest/services?f=json",
-                 "https://services.arcgis.com/oXNMbSEnjjVzlt8k/arcgis/rest/services?f=json"):
-        show("Cobb ArcGIS REST root", root, peek=800)
-
-    # 3. Tax delinquency: the Cobb Tax Commissioner publishes delinquent
-    #    lists and tax-sale notices.
-    show("Cobb Tax Commissioner robots", "https://www.cobbtax.org/robots.txt")
-    show("Cobb tax sale page", "https://www.cobbtax.org/property/tax-sale")
-    show("Cobb delinquent page", "https://www.cobbtax.org/property/delinquent-taxes")
-
-    # 4. Georgia Public Notice: foreclosure and probate legal ads, statewide,
-    #    published to be found.
-    show("GA public notice robots", "https://www.georgiapublicnotice.com/robots.txt")
-    show("GA public notice search",
-         "https://www.georgiapublicnotice.com/Search.aspx?"
-         + urllib.parse.urlencode({"County": "Cobb", "Category": "Foreclosure"}))
-
-    # 5. Cobb Superior Court / probate.
-    show("Cobb probate court robots", "https://www.cobbcounty.org/robots.txt")
+    # Cobb Tax Commissioner and Assessor: find the real delinquent / tax sale
+    # / bulk-data pages from their front pages.
+    for label, url in (("cobbtax front", "https://www.cobbtax.org/"),
+                       ("cobbassessor front", "https://www.cobbassessor.org/"),
+                       ("cobbassessor robots", "https://www.cobbassessor.org/robots.txt")):
+        text = show(label, url, peek=200)
+        if isinstance(text, str):
+            links = sorted(set(re.findall(r'href="([^"]*(?:delinq|tax-sale|taxsale|sale|download|data|digest|search)[^"]*)"', text, re.I)))[:25]
+            print("  interesting links:", links)
     return 0
 
 
